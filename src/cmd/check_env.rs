@@ -49,19 +49,16 @@ lazy_static! {
 pub struct CheckEnv;
 
 impl Cmd for CheckEnv {
-    fn cmd_desc() -> CmdDesc {
+    fn cmd_desc(&self) -> CmdDesc {
         let os_type = curr_platform().os_type;
+        let mut args = vec!["list"];
         match os_type.as_str() {
-            "macos" => {
-                vec!["list"].extend(DEPS.get("macos").unwrap())
-            },
-            _ => panic!("un support cmd"),
-        }
+            "macos" => args.extend(DEPS.get("macos").unwrap()),
+            _ => panic!("not support cmd"),
+        };
         CmdDesc {
             name: "brew".to_string(),
-            args: Some(vec![
-                "list".to_string(),
-            ]),
+            args: Some(args.iter().map(|arg| arg.to_string()).collect()),
             show_progress_type: Some("pipe".to_string()),
         }
     }
@@ -113,7 +110,7 @@ mod tests {
             let check_env_and_cmd = init_check_env();
             let mut log = default_log_handler().unwrap();
             let mut mac_os_check_env_context = CmdContext::new(check_env_and_cmd.1, &mut log);
-            let cmd_status = check_env_and_cmd.0.run(&mut mac_os_check_env_context);
+            let cmd_status = check_env_and_cmd.0.exec(&mut mac_os_check_env_context);
             println!("cmd_status = {:?}", cmd_status);
             assert!(!cmd_status.success);
         }

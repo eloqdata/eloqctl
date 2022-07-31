@@ -1,22 +1,22 @@
 use crate::cmd::base::SUPPORT_CMD_LIST;
+use crate::cmd::cmd_runner::CmdRunner;
+use crate::cmd::cmd_utils::{all_support_cmd_string, default_log_handler};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Completion, History, Input};
 use std::collections::VecDeque;
 use std::process;
-use crate::cmd::cmd_runner::CmdRunner;
-use crate::cmd::cmd_utils::{all_support_cmd_string, default_log_handler};
 
 const MAX_INPUT_HISTORY: usize = 1000;
-const PROMPT_STR: &str = "[monograph_waiter]";
+const PROMPT_STR: &str = "monograph_waiter>";
 
 pub struct CmdCli;
 
 impl CmdCli {
-    pub fn start_run(&self) {
+    pub fn start(&self) {
         let mut history = InputHistory::default();
         let completion = InputCompletion::default();
         let logger = default_log_handler().unwrap();
-        CmdRunner::new( &logger);
+        let runner = CmdRunner::new(&logger);
         loop {
             if let Ok(cmd) = Input::<String>::with_theme(&ColorfulTheme::default())
                 .with_prompt(PROMPT_STR.to_string())
@@ -24,12 +24,22 @@ impl CmdCli {
                 .completion_with(&completion)
                 .interact_text()
             {
+                if cmd == "help" {
+                    println!("all command list \n{}", all_support_cmd_string());
+                    continue;
+                }
                 if cmd == "exit" {
                     process::exit(0);
                 }
                 if !SUPPORT_CMD_LIST.contains(&cmd.as_str()) {
-                    println!("!!UnKnow Command {}.For now support command {}", cmd, all_support_cmd_string())
+                    println!(
+                        "warn: Not support command {}.For now support command list: \n{}",
+                        cmd,
+                        all_support_cmd_string()
+                    )
                 } else {
+                    let cmd_status = runner.run(cmd.to_string());
+                    println!("{}", cmd_status);
                 }
             }
         }
@@ -83,10 +93,12 @@ impl<T: ToString> History<T> for InputHistory {
         self.history.get(pos).cloned()
     }
 
-    fn write(&mut self, val: &T) {
-        if self.history.len() == self.max {
-            self.history.pop_back();
+    fn write(&mut self, input_val: &T) {
+        if SUPPORT_CMD_LIST.contains(&input_val.to_string().as_str()) {
+            if self.history.len() == self.max {
+                self.history.pop_back();
+            }
+            self.history.push_front(input_val.to_string());
         }
-        self.history.push_front(val.to_string());
     }
 }

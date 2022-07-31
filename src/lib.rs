@@ -2,4 +2,6 @@ extern crate core;
 
 #[allow(dead_code)]
 pub mod cmd;
-pub mod cmd_cli;
+#[allow(dead_code)]
+pub mod config;
+pub mod term;

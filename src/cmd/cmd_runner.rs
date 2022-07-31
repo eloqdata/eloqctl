@@ -1,9 +1,10 @@
+use crate::cmd::base::{Cmd, CmdContext, CmdStatus, CMD_DESC_MAP};
+use crate::cmd::check_env::CheckEnv;
 use std::collections::HashMap;
 use std::fs::File;
-use crate::cmd::base::{CMD_DESC_MAP, CmdContext};
 
 pub struct CmdRunner<'s> {
-    cmd_processor: HashMap<String, CmdContext<&'s File>>,
+    cmd_context_mapping: HashMap<String, CmdContext<&'s File>>,
 }
 
 impl<'s> CmdRunner<'s> {
@@ -13,7 +14,18 @@ impl<'s> CmdRunner<'s> {
             cmd_processor.insert(entry.0.to_string(), CmdContext::new(entry.1.clone(), log));
         }
         Self {
-            cmd_processor
+            cmd_context_mapping: cmd_processor,
+        }
+    }
+
+    pub fn run(&self, cmd: String) -> CmdStatus {
+        let cmd_as_str = cmd.as_str();
+        let cmd_context = self.cmd_context_mapping.get(cmd_as_str).unwrap();
+        match cmd_as_str {
+            "check" => CheckEnv {}.run_flow(&mut cmd_context.clone()),
+            _ => {
+                unreachable!()
+            }
         }
     }
 }

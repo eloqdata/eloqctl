@@ -1,14 +1,17 @@
-[common]
-workspace = "/workspace"
+workspace = "/user/workspace"
 
-[compile.dependencies]
+[compile.download]
 protobuf = { url = "https://github.com/protocolbuffers/protobuf/releases/download/v3.17.3/protobuf-cpp-3.17.3.tar.gz", build = '''
 ./configure
 make -j$(nproc)
 make check
 sudo make install
 ''' }
-brpc = { git = "https://github.com/apache/incubator-brpc.git" }
+
+[compile.git]
+brpc = { git = "https://github.com/apache/incubator-brpc.git", build = '''
+make -j8
+''' }
 braft = { git = "https://github.com/baidu/braft.git" }
 catch2 = { git = "https://github.com/catchorg/Catch2.git", branch = "v2.x" }
 aws = { git = "--recurse-submodules https://github.com/aws/aws-sdk-cpp.git" }

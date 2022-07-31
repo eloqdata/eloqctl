@@ -54,8 +54,8 @@ pub fn elapsed_progress_bar() -> ProgressBar {
 }
 
 pub fn cmd_process<F>(cmd_name: String, args: Option<Vec<String>>, mut stdout_f: F) -> CmdStatus
-    where
-        F: FnMut(&str),
+where
+    F: FnMut(&str),
 {
     let mut cmd = std::process::Command::new(cmd_name.as_str());
     if let Some(cmd_args) = args {
@@ -113,9 +113,8 @@ pub fn create_log_path_and_get() -> String {
     };
     let path_buf = Path::new(&curr_path);
     let rs = std::fs::create_dir_all(path_buf.as_os_str().to_str().unwrap());
-    println!(
-        "Curr LogPath={} create_log_path_if_need={:?}",
-        curr_path, rs
-    );
+    if let Err(err) = rs {
+        println!("Create Log root error path={} err={:?}", curr_path, err);
+    }
     curr_path + "/monograph_waiter.log"
 }

@@ -1,25 +1,18 @@
+use crate::cmd::check_env::CheckEnv;
 use crate::cmd::cmd_utils::{cmd_process, get_process_bar};
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 use std::path::PathBuf;
 use thiserror::Error;
-use std::collections::HashMap;
-use crate::cmd::check_env::CheckEnv;
 
 lazy_static! {
-    pub static ref SUPPORT_CMD_LIST: Vec<&'static str> = vec![
-        "check",
-        "fetch_source",
-        "build",
-        "playground",
-        "stop_all",
-        "start_all"
-    ];
-
-    pub static ref CMD_DESC_MAP : HashMap<&'static str, CmdDesc> = {
+    pub static ref SUPPORT_CMD_LIST: Vec<&'static str> =
+        vec!["check", "build", "playground", "stop_all", "start_all"];
+    pub static ref CMD_DESC_MAP: HashMap<&'static str, CmdDesc> = {
         let mut cmd_desc_mapping = HashMap::new();
-        cmd_desc_mapping.insert("check", CheckEnv::cmd_desc());
+        cmd_desc_mapping.insert("check", CheckEnv {}.cmd_desc());
         cmd_desc_mapping
     };
 }
@@ -58,20 +51,36 @@ pub struct CmdDesc {
 
 pub trait Cmd: 'static + Send {
     /// Command unique identifier
-    fn cmd_desc() -> CmdDesc;
+    fn cmd_desc(&self) -> CmdDesc;
     /// The action is executed before the command is executed. For example, modifying configuration files,
     /// setting environment variables, etc., is not required to implement
     fn set_up(&self) -> CmdStatus {
         CmdStatus::default()
     }
     /// Execute the command, e.g.: brew list leveldb
-    fn run(&self, context: &mut CmdContext<impl Write>) -> CmdStatus {
+    fn exec(&self, context: &mut CmdContext<impl Write>) -> CmdStatus {
+        println!("Trait Cmd Exec= {:?}", self.cmd_desc());
         context.record_context()
     }
     /// Actions executed after the command finishes running,
     /// such as cleaning up specific resources, are not required to be implemented.
     fn tear_down(&self) -> CmdStatus {
         CmdStatus::default()
+    }
+
+    fn run_flow(&self, context: &mut CmdContext<impl Write>) -> CmdStatus {
+        let mut cmd_status = self.set_up();
+        cmd_status = if !cmd_status.success {
+            cmd_status
+        } else {
+            cmd_status = self.exec(context);
+            if !cmd_status.success {
+                cmd_status
+            } else {
+                self.tear_down()
+            }
+        };
+        cmd_status
     }
 }
 
@@ -91,15 +100,17 @@ pub struct CmdStatus {
 
 impl Display for CmdStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let prefix = if self.success { "✅" } else { "❗" };
-        write!(
-            f,
-            "{}",
-            format_args!(
-                "{} success:{}, status_file:{:?}, {:?}",
-                prefix, self.success, self.status_file, self.output
-            ),
-        )
+        let prefix = if self.success {
+            "✅ success"
+        } else {
+            "❗error"
+        };
+        let output_string = if let Some(output) = self.output.clone() {
+            output
+        } else {
+            "".to_string()
+        };
+        write!(f, "{}", format_args!("{} {}", prefix, output_string))
     }
 }
 
@@ -115,16 +126,16 @@ impl Default for CmdStatus {
 
 #[derive(Clone, Debug)]
 pub struct CmdContext<Log>
-    where
-        Log: Write,
+where
+    Log: Write,
 {
     cmd: CmdDesc,
     log: Log,
 }
 
 impl<Log> CmdContext<Log>
-    where
-        Log: Write,
+where
+    Log: Write,
 {
     pub fn new(cmd_desc: CmdDesc, log: Log) -> Self {
         Self { cmd: cmd_desc, log }
@@ -149,8 +160,14 @@ impl<Log> CmdContext<Log>
                 },
             )
         };
-        let cmd_status_log = writeln!(self.log, "Command={:?}, Status={}", self.cmd, cmd_status);
-        println!("Write Log Rs={:?}", cmd_status_log);
+        let write_status_to_log =
+            writeln!(self.log, "Command={:?}, Status={}", self.cmd, cmd_status);
+        if let Err(write_log_err) = write_status_to_log {
+            println!(
+                "write {:?} status to log error={:?}",
+                self.cmd, write_log_err
+            );
+        }
         cmd_status
     }
 }
