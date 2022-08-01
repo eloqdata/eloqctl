@@ -2,44 +2,60 @@ use serde_derive::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Common {
-    workspace: String,
-    compile: Compile,
-    monograph: Monograph,
+    pub workspace: String,
+    pub compile: Compile,
+    pub monograph: Monograph,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Compile {
-    download: Download,
-    git: Git,
+    pub download: Download,
+    pub git: Git,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Monograph {
-    storage: String,
+    pub storage: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Git {
-    brpc: GitArgs,
-    braft: GitArgs,
-    catch2: GitArgs,
-    aws: GitArgs,
+    pub brpc: GitArgs,
+    pub braft: GitArgs,
+    pub catch2: GitArgs,
+    pub aws: GitArgs,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct GitArgs {
-    git: String,
-    branch: Option<String>,
-    build: Option<String>,
+    pub git: String,
+    pub branch: Option<String>,
+    pub build: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Download {
-    protobuf: DownloadArgs,
+    pub protobuf: DownloadArgs,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct DownloadArgs {
-    url: String,
-    build: Option<String>,
+    pub url: String,
+    pub build: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Cassandra {
+    pub download: CassandraDownload,
+    pub command: CassandraCommand,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CassandraDownload {
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CassandraCommand {
+    pub start_script: String,
 }

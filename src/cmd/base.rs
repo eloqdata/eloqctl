@@ -1,5 +1,6 @@
 use crate::cmd::check_env::CheckEnv;
 use crate::cmd::cmd_utils::{cmd_process, get_process_bar};
+use async_trait::async_trait;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
@@ -10,8 +11,13 @@ use thiserror::Error;
 pub static MONO_WATER_CONF: &str = "MONO_WATER_CONF_DIR";
 
 lazy_static! {
-    pub static ref SUPPORT_CMD_LIST: Vec<&'static str> =
-        vec!["check", "build", "playground", "stop_all", "start_all"];
+    pub static ref SUPPORT_CMD_LIST: Vec<&'static str> = vec![
+        "check",
+        "setup_workspace",
+        "playground",
+        "stop_all",
+        "start_all"
+    ];
     pub static ref CMD_DESC_MAP: HashMap<&'static str, CmdDesc> = {
         let mut cmd_desc_mapping = HashMap::new();
         cmd_desc_mapping.insert("check", CheckEnv {}.cmd_desc());
@@ -49,17 +55,32 @@ pub struct CmdDesc {
     pub name: String,
     pub args: Option<Vec<String>>,
     pub show_progress_type: Option<String>,
+    pub payload: Option<HashMap<String, String>>,
 }
 
+impl Default for CmdDesc {
+    fn default() -> Self {
+        Self {
+            name: "".to_string(),
+            args: None,
+            show_progress_type: None,
+            payload: None,
+        }
+    }
+}
+
+#[async_trait]
 pub trait Cmd: 'static + Send {
     /// Command unique identifier
-    fn cmd_desc(&self) -> CmdDesc;
+    fn cmd_desc(&self) -> CmdDesc {
+        CmdDesc::default()
+    }
     /// The action is executed before the command is executed. For example, modifying configuration files,
     /// setting environment variables, etc., is not required to implement
     fn set_up(&self) -> CmdStatus {
         CmdStatus::default()
     }
-    /// Execute the command, e.g.: brew list leveldb
+    /// Execute the OS command in a synchronized way, e.g.: brew list leveldb
     fn exec(&self, context: &mut CmdContext<impl Write>) -> CmdStatus {
         println!("Trait Cmd Exec= {:?}", self.cmd_desc());
         context.record_context()
@@ -67,6 +88,10 @@ pub trait Cmd: 'static + Send {
     /// Actions executed after the command finishes running,
     /// such as cleaning up specific resources, are not required to be implemented.
     fn tear_down(&self) -> CmdStatus {
+        CmdStatus::default()
+    }
+
+    async fn exec_async(&self) -> CmdStatus {
         CmdStatus::default()
     }
 

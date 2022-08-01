@@ -1,5 +1,3 @@
-extern crate core;
-
 #[allow(dead_code)]
 pub mod cmd;
 #[allow(dead_code)]

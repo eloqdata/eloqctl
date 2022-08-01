@@ -60,6 +60,7 @@ impl Cmd for CheckEnv {
             name: "brew".to_string(),
             args: Some(args.iter().map(|arg| arg.to_string()).collect()),
             show_progress_type: Some("pipe".to_string()),
+            payload: None,
         }
     }
 
@@ -92,6 +93,7 @@ mod tests {
                 "cmake".to_string(),
             ]),
             show_progress_type: Some("pipe".to_string()),
+            payload: None
         };
         (CheckEnv {}, check_env_cmd_desc)
     }

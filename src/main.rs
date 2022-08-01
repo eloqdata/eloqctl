@@ -20,7 +20,8 @@ struct CmdCliOptions {
     logfile: Option<String>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     println!("{}", BANNER);
     println!();
     println!("!!! Welcome Monograph Waiter!!!");
@@ -29,5 +30,6 @@ fn main() {
     println!();
     let cmd_cli_options = CmdCliOptions::parse();
     println!("load config from={:?}", cmd_cli_options);
-    CmdCli.start();
+    CmdCli.start().await;
+    Ok(())
 }

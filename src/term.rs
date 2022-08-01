@@ -12,7 +12,7 @@ const PROMPT_STR: &str = "monograph_waiter>";
 pub struct CmdCli;
 
 impl CmdCli {
-    pub fn start(&self) {
+    pub async fn start(&self) {
         let mut history = InputHistory::default();
         let completion = InputCompletion::default();
         let logger = default_log_handler().unwrap();
@@ -38,7 +38,7 @@ impl CmdCli {
                         all_support_cmd_string()
                     )
                 } else {
-                    let cmd_status = runner.run(cmd.to_string());
+                    let cmd_status = runner.run(cmd.to_string()).await;
                     println!("{}", cmd_status);
                 }
             }
