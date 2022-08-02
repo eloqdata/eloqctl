@@ -163,7 +163,6 @@ impl SetupWorkspace {
                 cmd_process(git_clone.name, git_clone.args, |stdout| {
                     println!("{}", stdout);
                 })
-                //SetupWorkspace::git_clone_async(git_clone.clone()).await;
             });
             join_all_task_vec.push(task_handler);
         }
@@ -180,12 +179,6 @@ impl SetupWorkspace {
             }
         }
     }
-
-    // pub async fn git_clone_async(clone_cmd: CmdDesc) -> CmdStatus {
-    //     cmd_process(clone_cmd.name, clone_cmd.args, |stdout| {
-    //         println!("{}", stdout);
-    //     })
-    // }
 }
 
 #[async_trait]

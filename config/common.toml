@@ -15,6 +15,9 @@ make -j8
 braft = { git = "https://github.com/baidu/braft.git" }
 catch2 = { git = "https://github.com/catchorg/Catch2.git", branch = "v2.x" }
 aws = { git = "https://github.com/aws/aws-sdk-cpp.git", options = ["--recurse-submodules"] }
+log_service = { git = "https://github.com/monographdb/log_service.git" }
+tx_service = { git = "https://github.com/monographdb/tx_service.git" }
+monograph = { git = "https://github.com/monographdb/monographdb_engine_for_mariadb.git" }
 
 [monograph]
 storage = "cassandra"
