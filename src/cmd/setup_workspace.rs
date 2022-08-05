@@ -1,6 +1,6 @@
-use crate::cmd::base::{
-    cmd_status_ok, CmdContext, CmdDef, CmdStatus, CmdV2, LinkMonographSource, MkdirWorkspace,
-};
+use crate::cmd::base::{CmdContext, CmdDef, CmdStatus, CmdV2};
+use crate::cmd::cmd_macro::{LinkMonographSource, MkdirWorkspace};
+use crate::cmd::cmd_utils::cmd_status_ok;
 use crate::cmd::download_third_party::DownloadThirdParty;
 use crate::cmd::git_clone_source::GitCloneSource;
 use std::io::Write;
@@ -14,7 +14,7 @@ impl SetupWorkspace {
         let git_clone_source = GitCloneSource {};
         let mk_workspace = mkdir_workspace.exec(context);
         if !cmd_status_ok(&mk_workspace) {
-            return mk_workspace;
+            mk_workspace
         } else {
             let download_status = download_third_party.exec().await;
             if !cmd_status_ok(&download_status) {

@@ -44,7 +44,7 @@ pub static DEPS: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|| {
 
 pub static SUPPORT_CMD_LIST: Lazy<Vec<&'static str>> = Lazy::new(|| {
     vec![
-        "check",
+        "check_deps",
         "install_deps",
         "setup_workspace",
         "playground",

@@ -40,7 +40,7 @@ impl CmdCli {
                 } else {
                     let cmd_status = runner.run(cmd.to_string()).await;
                     println!();
-                    println!("{}:{}", cmd, cmd_status);
+                    println!("{:#?}", cmd_status);
                 }
             }
         }

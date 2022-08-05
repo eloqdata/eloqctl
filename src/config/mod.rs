@@ -1,9 +1,11 @@
 use crate::config::common::{Cassandra, Common};
+use crate::{extract_config_value, load_toml_config};
 use ini::{Ini, Properties};
 use once_cell::sync::{Lazy, OnceCell};
 use std::collections::HashMap;
 
 pub mod common;
+pub mod config_macro;
 
 pub static MONOGRAPH_WATER_CONFIG_DIR: &str = "MONO_WATER_CONF_DIR";
 pub static MONOGRAPH_WORKSPACE_DIR: &str = "MONOGRAPH_WORKSPACE_DIR";
@@ -21,50 +23,14 @@ pub static WORKSPACE_LAYOUT: Lazy<HashMap<String, String>> = Lazy::new(|| {
     workspace_layout_map
 });
 
-#[macro_export]
-macro_rules! extract_config_value {
-    ($config_obj_key:expr, $config_obj:ident, $input_config_path:expr) => {{
-        use $crate::config::load_config;
-        use $crate::config::ConfigObject;
-        use $crate::config::MONOGRAPH_WATER_CONFIG_DIR;
-        let mut input_path = match $input_config_path {
-            Some(val) => val,
-            _ => "".to_string(),
-        };
-        if input_path.is_empty() {
-            input_path = std::env::var(MONOGRAPH_WATER_CONFIG_DIR).unwrap_or_else(|_| {
-                panic!("Maybe it's a bug.The path to the configuration file must exist")
-            });
-        }
-        let config_mapping = load_config(input_path.as_str());
-        let config_obj = config_mapping.get($config_obj_key).unwrap();
-        let rtn_value = match config_obj {
-            ConfigObject::$config_obj(data) => data,
-            _ => unreachable!(),
-        };
-        rtn_value
-    }};
-}
-
-#[macro_export]
-macro_rules! load_toml_config {
-    ($config_path:expr, $config_type:ty) => {{
-        use std::path::Path;
-        let config_binary = std::fs::read(Path::new($config_path))
-            .unwrap_or_else(|_| panic!("can't read common.toml from path = {}", $config_path));
-        let obj: $config_type = toml::from_slice(&config_binary).unwrap();
-        obj
-    }};
-}
-
 pub enum ConfigObject {
     Common(Box<Common>),
     Storage(Cassandra),
     MySQL(Properties),
 }
 
-pub fn workspace_sub_dir() -> HashMap<String, String> {
-    let workspace = extract_config_value!("common", Common, None)
+pub fn workspace_sub_dir(path: Option<String>) -> HashMap<String, String> {
+    let workspace = extract_config_value!("common", Common, path)
         .clone()
         .workspace;
     WORKSPACE_LAYOUT
@@ -116,7 +82,8 @@ fn load_mysql_config(mysql_config_path: &str) -> Properties {
 #[cfg(test)]
 mod tests {
     use crate::config::common::Common;
-    use crate::config::{load_mysql_config, workspace_sub_dir};
+    use crate::config::load_mysql_config;
+    use crate::{build_script, extract_config_value, load_toml_config};
 
     pub fn config_file(file: &str) -> String {
         let mut base_path = env!("CARGO_MANIFEST_DIR").to_owned();
@@ -139,9 +106,20 @@ mod tests {
 
     #[test]
     pub fn test_extract_config_value() {
-        workspace_sub_dir();
         let common_path = config_file("/config");
         let common_config = extract_config_value!("common", Common, Some(common_path.clone()));
         println!("{:?} -> {:?}", common_path, common_config);
+    }
+
+    #[test]
+    pub fn test_build_script() {
+        let config_path = config_file("/config");
+        let protobuf_build_cmd = build_script!(download, Some(config_path.clone()), protobuf);
+        let thirty_party_git_build =
+            build_script!(git, Some(config_path), brpc, braft, catch2, aws);
+        println!("{:?}", protobuf_build_cmd);
+        println!("{:?}", thirty_party_git_build);
+        assert_eq!(protobuf_build_cmd.cmd_vec.len(), 1);
+        assert_eq!(thirty_party_git_build.cmd_vec.len(), 4);
     }
 }

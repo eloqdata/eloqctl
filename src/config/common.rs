@@ -18,7 +18,7 @@ macro_rules! git_clone {
         use $crate::config::workspace_sub_dir;
         use $crate::config::common::MONOGRAPH_GIT_REPOS;
         let mut cmd_desc_vec: Vec<CmdDef> = vec![];
-        let workspace_sub_dirs = workspace_sub_dir();
+        let workspace_sub_dirs = workspace_sub_dir(None);
         $(
            let mut cmd_desc = CmdDef::default();
            cmd_desc.name = "git".to_string();

@@ -75,6 +75,7 @@ where
         let real_args = cmd_args.iter().map(|c| c.as_str()).collect::<Vec<_>>();
         cmd.args(real_args);
     }
+
     let pipe_rs = os_pipe::pipe();
     if let Ok((reader, writer)) = pipe_rs {
         let writer_clone = writer.try_clone().unwrap();
@@ -176,7 +177,7 @@ pub fn check_deps_as_pipe() -> PipeDef {
                 .map(|dep| CmdDef {
                     name: "brew".to_string(),
                     args: Some(vec!["list".to_string(), dep.to_string()]),
-                    show_progress_type: None,
+                    show_progress_type: Some("pipe".to_string()),
                     payload: None,
                 })
                 .collect::<Vec<_>>(),
@@ -185,4 +186,12 @@ pub fn check_deps_as_pipe() -> PipeDef {
             panic!("not support platform");
         }
     }
+}
+
+pub fn cmd_status_ok(input_status: &[(CmdDef, CmdStatus)]) -> bool {
+    input_status
+        .iter()
+        .filter(|(_, status)| !status.success)
+        .count()
+        == 0
 }
