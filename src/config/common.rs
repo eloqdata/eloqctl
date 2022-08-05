@@ -14,13 +14,13 @@ pub static MONOGRAPH_GIT_REPOS: Lazy<Vec<String>> = Lazy::new(|| {
 #[macro_export]
 macro_rules! git_clone {
     ($git_obj:expr $(,$git_attr:ident)*) => {{
-        use $crate::cmd::base::CmdDesc;
+        use $crate::cmd::base::CmdDef;
         use $crate::config::workspace_sub_dir;
         use $crate::config::common::MONOGRAPH_GIT_REPOS;
-        let mut cmd_desc_vec: Vec<CmdDesc> = vec![];
+        let mut cmd_desc_vec: Vec<CmdDef> = vec![];
         let workspace_sub_dirs = workspace_sub_dir();
         $(
-           let mut cmd_desc = CmdDesc::default();
+           let mut cmd_desc = CmdDef::default();
            cmd_desc.name = "git".to_string();
            let mut git_clone_args = vec!["clone".to_string()];
            if let Some(git_option) = $git_obj.$git_attr.options {
@@ -114,9 +114,12 @@ pub struct CassandraCommand {
 #[cfg(test)]
 mod tests {
     use crate::config::common::{Git, GitArgs};
+    use crate::config::MONOGRAPH_WATER_CONFIG_DIR;
+    use crate::extract_config_value;
+    use std::env;
 
     #[test]
-    pub fn test_git_clone_cmd_macro() {
+    pub fn test_git_clone_macro() {
         let test_git_attr = GitArgs {
             git: "https://github.com/apache/incubator-brpc.git".to_string(),
             branch: Some("v2.x".to_string()),
@@ -135,6 +138,11 @@ mod tests {
             mariadb: test_git_attr,
         };
         let git_string = stringify!(Git);
+        let root = env!("CARGO_MANIFEST_DIR");
+        let config_path = format!("{}/{}", root, "config");
+        env::set_var(MONOGRAPH_WATER_CONFIG_DIR, config_path);
+        let common = extract_config_value!("common", Common, None);
+        env::set_var(MONOGRAPH_WATER_CONFIG_DIR, common.clone().workspace);
         println!("git_string {}", git_string.to_string().to_lowercase());
         let git_cmd = git_clone!(git, brpc, braft);
         println!("Cmd {:?}", git_cmd);

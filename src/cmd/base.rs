@@ -1,28 +1,91 @@
-use crate::cmd::check_env::CheckEnv;
+use crate::cmd;
 use crate::cmd::cmd_utils::{cmd_process, get_process_bar};
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::Write;
 use thiserror::Error;
 
-pub static MONO_WATER_CONF: &str = "MONO_WATER_CONF_DIR";
+#[derive(Debug, Clone)]
+pub enum CmdEnum {
+    CmdExec(CmdDef),
+    PipeExec(PipeDef),
+}
 
-pub static SUPPORT_CMD_LIST: Lazy<Vec<&'static str>> = Lazy::new(|| {
-    vec![
-        "check",
-        "setup_workspace",
-        "playground",
-        "stop_all",
-        "start_all",
-    ]
+#[macro_export]
+macro_rules! sync_cmd_impl {
+    ($cmd_impl:ident, $cmd_obj:ident, $cmd_enum:ident, $cmd_build_closure:expr) => {
+        #[derive(Clone, Debug)]
+        pub struct $cmd_impl;
+
+        impl Default for $cmd_impl {
+            fn default() -> Self {
+                $cmd_impl {}
+            }
+        }
+
+        impl CmdV2 for $cmd_impl {
+            type Executable = $cmd_obj;
+
+            fn definition(&self) -> $cmd_obj {
+                $cmd_build_closure()
+            }
+
+            fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus)> {
+                context.record_context(CmdEnum::$cmd_enum(self.definition()))
+            }
+        }
+    };
+}
+
+sync_cmd_impl!(CheckDeps, PipeDef, PipeExec, || {
+    cmd::cmd_utils::check_deps_as_pipe()
 });
 
-pub static CMD_DESC_MAP: Lazy<HashMap<&'static str, CmdDesc>> = Lazy::new(|| {
-    let mut cmd_desc_mapping = HashMap::new();
-    cmd_desc_mapping.insert("check", CheckEnv {}.cmd_desc());
-    cmd_desc_mapping
+sync_cmd_impl!(MkdirWorkspace, CmdDef, CmdExec, || {
+    use crate::config::{MONOGRAPH_WORKSPACE_DIR, WORKSPACE_LAYOUT};
+    let workspace_dir = std::env::var(MONOGRAPH_WORKSPACE_DIR).unwrap();
+    let workspace_layout = WORKSPACE_LAYOUT
+        .iter()
+        .map(|entry| format!("{}/{}", workspace_dir, entry.1))
+        .collect::<Vec<_>>();
+    let mut cmd_args = vec!["-p".to_string()];
+    cmd_args.extend(workspace_layout);
+
+    CmdDef {
+        name: "mkdir".to_string(),
+        args: Some(cmd_args),
+        show_progress_type: None,
+        payload: None,
+    }
+});
+
+sync_cmd_impl!(LinkMonographSource, CmdDef, CmdExec, || {
+    CmdDef {
+        name: "bash".to_string(),
+        args: Some(vec![
+            "-c".to_string(),
+            r#"
+    #!/bin/bash
+    source_dir=${MONOGRAPH_WORKSPACE_DIR}/source
+    monograph_dir=${source_dir}/monograph
+    mariadb_dir=${source_dir}/mariadb
+    echo ${source_dir} ${monograph_dir} ${mariadb_dir}
+    cd $mariadb_dir
+    echo "MariaDB git submodule init"
+    git_submodel_init="git submodule init"
+    eval ${git_submodel_init}
+    echo "Link Monograph Source"
+    ln -s ${monograph_dir} ${mariadb_dir}/storage/monograph
+    ln -s ${source_dir}/log_service ${source_dir}/tx_service/log_service
+    ln -s ${source_dir}/cass ${monograph_dir}/cass
+    ln -s ${source_dir}/tx_service ${monograph_dir}/tx_service
+"#
+            .to_string(),
+        ]),
+        show_progress_type: None,
+        payload: None,
+    }
 });
 
 #[derive(Error, Debug)]
@@ -32,14 +95,47 @@ pub enum CmdErrorCode {
 }
 
 #[derive(Clone, Debug)]
-pub struct CmdDesc {
+pub struct CmdDef {
     pub name: String,
     pub args: Option<Vec<String>>,
     pub show_progress_type: Option<String>,
     pub payload: Option<HashMap<String, String>>,
 }
 
-impl CmdDesc {
+#[derive(Clone, Debug)]
+pub struct PipeDef {
+    pub cmd_vec: Vec<CmdDef>,
+}
+
+impl Default for PipeDef {
+    fn default() -> Self {
+        Self { cmd_vec: vec![] }
+    }
+}
+
+impl Display for CmdDef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let args = if let Some(arg_vec) = self.args.clone() {
+            arg_vec.join(" ")
+        } else {
+            "None".to_string()
+        };
+
+        write!(
+            f,
+            "{}",
+            format_args!(
+                "{} {} {} payload={:#?}",
+                self.name,
+                args,
+                self.show_progress_type.clone().unwrap_or("".to_string()),
+                self.payload
+            )
+        )
+    }
+}
+
+impl CmdDef {
     pub fn cmd_string(&self) -> String {
         let args_string = if let Some(cmd_args) = &self.args {
             cmd_args.join(" ")
@@ -50,7 +146,7 @@ impl CmdDesc {
     }
 }
 
-impl Default for CmdDesc {
+impl Default for CmdDef {
     fn default() -> Self {
         Self {
             name: "".to_string(),
@@ -61,46 +157,27 @@ impl Default for CmdDesc {
     }
 }
 
+pub trait CmdV2: 'static + Send {
+    type Executable: Default;
+    /// Description of executable command, can be [`CmdDef`]  or [`Pipe`].
+    /// for example : command -v brew.
+    fn definition(&self) -> Self::Executable;
+    /// Execute the command and log it, e.g.: brew list leveldb
+    fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus)>;
+}
+
+pub fn cmd_status_ok(input_status: &Vec<(CmdDef, CmdStatus)>) -> bool {
+    input_status
+        .iter()
+        .filter(|(_, status)| !status.success)
+        .count()
+        == 0
+}
+
 #[async_trait]
-pub trait Cmd: 'static + Send {
-    /// Command unique identifier
-    fn cmd_desc(&self) -> CmdDesc {
-        CmdDesc::default()
-    }
-    /// The action is executed before the command is executed. For example, modifying configuration files,
-    /// setting environment variables, etc., is not required to implement
-    fn set_up(&self) -> CmdStatus {
-        CmdStatus::default()
-    }
-    /// Execute the OS command in a synchronized way, e.g.: brew list leveldb
-    fn exec(&self, context: &mut CmdContext<impl Write>) -> CmdStatus {
-        println!("run command={:?}", self.cmd_desc().cmd_string());
-        context.record_context()
-    }
-    /// Actions executed after the command finishes running,
-    /// such as cleaning up specific resources, are not required to be implemented.
-    fn tear_down(&self) -> CmdStatus {
-        CmdStatus::default()
-    }
-
-    async fn exec_async(&self) -> CmdStatus {
-        CmdStatus::default()
-    }
-
-    fn run_flow(&self, context: &mut CmdContext<impl Write>) -> CmdStatus {
-        let mut cmd_status = self.set_up();
-        cmd_status = if !cmd_status.success {
-            cmd_status
-        } else {
-            cmd_status = self.exec(context);
-            if !cmd_status.success {
-                cmd_status
-            } else {
-                self.tear_down()
-            }
-        };
-        cmd_status
-    }
+pub trait AsyncCmd: 'static + Send + CmdV2 {
+    type AsyncExistStatus;
+    async fn async_exec(&self) -> Self::AsyncExistStatus;
 }
 
 #[derive(Clone, Debug)]
@@ -114,7 +191,6 @@ pub struct Platform {
 pub struct CmdStatus {
     pub(crate) success: bool,
     pub(crate) output: Option<String>,
-    // pub(crate) status_file: Option<PathBuf>,
 }
 
 impl Display for CmdStatus {
@@ -138,7 +214,6 @@ impl Default for CmdStatus {
         Self {
             success: true,
             output: None,
-            //status_file: None,
         }
     }
 }
@@ -148,7 +223,6 @@ pub struct CmdContext<Log>
 where
     Log: Write,
 {
-    cmd: CmdDesc,
     log: Log,
 }
 
@@ -156,41 +230,47 @@ impl<Log> CmdContext<Log>
 where
     Log: Write,
 {
-    pub fn new(cmd_desc: CmdDesc, log: Log) -> Self {
-        Self { cmd: cmd_desc, log }
+    pub fn new(log: Log) -> Self {
+        Self { log }
     }
 
-    pub fn get_cmd_desc(&self) -> CmdDesc {
-        self.cmd.clone()
-    }
-
-    pub fn record_context(&mut self) -> CmdStatus {
-        let cmd_status = if let Some(progress_type) = self.cmd.clone().show_progress_type {
-            let pb = get_process_bar(progress_type.as_str(), self.cmd.name.as_str());
-            cmd_process(
-                self.cmd.clone().name.as_str(),
-                self.cmd.clone().args,
-                |output_by_line: &str| {
-                    pb.set_message(output_by_line.to_owned());
-                },
-            )
+    pub fn cmd_run(&mut self, cmd: CmdDef) -> CmdStatus {
+        let mut runtime_log = String::default();
+        let cmd_status = if let Some(progress_type) = cmd.clone().show_progress_type {
+            let pb = get_process_bar(progress_type.as_str(), cmd.name.as_str());
+            cmd_process(cmd.clone(), |output_by_line: &str| {
+                runtime_log.push_str(format!("{}\n", output_by_line.clone()).as_str());
+                pb.set_message(output_by_line.to_owned());
+            })
         } else {
-            cmd_process(
-                self.cmd.clone().name.as_str(),
-                self.cmd.clone().args,
-                |output_by_line: &str| {
-                    println!("{}", output_by_line);
-                },
-            )
+            cmd_process(cmd.clone(), |output_by_line: &str| {
+                runtime_log.push_str(format!("{}\n", output_by_line.clone()).as_str());
+                println!("{}", output_by_line);
+            })
         };
-        let write_status_to_log =
-            writeln!(self.log, "Command={:?}, Status={}", self.cmd, cmd_status);
+        let write_status_to_log = writeln!(
+            self.log,
+            "command={}, \n{}\n,status={}",
+            cmd, runtime_log, cmd_status
+        );
         if let Err(write_log_err) = write_status_to_log {
-            println!(
-                "write {:?} status to log error={:?}",
-                self.cmd, write_log_err
-            );
+            println!("write {:?} status to log error={:?}", cmd, write_log_err);
         }
         cmd_status
+    }
+
+    pub fn record_context(&mut self, cmd: CmdEnum) -> Vec<(CmdDef, CmdStatus)> {
+        match cmd {
+            CmdEnum::CmdExec(cmd_def) => {
+                vec![(cmd_def.clone(), self.cmd_run(cmd_def))]
+            }
+            CmdEnum::PipeExec(pipe_def) => {
+                let mut cmd_status_rs = Vec::new();
+                for cmd_def in pipe_def.cmd_vec {
+                    cmd_status_rs.push((cmd_def.clone(), self.cmd_run(cmd_def)));
+                }
+                cmd_status_rs
+            }
+        }
     }
 }

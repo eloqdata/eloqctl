@@ -1,4 +1,4 @@
-use crate::cmd::base::SUPPORT_CMD_LIST;
+use crate::cmd::cmd_const::SUPPORT_CMD_LIST;
 use crate::cmd::cmd_runner::CmdRunner;
 use crate::cmd::cmd_utils::{all_support_cmd_string, default_log_handler};
 use dialoguer::theme::ColorfulTheme;

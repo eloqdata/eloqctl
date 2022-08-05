@@ -1,5 +1,7 @@
-use crate::cmd::base::{CmdStatus, Platform, SUPPORT_CMD_LIST};
+use crate::cmd::base::{CmdDef, CmdStatus, PipeDef, Platform};
+use crate::cmd::cmd_const::{DEPS, SUPPORT_CMD_LIST};
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::HashMap;
 use std::env;
 use std::fs::{File, OpenOptions};
 use std::io::BufRead;
@@ -64,12 +66,12 @@ pub fn elapsed_progress_bar(len: Option<u64>, customer_msg: Option<String>) -> P
     cmd_pb
 }
 
-pub fn cmd_process<F>(cmd_name: &str, args: Option<Vec<String>>, mut stdout_f: F) -> CmdStatus
+pub fn cmd_process<F>(cmd_desc: CmdDef, mut stdout_f: F) -> CmdStatus
 where
     F: FnMut(&str),
 {
-    let mut cmd = std::process::Command::new(cmd_name);
-    if let Some(cmd_args) = args {
+    let mut cmd = std::process::Command::new(cmd_desc.name.as_str());
+    if let Some(cmd_args) = cmd_desc.args.clone() {
         let real_args = cmd_args.iter().map(|c| c.as_str()).collect::<Vec<_>>();
         cmd.args(real_args);
     }
@@ -88,7 +90,7 @@ where
             }
         }
         let child_exist_status = child.wait();
-        println!("cmd exist status={:?}", child_exist_status);
+        println!("{} {:?}", cmd_desc, child_exist_status);
         if let Ok(exitstatus) = child_exist_status {
             CmdStatus {
                 success: exitstatus.success(),
@@ -131,4 +133,56 @@ pub fn create_log_path_and_get() -> String {
         println!("Create Log root error path={} err={:?}", curr_path, err);
     }
     curr_path + "/monograph_waiter.log"
+}
+
+pub fn get_http_proxy() -> Option<HashMap<&'static str, String>> {
+    let mut proxy = HashMap::new();
+    if env::var("https_proxy").is_ok() {
+        proxy.insert("https.proxy", env::var("https_proxy").unwrap());
+    }
+    if env::var("http_proxy").is_ok() {
+        proxy.insert("http.proxy", env::var("http_proxy").unwrap());
+    }
+    if proxy.is_empty() {
+        None
+    } else {
+        Some(proxy)
+    }
+}
+
+pub fn install_deps(dep: String) -> CmdDef {
+    let platform = curr_platform();
+    match platform.os_type.as_str() {
+        "macos" => CmdDef {
+            name: "brew".to_string(),
+            args: Some(vec!["install".to_string(), dep]),
+            show_progress_type: None,
+            payload: None,
+        },
+        _ => {
+            panic!("not support platform");
+        }
+    }
+}
+
+pub fn check_deps_as_pipe() -> PipeDef {
+    let platform = curr_platform();
+    match platform.os_type.as_str() {
+        "macos" => PipeDef {
+            cmd_vec: DEPS
+                .get("macos")
+                .unwrap()
+                .iter()
+                .map(|dep| CmdDef {
+                    name: "brew".to_string(),
+                    args: Some(vec!["list".to_string(), dep.to_string()]),
+                    show_progress_type: None,
+                    payload: None,
+                })
+                .collect::<Vec<_>>(),
+        },
+        _ => {
+            panic!("not support platform");
+        }
+    }
 }
