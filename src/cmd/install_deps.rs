@@ -15,7 +15,7 @@ impl InstallDeps {
                 let args = cmd.clone().args.unwrap();
                 let dep_name = args.get(1).unwrap();
                 let install_dep = install_deps_cmd(dep_name.to_string());
-                println!("Install Dep {}", install_dep);
+                println!("Package {} not install {}", dep_name, install_dep);
                 install_dep_pipe.push(install_dep);
             }
         }

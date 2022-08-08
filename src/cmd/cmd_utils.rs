@@ -164,9 +164,15 @@ pub fn get_http_proxy() -> Option<HashMap<&'static str, String>> {
 pub fn install_deps_cmd(dep: String) -> CmdDef {
     let platform = get_platform_info(None);
     match platform.os_type.as_str() {
-        "macos" => CmdDef {
+        "darwin" => CmdDef {
             name: "brew".to_string(),
             args: Some(vec!["install".to_string(), dep]),
+            show_progress_type: None,
+            payload: None,
+        },
+        "ubuntu" => CmdDef {
+            name: "apt-get".to_string(),
+            args: Some(vec!["install".to_string(), "-y".to_string(), dep]),
             show_progress_type: None,
             payload: None,
         },
@@ -178,11 +184,12 @@ pub fn install_deps_cmd(dep: String) -> CmdDef {
 
 pub fn check_deps_as_pipe() -> PipeDef {
     let platform = get_platform_info(None);
+    println!("current OS Name is {}", platform.os_type);
     match platform.os_type.as_str() {
-        "Darwin" => PipeDef {
+        "darwin" => PipeDef {
             cmd_vec: check_deps_cmds!(platform.clone(), "brew", "list"),
         },
-        "Ubuntu" => PipeDef {
+        "ubuntu" => PipeDef {
             cmd_vec: check_deps_cmds!(platform.clone(), "dpkg", "-s"),
         },
         _ => {
