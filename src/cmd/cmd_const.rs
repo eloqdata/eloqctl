@@ -50,6 +50,7 @@ pub static SUPPORT_CMD_LIST: Lazy<Vec<&'static str>> = Lazy::new(|| {
         "install_deps",
         "setup_workspace",
         "ln_source",
+        "gen_mysql_cnf",
         "build",
         "playground",
         "stop_all",

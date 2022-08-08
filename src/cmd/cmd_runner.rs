@@ -1,6 +1,7 @@
 use crate::cmd::base::{CmdContext, CmdDef, CmdStatus, CmdV2};
 use crate::cmd::cmd_macro::*;
 use crate::cmd::cmd_utils::cmd_status_ok;
+use crate::cmd::gen_mysql_cnf::GenMySQLConf;
 use crate::cmd::install_deps::InstallDeps;
 use crate::cmd::setup_workspace::SetupWorkspace;
 use std::collections::HashMap;
@@ -38,6 +39,7 @@ impl<'s> CmdRunner<'s> {
                 "install_deps",
                 "setup_workspace",
                 "ln_source",
+                "gen_mysql_cnf",
                 "build"
             ),
         }
@@ -58,6 +60,11 @@ impl<'s> CmdRunner<'s> {
             }
             "ln_source" => {
                 cmd_exec!(self, cmd_str, LinkMonographSource)
+            }
+            "gen_mysql_cnf" => {
+                cmd_exec!(self, cmd_str, GenMySQLConf)
+                // let context = self.cmd_context_mapping.get(cmd_str);
+                // GenMySQLConf {}.exec(&mut context.unwrap().clone())
             }
             "build" => {
                 let mut protobuf_build = cmd_exec!(self, cmd_str, ProtobufBuild);

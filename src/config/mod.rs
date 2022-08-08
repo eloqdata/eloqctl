@@ -1,6 +1,6 @@
 use crate::config::common::{Cassandra, Common};
 use crate::{extract_config_value, load_toml_config};
-use ini::Ini;
+use configparser::ini::Ini;
 use once_cell::sync::{Lazy, OnceCell};
 use std::collections::HashMap;
 
@@ -68,9 +68,11 @@ pub fn load_config(config_dir: &str) -> &'static HashMap<String, ConfigObject> {
             "common".to_string(),
             ConfigObject::Common(Box::new(common_object)),
         );
-        let mysql_cnf_ini =
-            Ini::load_from_file(format!("{}/{}", config_dir, "/mysql/mysql_template.cnf")).unwrap();
-        config_mapping.insert("mysql".to_string(), ConfigObject::MySQL(mysql_cnf_ini));
+        let mut mysql_ini = Ini::new();
+        mysql_ini
+            .load(format!("{}/{}", config_dir, "/mysql/mysql_template.cnf").as_str())
+            .unwrap();
+        config_mapping.insert("mysql".to_string(), ConfigObject::MySQL(mysql_ini));
         config_mapping
     })
 }
@@ -80,7 +82,6 @@ mod tests {
     use crate::config::common::Common;
     use crate::config::workspace_sub_dir;
     use crate::{build_script, extract_config_value, load_toml_config};
-    use std::io::stdout;
 
     pub fn config_file(file: &str) -> String {
         let mut base_path = env!("CARGO_MANIFEST_DIR").to_owned();
@@ -117,21 +118,15 @@ mod tests {
     #[test]
     pub fn test_gen_multi_mysql_config() {
         let config_path = config_file("/config");
-        let mut mysql_config =
+        let mut mysql_cnf =
             extract_config_value!("mysql", MySQL, Some(config_path.clone())).clone();
 
-        let sub_dir = workspace_sub_dir(Some(config_path));
-        println!("{:#?}", sub_dir);
-        let data_dir = sub_dir.get("data").unwrap();
-        let install_dir = sub_dir.get("install").unwrap();
-
-        let lc_message_dir = mysql_config.get_from(Some("mariadb"), "monograph_local_ip");
-        println!("lc_message_dir={:?}", lc_message_dir);
-        mysql_config
-            .with_section(Some("mariadb"))
-            .set("datadir", data_dir)
-            .set("lc_messages_dir", format!("{}/share", install_dir));
-
-        mysql_config.write_to(&mut stdout()).unwrap();
+        let workspace_sub_dir = workspace_sub_dir(Some(config_path));
+        let data_dir = workspace_sub_dir.get("data").unwrap().clone();
+        //let std::fs::remove_file(dest_path);
+        mysql_cnf.set("mariadb", "datadir", Some(data_dir.clone()));
+        let datadir_value = mysql_cnf.get("mariadb", "datadir");
+        assert!(datadir_value.is_some());
+        assert_eq!(datadir_value.unwrap(), data_dir);
     }
 }

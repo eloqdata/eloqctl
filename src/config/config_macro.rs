@@ -98,8 +98,6 @@ mod tests {
 
     #[test]
     pub fn test_git_clone_macro() {
-
-
         let test_git_attr = GitArgs {
             git: "https://github.com/apache/incubator-brpc.git".to_string(),
             branch: Some("v2.x".to_string()),
