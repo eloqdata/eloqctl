@@ -19,56 +19,38 @@ brpc = { git = "https://github.com/apache/incubator-brpc.git", third_party = tru
 cd  ${MONOGRAPH_WORKSPACE_DIR}/monograph/third_party/brpc
 echo 'build brpc'
 pwd
-cmake -B build
-cmake --build build -j6
-cd  ${MONOGRAPH_WORKSPACE_DIR}/monograph/third_party/brpc/build
-sudo cp -r ./output/include/* /usr/include/
-sudo cp ./output/lib/* /usr/lib/
+sh config_brpc.sh --headers=/usr/local/include --libs=/usr/local/lib --cc=clang --cxx=clang++
+make -j8
 ''' }
 braft = { git = "https://github.com/baidu/braft.git", build = '''
 #!/bin/bash
 cd  ${MONOGRAPH_WORKSPACE_DIR}/monograph/third_party/braft
 echo 'build braft'
-mkdir -p bld && rm -rf ./bld/* && cd bld
-cmake .. && make -j8
-sudo cp -r ./output/include/* /usr/include/
-sudo cp ./output/lib/* /usr/lib/
+sed -i '' 's/libbrpc.a//g' CMakeLists.txt
+mkdir -p bld && cd bld
+cmake ../ -DOPENSSL_ROOT_DIR="/opt/homebrew/opt/openssl@1.1"
+make -j8
 ''' }
 catch2 = { git = "https://github.com/catchorg/Catch2.git", branch = "v2.x", build = '''
 #!/bin/bash
 cd  ${MONOGRAPH_WORKSPACE_DIR}/monograph/third_party/catch2
-pwd
 echo 'build catch2'
-mkdir -p bld && rm -rf ./bld/* && cd bld
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr/ -DCATCH_BUILD_EXAMPLES=OFF -DBUILD_TESTING=OFF
-cmake --build . -j4 
-sudo cmake --install .
+pwd
 ''' }
 aws = { git = "https://github.com/aws/aws-sdk-cpp.git", options = ["--recurse-submodules"], build = '''
 #!/bin/bash
 cd  ${MONOGRAPH_WORKSPACE_DIR}/monograph/third_party/aws
 echo 'build aws'
 pwd
-mkdir -p bld && rm -rf bld/* && cd bld
+mkdir -p bld && cd bld
 cmake ../ -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=./output/ -DBUILD_SHARED_LIBS=OFF -DFORCE_SHARED_CRT=OFF -DBUILD_ONLY=dynamodb
 make -j8
 make install
-sudo cp -r ./output/include/* /usr/include/ 
-sudo cp -r ./output/lib/* /usr/lib/ 
 ''' }
 log_service = { git = "git@github.com:monographdb/log_service.git" }
 tx_service = { git = "git@github.com:monographdb/tx_service.git" }
 monograph = { git = "git@github.com:monographdb/monographdb_engine_for_mariadb.git" }
 cass = { git = "https://github.com/datastax/cpp-driver.git" }
-mariadb = { git = "git@github.com:monographdb/mariadb.git", branch = "monograph-10.6.5", build = '''
-#!/bin/bash
-cd ${MONOGRAPH_WORKSPACE_DIR}/monograph/source/mariadb
-echo 'build MonographDB'
-pwd
-mkdir -p bld && rm -rf ./bld/* && cd bld
-cmake ../ -DCMAKE_INSTALL_PREFIX=${MONOGRAPH_WORKSPACE_DIR}/install -DCMAKE_BUILD_TYPE=Debug -DPLUGIN_{HANDLERSOCKET,ROCKSDB,ARIA,ARCHIVE,CVS,FEDERATEDX,TOKUDB,MROONGA,OQGRAPH,CONNECT,PERFSCHEMA,SPIDER,SPHINX,HEAP,MYISAMMRG,SEQUENCE}=NO -DINSTALL_MYSQLTESTDIR="" -DCMAKE_CXX_FLAGS_DEBUG="${CMAKE_CXX_FLAGS_DEBUG} -Wno-error" -DMYSQL_MAINTAINER_MODE=OFF -DWITH_SSL=system -DWITH_DEBUG=1
-cmake --build . --config Debug -j4
-cmake --install . --config Debug
-''' }
+mariadb = { git = "git@github.com:monographdb/mariadb.git", branch = "monograph-10.6.5" }
 [monograph]
 storage = "cassandra"

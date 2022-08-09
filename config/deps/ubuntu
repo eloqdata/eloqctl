@@ -1,7 +1,6 @@
 libcurl4-openssl-dev
 build-essential
 libncurses5-dev
-gnutls-dev
 bison
 zlib1g-dev
 ccache

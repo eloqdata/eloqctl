@@ -31,13 +31,17 @@ async fn main() -> anyhow::Result<()> {
     println!("!!! Type help to list all commands. Use 'exit' to quit the command line.");
     println!();
     let cmd_cli_options: CmdCliOptions = CmdCliOptions::parse();
-    println!("load config from={:?}", cmd_cli_options);
     std::env::set_var(MONOGRAPH_WATER_CONFIG_DIR, cmd_cli_options.config.clone());
     std::env::set_var(
         MONOGRAPH_WORKSPACE_DIR,
         extract_config_value!("common", Common, Some(cmd_cli_options.config))
             .clone()
             .workspace,
+    );
+    println!(
+        "ENV MONOGRAPH_WATER_CONFIG_DIR {:?}\n MONOGRAPH_WORKSPACE_DIR {:?}",
+        std::env::var(MONOGRAPH_WATER_CONFIG_DIR),
+        std::env::var(MONOGRAPH_WORKSPACE_DIR)
     );
     CmdCli.start().await;
     Ok(())
