@@ -6,7 +6,7 @@ use std::io::Write;
 pub struct InitDB;
 
 impl InitDB {
-    pub fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus)> {
+    pub fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus<()>)> {
         let set_storage_env_status = StoragePrepare {}.exec(context);
         if !cmd_status_ok(&set_storage_env_status) {
             return set_storage_env_status;

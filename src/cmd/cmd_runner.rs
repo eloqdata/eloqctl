@@ -48,7 +48,7 @@ impl<'s> CmdRunner<'s> {
         }
     }
 
-    pub async fn run(&self, cmd: String) -> Vec<(CmdDef, CmdStatus)> {
+    pub async fn run(&self, cmd: String) -> Vec<(CmdDef, CmdStatus<()>)> {
         let cmd_str = cmd.as_str();
         match cmd_str {
             "check_deps" => {

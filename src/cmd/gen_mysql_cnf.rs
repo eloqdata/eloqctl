@@ -10,6 +10,7 @@ pub struct GenMySQLConf;
 
 impl CmdV2 for GenMySQLConf {
     type Executable = CmdDef;
+    type StatsData = ();
 
     fn definition(&self) -> CmdDef {
         CmdDef {
@@ -20,7 +21,7 @@ impl CmdV2 for GenMySQLConf {
         }
     }
 
-    fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus)> {
+    fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus<()>)> {
         let mut mysql_cnf = extract_config_value!("mysql", MySQL, "".to_string()).clone();
 
         let local_ip = mysql_cnf.get(MARIADB_SECTION, "monograph_local_ip");
@@ -74,7 +75,11 @@ impl CmdV2 for GenMySQLConf {
                 Some((mysql_port + idx).to_string()),
             );
 
-            mysql_cnf.set(MARIADB_SECTION, "datadir", Some(data_dir.clone()));
+            mysql_cnf.set(
+                MARIADB_SECTION,
+                "datadir",
+                Some(format!("{}/data_{}", data_dir.clone(), (idx + 1))),
+            );
             mysql_cnf.set(
                 MARIADB_SECTION,
                 "lc_messages_dir",
@@ -108,6 +113,7 @@ impl CmdV2 for GenMySQLConf {
                     CmdStatus {
                         success: false,
                         output: Some(err_msg.to_string()),
+                        data: None,
                     },
                 )];
             }
@@ -117,12 +123,13 @@ impl CmdV2 for GenMySQLConf {
 }
 
 impl GenMySQLConf {
-    fn error_status(&self, err_msg: &str) -> Vec<(CmdDef, CmdStatus)> {
+    fn error_status(&self, err_msg: &str) -> Vec<(CmdDef, CmdStatus<()>)> {
         vec![(
             self.definition(),
             CmdStatus {
                 success: false,
                 output: Some(err_msg.to_string()),
+                data: None,
             },
         )]
     }

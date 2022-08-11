@@ -4,8 +4,8 @@
 # Visual Studio Code
 .vscode/
 .devcontainer/
-.bash
-.sh
+*.bash
+*.sh
 # JetBrains
 .idea/
 *.iml

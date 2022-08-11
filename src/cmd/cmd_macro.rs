@@ -34,6 +34,7 @@ macro_rules! sync_cmd_impl {
 
         impl CmdV2 for $cmd_impl {
             type Executable = $cmd_obj;
+            type StatsData = ();
 
             fn definition(&self) -> $cmd_obj {
                 $cmd_build_closure()
@@ -42,7 +43,7 @@ macro_rules! sync_cmd_impl {
             fn exec(
                 &self,
                 context: &mut CmdContext<impl std::io::Write>,
-            ) -> Vec<(CmdDef, CmdStatus)> {
+            ) -> Vec<(CmdDef, CmdStatus<()>)> {
                 context.run_and_record_context(CmdEnum::$cmd_enum(self.definition()))
             }
         }

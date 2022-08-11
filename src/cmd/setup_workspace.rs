@@ -9,7 +9,7 @@ pub struct SetupWorkspace {}
 
 impl SetupWorkspace {
     // TODO use macro impl
-    pub async fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus)> {
+    pub async fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus<()>)> {
         let mkdir_workspace = MkdirWorkspace {};
         let download_third_party = DownloadThirdParty {};
         let git_clone_source = GitCloneSource {};

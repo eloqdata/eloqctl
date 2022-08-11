@@ -87,7 +87,7 @@ impl DownloadThirdParty {
         Ok(())
     }
 
-    pub async fn exec(&self) -> Vec<(CmdDef, CmdStatus)> {
+    pub async fn exec(&self) -> Vec<(CmdDef, CmdStatus<()>)> {
         let multi_progress = MultiProgress::new();
         let workspace = std::env::var(MONOGRAPH_WORKSPACE_DIR)
             .unwrap_or_else(|_| panic!("MONOGRAPH_WORKSPACE_DIR not set"));
@@ -118,6 +118,7 @@ impl DownloadThirdParty {
             CmdStatus {
                 success: false,
                 output: Some("Download task may be failed".to_string()),
+                data: None
             }
         } else {
             println!("Download third_party complete");

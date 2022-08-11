@@ -6,7 +6,7 @@ use std::io::Write;
 pub struct InstallDeps;
 
 impl InstallDeps {
-    pub fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus)> {
+    pub fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus<()>)> {
         let check_deps = CheckDeps {};
         let check_dep_rs = check_deps.exec(context);
         let mut install_dep_pipe = Vec::new();

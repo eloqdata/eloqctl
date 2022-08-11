@@ -6,6 +6,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 use std::env;
+use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -83,9 +84,10 @@ pub fn elapsed_progress_bar(len: Option<u64>, customer_msg: Option<String>) -> P
     cmd_pb
 }
 
-pub fn cmd_process<F>(cmd_desc: CmdDef, mut stdout_f: F) -> CmdStatus
+pub fn cmd_process<F, T>(cmd_desc: CmdDef, mut stdout_f: F) -> CmdStatus<T>
 where
     F: FnMut(&str),
+    T: Clone + Debug,
 {
     let mut cmd = std::process::Command::new(cmd_desc.name.as_str());
     if let Some(cmd_args) = cmd_desc.args.clone() {
@@ -113,11 +115,13 @@ where
             CmdStatus {
                 success: exitstatus.success(),
                 output: None,
+                data: None,
             }
         } else {
             CmdStatus {
                 success: false,
                 output: None, //Some(stderr_output),
+                data: None,
             }
         }
     } else {
@@ -127,6 +131,7 @@ where
                 "os_pipe::pipe() error. cause by {}",
                 pipe_rs.err().unwrap()
             )),
+            data: None,
         }
     }
 }
@@ -153,7 +158,10 @@ pub fn create_log_path_and_get() -> String {
     curr_path + "/monograph_waiter.log"
 }
 
-pub fn cmd_status_ok(input_status: &[(CmdDef, CmdStatus)]) -> bool {
+pub fn cmd_status_ok<T>(input_status: &[(CmdDef, CmdStatus<T>)]) -> bool
+where
+    T: Clone + Debug,
+{
     input_status
         .iter()
         .filter(|(_, status)| !status.success)
@@ -337,3 +345,4 @@ pub fn set_storage_env_cmd(dir: Option<String>) -> anyhow::Result<String> {
     }
     return Err(anyhow!("not found storage from {}", third_path));
 }
+

@@ -1,7 +1,8 @@
 use crate::cmd::cmd_utils::{cmd_process, get_process_bar};
 use async_trait::async_trait;
+use indicatif::ProgressBar;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::io::Write;
 use thiserror::Error;
 
@@ -13,7 +14,7 @@ pub enum CmdEnum {
 
 #[derive(Error, Debug)]
 pub enum CmdErrorCode {
-    #[error("For now only support Linux and MacOS. current OS is {0}")]
+    #[error("For now only support Ubuntu and MacOS. current OS is {0}")]
     UnSupportOS(String),
 }
 
@@ -23,6 +24,12 @@ pub struct CmdDef {
     pub args: Option<Vec<String>>,
     pub show_progress_type: Option<String>,
     pub payload: Option<HashMap<String, String>>,
+}
+
+impl CmdDef {
+    pub fn is_empty(&self) -> bool {
+        self.name.is_empty()
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -78,11 +85,17 @@ impl Default for CmdDef {
 
 pub trait CmdV2: 'static + Send {
     type Executable: Default;
-    /// Description of executable command, can be [`CmdDef`]  or [`Pipe`].
+    type StatsData;
+    /// Description of executable command, can be [`CmdDef`]  or [`PipeDef`].
     /// for example : command -v brew.
     fn definition(&self) -> Self::Executable;
     /// Execute the command and log it, e.g.: brew list leveldb
-    fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus)>;
+    fn exec(
+        &self,
+        context: &mut CmdContext<impl Write>,
+    ) -> Vec<(CmdDef, CmdStatus<Self::StatsData>)>
+    where
+        Self::StatsData: Clone + Debug;
 }
 
 #[async_trait]
@@ -107,13 +120,36 @@ pub struct Platform {
     pub user: UserInfo,
 }
 
+// #[allow(dead_code)]
+// #[derive(Clone, Debug)]
+// pub struct CmdStatus {
+//     pub(crate) success: bool,
+//     pub(crate) output: Option<String>,
+//     pub(crate) data: Option<HashMap<String, String>>,
+// }
+
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub struct CmdStatus {
-    pub(crate) success: bool,
-    pub(crate) output: Option<String>,
+pub struct CmdStatus<T>
+where
+    T: Clone + Debug,
+{
+    pub success: bool,
+    pub output: Option<String>,
+    pub data: Option<T>,
 }
 
-impl Display for CmdStatus {
+impl Default for CmdStatus<()> {
+    fn default() -> Self {
+        CmdStatus {
+            success: false,
+            output: None,
+            data: None,
+        }
+    }
+}
+
+impl Display for CmdStatus<()> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let prefix = if self.success {
             "✅ success"
@@ -129,11 +165,12 @@ impl Display for CmdStatus {
     }
 }
 
-impl Default for CmdStatus {
+impl Default for CmdStatus<String> {
     fn default() -> Self {
         Self {
             success: true,
             output: None,
+            data: None,
         }
     }
 }
@@ -146,6 +183,14 @@ where
     logger: Log,
 }
 
+pub fn default_stdout_process(stdout: &str, progress_bar: Option<ProgressBar>) {
+    if let Some(pb) = progress_bar {
+        pb.set_message(stdout.to_owned());
+    } else {
+        println!("{}", stdout);
+    }
+}
+
 impl<Log> CmdContext<Log>
 where
     Log: Write,
@@ -154,23 +199,27 @@ where
         Self { logger: log }
     }
 
-    pub fn cmd_run(&mut self, cmd: CmdDef) -> CmdStatus {
+    pub fn cmd_run<F, S>(&mut self, cmd: CmdDef, mut cmd_stdout: F) -> CmdStatus<S>
+    where
+        F: FnMut(&str, Option<ProgressBar>),
+        S: Clone + Debug,
+    {
         let mut runtime_log = String::default();
         let cmd_status = if let Some(progress_type) = cmd.clone().show_progress_type {
             let pb = get_process_bar(progress_type.as_str(), cmd.name.as_str());
             cmd_process(cmd.clone(), |output_by_line: &str| {
-                runtime_log.push_str(format!("{}\n", &(*output_by_line)).as_str());
-                pb.set_message(output_by_line.to_owned());
+                runtime_log.push_str(output_by_line);
+                cmd_stdout(output_by_line, Some(pb.clone()));
             })
         } else {
             cmd_process(cmd.clone(), |output_by_line: &str| {
-                runtime_log.push_str(format!("{}\n", &(*output_by_line)).as_str());
-                println!("{}", output_by_line);
+                runtime_log.push_str(output_by_line);
+                cmd_stdout(output_by_line, None);
             })
         };
         let write_status_to_log = writeln!(
             self.logger,
-            "command={}, \n{}\n,status={}",
+            "command={}, \n{}\n,status={:?}",
             cmd, runtime_log, cmd_status
         );
         if let Err(write_log_err) = write_status_to_log {
@@ -183,15 +232,21 @@ where
         let _rs = writeln!(self.logger, "{}", log);
     }
 
-    pub fn run_and_record_context(&mut self, cmd: CmdEnum) -> Vec<(CmdDef, CmdStatus)> {
+    pub fn run_and_record_context(&mut self, cmd: CmdEnum) -> Vec<(CmdDef, CmdStatus<()>)> {
         match cmd {
             CmdEnum::CmdExec(cmd_def) => {
-                vec![(cmd_def.clone(), self.cmd_run(cmd_def))]
+                let cmd_status = self.cmd_run(cmd_def.clone(), |stdout, pb| {
+                    default_stdout_process(stdout, pb)
+                });
+                vec![(cmd_def, cmd_status)]
             }
             CmdEnum::PipeExec(pipe_def) => {
-                let mut cmd_status_rs = Vec::new();
+                let mut cmd_status_rs: Vec<(CmdDef, CmdStatus<()>)> = Vec::new();
                 for cmd_def in pipe_def.cmd_vec {
-                    cmd_status_rs.push((cmd_def.clone(), self.cmd_run(cmd_def)));
+                    let cmd_status = self.cmd_run(cmd_def.clone(), |stdout, pb| {
+                        default_stdout_process(stdout, pb)
+                    });
+                    cmd_status_rs.push((cmd_def.clone(), cmd_status));
                 }
                 cmd_status_rs
             }
