@@ -57,7 +57,8 @@ the ```workspace in config/common.toml```.The following points need to be specif
 
 - If you want to git clone a specific branch, you need to configure the branch. For the git command parameters,
   configure options
-- Build script only supports linux script, you can modify it yourself
+- Build script only supports bash script, you can modify it yourself
+- <font color="red">workspace must be an absolute path</font>
 
 > Note: If you modify the configuration file, you need to exit monograph_waiter and re-enter the command line.
 

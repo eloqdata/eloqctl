@@ -86,9 +86,9 @@ pub fn elapsed_progress_bar(len: Option<u64>, customer_msg: Option<String>) -> P
 }
 
 pub fn cmd_process<F, T>(cmd_desc: CmdDef, mut stdout_f: F) -> CmdStatus<T>
-where
-    F: FnMut(&str),
-    T: Clone + Debug,
+    where
+        F: FnMut(&str),
+        T: Clone + Debug,
 {
     let mut cmd = std::process::Command::new(cmd_desc.name.as_str());
     if let Some(cmd_args) = cmd_desc.args.clone() {
@@ -160,8 +160,8 @@ pub fn create_log_path_and_get() -> String {
 }
 
 pub fn cmd_status_ok<T>(input_status: &[(CmdDef, CmdStatus<T>)]) -> bool
-where
-    T: Clone + Debug,
+    where
+        T: Clone + Debug,
 {
     input_status
         .iter()
@@ -411,7 +411,7 @@ pub fn set_storage_env_cmd(dir: Option<String>) -> anyhow::Result<String> {
             }
         }
     }
-    return Err(anyhow!("not found storage from {}", third_path));
+    Err(anyhow!("not found storage from {}", third_path))
 }
 
 pub fn workspace_is_empty(config: Option<String>) -> bool {
