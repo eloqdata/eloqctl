@@ -1,5 +1,7 @@
 # MonographDB Waiter
 
+<img src="./screenshots/mono_waiter_run.png" alt="mono_waiter_run" width="400" />
+
 ## Introduction
 
 Monograph Waiter is productivity tools for developers. Enables developers to more easily build, debug, and run
