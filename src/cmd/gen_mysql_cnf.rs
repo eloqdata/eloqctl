@@ -6,6 +6,7 @@ use std::path::Path;
 
 const MYSQL_INSTANCE_COUNT: usize = 3;
 const MARIADB_SECTION: &str = "mariadb";
+
 pub struct GenMySQLConf;
 
 impl CmdV2 for GenMySQLConf {
@@ -98,27 +99,22 @@ impl CmdV2 for GenMySQLConf {
                 Some(monograph_ip_list.clone()),
             );
             let cnf_location =
-                format!("{}/{}-{}.cnf", etc_dir, "my-conf", mysql_port + idx,).clone();
+                format!("{}/{}-{}.cnf", etc_dir, "my-conf", mysql_port + idx, ).clone();
             println!("GenMySQLCnf at {}", cnf_location);
 
             let write_rs = mysql_cnf.write(Path::new(cnf_location.as_str()));
             if write_rs.is_err() {
-                let err_msg = write_rs.err().unwrap();
-                println!(
-                    "GenMySQLConf save {} error Cause by {}",
-                    cnf_location, err_msg
-                );
-                return vec![(
-                    CmdDef::default(),
-                    CmdStatus {
-                        success: false,
-                        output: Some(err_msg.to_string()),
-                        data: None,
-                    },
-                )];
+                let err_obj = write_rs.err().unwrap();
+                let err_msg = err_obj.to_string();
+                context.logging(err_msg.clone());
+                return self.error_status(err_msg.as_str());
             }
         }
-        vec![(self.definition(), CmdStatus::default())]
+        vec![(self.definition(), CmdStatus {
+            success: true,
+            output: None,
+            data: None,
+        })]
     }
 }
 

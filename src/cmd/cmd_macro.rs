@@ -130,7 +130,16 @@ sync_cmd_impl!(ProtobufBuild, PipeDef, PipeExec, || {
 });
 
 sync_cmd_impl!(GitRepoBuild, PipeDef, PipeExec, || {
-    build_script!(git, "".to_string(), rocksdb, brpc, braft, catch2, aws, mariadb)
+    build_script!(
+        git,
+        "".to_string(),
+        rocksdb,
+        brpc,
+        braft,
+        catch2,
+        aws,
+        mariadb
+    )
 });
 
 sync_cmd_impl!(BuildMonograph, PipeDef, PipeExec, || {
