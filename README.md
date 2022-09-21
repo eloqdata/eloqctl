@@ -13,6 +13,8 @@ MonographDB, both single node and distributed.
 
 - If you do not have Rust installed, please follow the command below to install it.
 
+> NOTE: For Ubuntu, you need to install pkg-config and libssl-dev. run sudo apt install pkg-config libssl-dev
+
 ```shell
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
