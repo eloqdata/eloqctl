@@ -1,4 +1,5 @@
 [mariadb]
+performance_schema=ON
 plugin_maturity=experimental
 datadir={DATD_DIR}
 lc_messages_dir={INSTALL_DIR}/share

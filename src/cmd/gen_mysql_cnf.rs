@@ -54,7 +54,7 @@ impl CmdV2 for GenMySQLConf {
                 format!("127.0.0.1:{}", my_port)
             })
             .collect::<Vec<_>>()
-            .join(";");
+            .join(",");
 
         let workspace_sub_dir = workspace_sub_dir(None);
         let etc_dir = workspace_sub_dir.get("etc").unwrap().clone();
