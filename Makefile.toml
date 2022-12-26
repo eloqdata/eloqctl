@@ -1,0 +1,64 @@
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+CARGO_MAKE_CRATE_IS_WORKSPACE = true
+[tasks.format]
+install_crate = "rustfmt"
+command = "cargo"
+args = ["fmt", "--", "--emit=files"]
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+[tasks.test]
+command = "cargo"
+args = ["test", "--tests"]
+dependencies = ["clippy"]
+
+[tasks.cluster_mgr_build]
+command = "cargo"
+args = ["build", "--package", "cluster_mgr", "--release"]
+dependencies = ["format"]
+
+[tasks.devtools_build]
+command = "cargo"
+args = ["build", "--package", "devtools", "--release"]
+dependencies = ["format"]
+
+
+[tasks.clippy]
+command = "cargo"
+args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+[tasks.devtools_pkg]
+script = '''
+#!/bin/bash
+MONO_DIST_DIR="mono_devtools_dist"
+WORKING_DIR=${CARGO_MAKE_WORKING_DIRECTORY}
+echo "build mono_devtools package working_dir="${WORKING_DIR}
+TARGET=`pwd`/../../target/release/devtools
+function build_package() {
+  mkdir_dist_dir=`rm -rf "$MONO_DIST_DIR" && mkdir -p "$MONO_DIST_DIR" && mkdir -p "$MONO_DIST_DIR"/config`
+  cp -r ./config/* "$MONO_DIST_DIR/config"
+  cp "$TARGET" "$MONO_DIST_DIR"
+}
+build_package
+'''
+dependencies = ["devtools_build"]
+
+[tasks.cluster_mgr_pkg]
+script = '''
+#!/bin/bash
+WORKSPACE_DIR="${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}"
+CLUSTER_MGR_RELEASE="$WORKSPACE_DIR"/target/release/cluster_mgr
+CLUSTER_MGR_DIST_DIR=mono_cluster_mgr_dist
+function build_cluster_mgr() {
+  echo "cluster_mgr_pkg.workspace"$WORKSPACE_DIR
+  mkdir -p "$CLUSTER_MGR_DIST_DIR" && mkdir -p "$CLUSTER_MGR_DIST_DIR"/config
+  cp -r $WORKSPACE_DIR/src/cluster_mgr/config/* "$CLUSTER_MGR_DIST_DIR/config"
+  cp "$CLUSTER_MGR_RELEASE" "$CLUSTER_MGR_DIST_DIR"
+  rm -rf $WORKSPACE_DIR/src/devtools/$CLUSTER_MGR_DIST_DIR
+}
+build_cluster_mgr
+'''
+dependencies = ["cluster_mgr_build"]

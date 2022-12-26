@@ -149,14 +149,14 @@ pub fn create_log_path_and_get() -> String {
     let curr_path = if let Ok(log_path) = env::var("MONO_WAITER_LOG") {
         log_path
     } else {
-        "./.monograph_waiter/logs".to_string()
+        "./.mono_devtools/logs".to_string()
     };
     let path_buf = Path::new(&curr_path);
     let rs = std::fs::create_dir_all(path_buf.as_os_str().to_str().unwrap());
     if let Err(err) = rs {
         println!("Create Log root error path={} err={:?}", curr_path, err);
     }
-    curr_path + "/monograph_waiter.log"
+    curr_path + "/mono_devtools.log"
 }
 
 pub fn cmd_status_ok<T>(input_status: &[(CmdDef, CmdStatus<T>)]) -> bool

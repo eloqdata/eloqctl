@@ -1,7 +1,7 @@
 use clap::Parser;
-use monograph_waiter::config::{MONOGRAPH_WATER_CONFIG_DIR, MONOGRAPH_WORKSPACE_DIR};
-use monograph_waiter::extract_config_value;
-use monograph_waiter::term::CmdCli;
+use devtools::config::{MONOGRAPH_WATER_CONFIG_DIR, MONOGRAPH_WORKSPACE_DIR};
+use devtools::extract_config_value;
+use devtools::term::CmdCli;
 
 const BANNER: &str = r#"
   __  __                                         _      __        __    _ _

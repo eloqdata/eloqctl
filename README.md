@@ -1,11 +1,13 @@
 # MonographDB Waiter
 
-<img src="./screenshots/mono_waiter_run.png" alt="mono_waiter_run" width="400" />
-
 ## Introduction
 
-Monograph Waiter is productivity tools for developers. Enables developers to more easily build, debug, and run
-MonographDB, both single node and distributed.
+Monograph Waiter is a development and management tool for MonographDB that includes two modules.
+
+1. devtools is a productivity tool for developers to simplify the cost of compilation, development, and debugging and to
+   improve development efficiency
+2. cluster_mgr_cli is a command line tool for cluster installation and deployment and management, which is designed to
+   make it easier to install and manage MonographDB clusters in non-Kubernetes environments.
 
 > NOTE: Currently only fully tested on Ubuntu and sudo user privilege is required to run ``monograph_waiter``.
 
@@ -28,7 +30,9 @@ cargo install --force cargo-make
 - Compile and generate release files
 
 ```shell
-cargo make --makefile cargo-make.toml all-flow
+cargo build --release
+# Compile the two packages separately with cargo make.
+cargo make --no-workspace  --makefile Makefile.toml  cluster_mgr_pkg/devtools_pkg
 ```
 
 - Run
@@ -40,31 +44,19 @@ cd mono_waiter_dist
 
 ## Features
 
+### Devtools
+
 1. management compile and run dependencies
 2. playground
 3. autocomplete and command history support
 
+### ClusterMgr
+
+1. Installation and deployment the MonographDB cluster, including the underlying storage it depends on (if required)
+2. Manage cluster start, stop, status check, and commands are idempotent.
+3. Support batch execution of custom commands.
+
 ## How to use
 
-For a more detailed description of the command, please read the [command doc](./doc/command.md)
-
-- If you have never compiled and run MonographDB before, please follow these steps to create a workspace.
-
-```text
- monograph_waiter> install_deps
- monograph_waiter> setup_workspace
- monograph_waiter> ln_source
- monograph_waiter> build_all
- monograph_waiter> gen_mysql_cnf
- monograph_waiter> init_db
-```
-
-- If you have already compiled and run MonographDB, execute the following command.
-
-```text
- monograph_waiter> setup_workspace
- monograph_waiter> ln_source
- monograph_waiter> build_all
- monograph_waiter> gen_mysql_cnf
- monograph_waiter> init_db 
-```
+Please look at the documentation for more information about the design, implementation, and
+commands.  [devtools](./doc/command.md) or [cluster_mgr](./doc/cluster_mgr.md)

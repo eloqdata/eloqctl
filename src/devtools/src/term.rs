@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::process;
 
 const MAX_INPUT_HISTORY: usize = 1000;
-const PROMPT_STR: &str = "monograph_waiter>";
+const PROMPT_STR: &str = "mono_devtools>";
 
 pub struct CmdCli;
 

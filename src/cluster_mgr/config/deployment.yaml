@@ -1,0 +1,33 @@
+connection:
+  username: "mono"
+  auth_type: "keypair"
+  auth:
+    password: "xxx"
+    keypair: "XXXX"
+deployment:
+  install_image: "http://download_url/monographdb-release.tar.gz"
+  cluster_name: "mono-poc"
+  install_dir: "/data1/opt"
+  port:
+    mysql_port: 5007
+    monograph_port:
+      start: 8100
+      end: 8200
+  mono_service:
+    host:
+      - localhost
+  storage_service:
+    cassandra:
+      download_url: "https://archive.apache.org/dist/cassandra/4.1-rc1/apache-cassandra-4.1-rc1-bin.tar.gz"
+      host:
+        - localhost
+      config_location: "./cassandra.yaml"
+    dynamodb:
+      access_key_id: "",
+      secret_key: ""
+      region: "XXXX",
+      endpoint: "";
+#  monitor:
+#    host:
+#      - 10.10.10.10
+#    grafana_port: 3000
