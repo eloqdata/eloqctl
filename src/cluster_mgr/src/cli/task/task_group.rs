@@ -214,7 +214,7 @@ impl TaskGroup for InstallDBTaskGroup {
             StorageProvider::Cassandra => {
                 let cassandra_start = CassandraCtlTask::from_config(install_cmd, &config);
                 let monograph_install =
-                    MonographInstall::from_config(&config, install_db_host.clone());
+                    MonographInstall::from_config(&config, install_db_host);
                 TaskExecutionContext {
                     cmd_args,
                     barrier: Some(vec![cassandra_start.len(), monograph_install.len()]),
@@ -224,7 +224,7 @@ impl TaskGroup for InstallDBTaskGroup {
             StorageProvider::DynamoDB => {
                 let monograph_is_multi_node = monograph_hosts.len() > 1;
                 let monograph_install =
-                    MonographInstall::from_config(&config, install_db_host.clone());
+                    MonographInstall::from_config(&config, install_db_host);
                 TaskExecutionContext {
                     cmd_args,
                     barrier: if monograph_is_multi_node {
@@ -247,7 +247,7 @@ impl TaskGroup for InstallDBTaskGroup {
                 .collect_vec();
 
             let upload_task =
-                UploadTask::build_datafarm_tasks(&config, install_db_host, dest_hosts);
+                UploadTask::build_datafarm_tasks(&config,  dest_hosts);
 
             let mut barrier = execution_context_tuple.barrier.unwrap();
             let mut executable = execution_context_tuple.executable;

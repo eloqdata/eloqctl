@@ -24,7 +24,7 @@ pub(crate) fn check_process_pid<F>(
 where
     F: Fn(String) -> Option<i32>,
 {
-    let cmd_exec_rs = ssh_conn.run_cmd(check_cmd.clone(), true)?;
+    let cmd_exec_rs = ssh_conn.run_cmd_sync_output(check_cmd.clone())?;
     let cmd_status = cmd_exec_rs.get(SSH_EXEC_CMD_STATUS).unwrap();
 
     if 0 != TaskArgValue::into_inner_value::<usize>(cmd_status.clone()) {

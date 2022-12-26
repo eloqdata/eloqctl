@@ -36,7 +36,7 @@ impl UnpackFileTask {
                         let task_host = TaskHost::Remote {
                             user: conn_usr.clone(),
                             port: ssh_port as usize,
-                            hosts: remote_host,
+                            hosts: remote_host.clone(),
                         };
                         TaskInstance {
                             task_input: HashMap::from([(
@@ -48,6 +48,7 @@ impl UnpackFileTask {
                                 task_id: TaskId {
                                     cmd: "deploy".to_string(),
                                     task: format!("{}_unpack", unpack_file),
+                                    host: remote_host,
                                 },
                             }),
                             task_host,

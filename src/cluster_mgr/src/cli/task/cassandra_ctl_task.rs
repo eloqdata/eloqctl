@@ -39,7 +39,7 @@ macro_rules! cassandra_cmd {
                 let echo_cmd=format!(" echo `ps uxwe -u {} | grep {} | grep -v grep", cmd_user, $cassandra_home);
                 let print_pid = r#"| awk '{print $2}'`"#;
                 let pid_cmd = format!("{} {}", echo_cmd, print_pid);
-                let pid_cwd = r#"{ read pid; cmd="readlink /proc/$pid/cwd"; output=`eval $cmd`; echo "$pid:$output"}"#;
+                let pid_cwd = r#"{ read pid; cmd="readlink /proc/$pid/cwd"; output=`eval $cmd`; echo "$pid:$output";}"#;
                 let final_cmd = format!("{} | {}", pid_cmd, pid_cwd);
                 CassandraCmd::ProcessInfo(final_cmd)
             },)*
@@ -127,6 +127,7 @@ impl CassandraCtlTask {
                 TaskId {
                     cmd: "start".to_string(),
                     task: "cassandra-start".to_string(),
+                    host: "_NONE".to_string(),
                 },
             ),
             CommandArgs::Stop { cluster: _ } => (
@@ -134,6 +135,7 @@ impl CassandraCtlTask {
                 TaskId {
                     cmd: "stop".to_string(),
                     task: "cassandra-stop".to_string(),
+                    host: "_NONE".to_string(),
                 },
             ),
             _ => {
@@ -147,17 +149,21 @@ impl CassandraCtlTask {
         let cassandra_hosts = config.get_host_list(DeploymentService::Storage);
         cassandra_hosts
             .iter()
-            .map(|host| TaskInstance {
-                task_input: HashMap::from([(
-                    CASSANDRA_CMD_STR.to_string(),
-                    TaskArgValue::Str(cmd_str.to_string()),
-                )]),
-                task: Box::new(CassandraCtlTask::new(config.clone(), task_id.clone())),
-                task_host: TaskHost::Remote {
-                    user: conn_user.clone(),
-                    port: ssh_port as usize,
-                    hosts: host.clone(),
-                },
+            .map(|host| {
+                let mut task_id_final = task_id.clone();
+                task_id_final.host = host.clone();
+                TaskInstance {
+                    task_input: HashMap::from([(
+                        CASSANDRA_CMD_STR.to_string(),
+                        TaskArgValue::Str(cmd_str.to_string()),
+                    )]),
+                    task: Box::new(CassandraCtlTask::new(config.clone(), task_id_final)),
+                    task_host: TaskHost::Remote {
+                        user: conn_user.clone(),
+                        port: ssh_port as usize,
+                        hosts: host.clone(),
+                    },
+                }
             })
             .collect_vec()
     }

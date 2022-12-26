@@ -34,6 +34,7 @@ impl DownloadTask {
             download_url_vec.push(cassandra.clone().download_url);
         }
         let download_dir = download_dir();
+        let local_ip = local_ip_address::local_ip()?.to_string();
         let download_tasks = download_url_vec
             .into_iter()
             .map(|download_url| {
@@ -45,6 +46,7 @@ impl DownloadTask {
                 let task_id = TaskId {
                     cmd: "deploy".to_string(),
                     task: task_name.to_string(),
+                    host: local_ip.to_string(),
                 };
                 TaskInstance {
                     task_input: HashMap::from([

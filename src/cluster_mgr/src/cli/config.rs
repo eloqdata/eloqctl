@@ -76,6 +76,10 @@ impl Connection {
             22_u16
         }
     }
+
+    pub fn ssh_auth_key(&self) -> Option<String> {
+        self.auth.clone().keypair
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

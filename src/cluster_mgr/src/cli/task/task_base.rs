@@ -180,11 +180,12 @@ static FINISH_: LazyLock<LastResult> = LazyLock::new(|| {
 pub struct TaskId {
     pub cmd: String,
     pub task: String,
+    pub host: String,
 }
 
 impl TaskId {
     pub fn string(&self) -> String {
-        format!("cmd={},task={}", self.cmd, self.task)
+        format!("host={},cmd={},task={}", self.host, self.cmd, self.task)
     }
 
     pub fn as_json_string(&self) -> String {

@@ -143,7 +143,7 @@ impl SSHConn {
             return Err(anyhow!(auth_rs.err().unwrap().to_string()));
         }
         if session.authenticated() {
-            info!("SSHConn Authentication success. {:?}", ssh_auth);
+            // info!("SSHConn Authentication success. {:?}", ssh_auth);
             Ok(())
         } else {
             let auth_err = anyhow!(format!(

@@ -16,6 +16,7 @@ pub struct MonographInstall {
 
 impl MonographInstall {
     pub fn from_config(config: &DeploymentConfig, task_host: TaskHost) -> Vec<TaskInstance> {
+        let (_, _, host) = task_host.ssh_conn_tuple();
         vec![TaskInstance {
             task_input: HashMap::default(),
             task: Box::new(MonographInstall::new(
@@ -23,6 +24,7 @@ impl MonographInstall {
                 TaskId {
                     cmd: "install".to_string(),
                     task: "monograph-install".to_string(),
+                    host,
                 },
             )),
             task_host,

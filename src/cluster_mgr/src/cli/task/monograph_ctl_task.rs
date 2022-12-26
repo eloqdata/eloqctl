@@ -65,18 +65,22 @@ impl MonographCtlTask {
             CommandArgs::Start { cluster: _ } => TaskId {
                 cmd: START_MONOGRAPH.to_string(),
                 task: "monographdb-start".to_string(),
+                host: "".to_string(),
             },
             CommandArgs::Stop { cluster: _ } => TaskId {
                 cmd: STOP_MONOGRAPH.to_string(),
                 task: "monographdb-stop".to_string(),
+                host: "".to_string(),
             },
             CommandArgs::Status { cluster: _ } => TaskId {
                 cmd: MONOGRAPH_STATUS.to_string(),
                 task: "monographdb-status".to_string(),
+                host: "".to_string(),
             },
             CommandArgs::Restart { cluster: _ } => TaskId {
                 cmd: RESTART_MONOGRAPH.to_string(),
                 task: "monographdb-restart".to_string(),
+                host: "".to_string(),
             },
             _ => {
                 unreachable!()
@@ -94,9 +98,11 @@ impl MonographCtlTask {
                     hosts: host.clone(),
                 };
 
+                let mut special_task_id = task_id.clone();
+                special_task_id.host = host.clone();
                 TaskInstance {
                     task_input: HashMap::default(),
-                    task: Box::new(MonographCtlTask::new(config.clone(), task_id.clone())),
+                    task: Box::new(MonographCtlTask::new(config.clone(), special_task_id)),
                     task_host: remote_host,
                 }
             })

@@ -39,6 +39,7 @@ impl ExecCustomCommand {
                                 TaskId {
                                     cmd: "exec_cmd".to_string(),
                                     task: "".to_string(),
+                                    host: host_val.clone(),
                                 },
                                 config.clone(),
                             )),
