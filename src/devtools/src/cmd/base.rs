@@ -1,5 +1,4 @@
 use crate::cmd::cmd_utils::{cmd_process, get_process_bar};
-use async_trait::async_trait;
 use indicatif::ProgressBar;
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Formatter};
@@ -53,9 +52,7 @@ impl Display for CmdDef {
                 "{} {} {} payload={:#?}",
                 self.name,
                 args,
-                self.show_progress_type
-                    .clone()
-                    .unwrap_or_else(|| "".to_string()),
+                self.show_progress_type.clone().unwrap_or_default(),
                 self.payload
             )
         )
@@ -90,19 +87,13 @@ pub trait CmdV2: 'static + Send {
     /// Description of executable command, can be [`CmdDef`]  or [`PipeDef`].
     /// for example : command -v brew.
     fn definition(&self) -> Self::Executable;
-    /// Eecute the command and log it, e.g.: brew list leveldb
+    /// Execute the command and log it, e.g.: brew list leveldb
     fn exec(
         &self,
         context: &mut CmdContext<impl Write>,
     ) -> Vec<(CmdDef, CmdStatus<Self::StatsData>)>
     where
         Self::StatsData: Clone + Debug;
-}
-
-#[async_trait]
-pub trait AsyncCmd: 'static + Send + CmdV2 {
-    type AsyncExistStatus;
-    async fn async_exec(&self) -> Self::AsyncExistStatus;
 }
 
 #[derive(Clone, Debug)]

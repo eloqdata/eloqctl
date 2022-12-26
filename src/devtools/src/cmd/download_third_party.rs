@@ -114,10 +114,10 @@ impl DownloadThirdParty {
         let download_join_all = join_all(vec![join_protobuf, join_cassandra]).await;
         multi_progress.clear().unwrap();
         let status = if download_join_all.is_empty() {
-            println!("WARN: Join download task is empty.");
+            println!("WARN: Join download cli is empty.");
             CmdStatus {
                 success: false,
-                output: Some("Download task may be failed".to_string()),
+                output: Some("Download cli may be failed".to_string()),
                 data: None,
             }
         } else {

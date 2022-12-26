@@ -99,7 +99,7 @@ impl CmdV2 for GenMySQLConf {
                 Some(monograph_ip_list.clone()),
             );
             let cnf_location =
-                format!("{}/{}-{}.cnf", etc_dir, "my-conf", mysql_port + idx, ).clone();
+                format!("{}/{}-{}.cnf", etc_dir, "my-conf", mysql_port + idx,).clone();
             println!("GenMySQLCnf at {}", cnf_location);
 
             let write_rs = mysql_cnf.write(Path::new(cnf_location.as_str()));
@@ -110,11 +110,14 @@ impl CmdV2 for GenMySQLConf {
                 return self.error_status(err_msg.as_str());
             }
         }
-        vec![(self.definition(), CmdStatus {
-            success: true,
-            output: None,
-            data: None,
-        })]
+        vec![(
+            self.definition(),
+            CmdStatus {
+                success: true,
+                output: None,
+                data: None,
+            },
+        )]
     }
 }
 

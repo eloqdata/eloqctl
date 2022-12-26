@@ -5,6 +5,7 @@
 .vscode/
 .devcontainer/
 mono_waiter_dist/
+mono_cluster_mgr_dist/
 *.bash
 *.sh
 # JetBrains
