@@ -27,6 +27,7 @@ where
     let cmd_exec_rs = ssh_conn.run_cmd_sync_output(check_cmd.clone())?;
     let cmd_status = cmd_exec_rs.get(SSH_EXEC_CMD_STATUS).unwrap();
 
+    println!("check_process_pid cmd_exec_rs = {:?}", cmd_exec_rs);
     if 0 != TaskArgValue::into_inner_value::<usize>(cmd_status.clone()) {
         error!("check_process_pid fails status={:?}", cmd_status);
         return Err(anyhow!("Cmd {} execution fails", check_cmd));

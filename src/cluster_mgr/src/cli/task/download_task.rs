@@ -86,7 +86,7 @@ impl TaskExecutor for DownloadTask {
             task_input.get(DOWNLOAD_PATH).unwrap().clone(),
         );
         let download_path = PathBuf::from(download_dir.as_str());
-        info!("DownloadTask will be start url={}", download_url);
+        info!("DownloadTask start download_url={}", download_url);
         let client = reqwest::Client::new();
         let download_url_cloned = download_url.clone();
         let rsp_rs = client.get(download_url.as_str()).send().await;

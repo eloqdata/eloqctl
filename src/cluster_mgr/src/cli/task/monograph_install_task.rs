@@ -64,6 +64,7 @@ impl TaskExecutor for MonographInstall {
         );
         let install_rs = ssh_conn?.run_cmd(install_db_script.clone(), true)?;
 
+        info!("MonographInstallTask cmd={}", install_db_script);
         task_return_value!(
             install_rs,
             |status_code: usize| -> CmdErr {

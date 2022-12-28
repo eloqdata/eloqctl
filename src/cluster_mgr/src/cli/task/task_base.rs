@@ -1,4 +1,5 @@
 use crate::cli::config::{load_remote_env, DeploymentConfig};
+use crate::cli::task::ssh_conn::{SSH_EXEC_CMD, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
 use crate::cli::task::task_group::{TaskExecutionContext, TASK_GROUP};
 use crate::cli::CommandArgs;
 use crate::enum_into_trait;
@@ -440,8 +441,45 @@ impl TaskMgr {
 impl TaskMgr {
     pub async fn receive_task_result(&'static self) {
         let mut result_reader = self.task_controller.clone().try_stream();
-        while let Some(Ok(rs)) = result_reader.next().await {
-            println!("TaskMgr receive task result = {:?}", rs);
+        while let Some(Ok(task_result_pair)) = result_reader.next().await {
+            let task_id: String = task_result_pair.task_id;
+            let result: TaskResultEnum = task_result_pair.result;
+            match result {
+                TaskResultEnum::Success(opt_rs) => {
+                    if let Some(execution_value) = opt_rs {
+                        let mut success_output = String::new();
+                        if execution_value.contains_key(SSH_EXEC_CMD_OUTPUT) {
+                            let output_str = TaskArgValue::into_inner_value::<String>(
+                                execution_value.get(SSH_EXEC_CMD_OUTPUT).unwrap().clone(),
+                            );
+                            if !output_str.is_empty() {
+                                success_output
+                                    .push_str(format!(r#"cmd_output={} "#, output_str).as_str());
+                                success_output.push('\t');
+                            }
+                        }
+                        if execution_value.contains_key(SSH_EXEC_CMD_STATUS) {
+                            let status_code = TaskArgValue::into_inner_value::<usize>(
+                                execution_value.get(SSH_EXEC_CMD_STATUS).unwrap().clone(),
+                            );
+                            success_output.push('\t');
+                            success_output
+                                .push_str(format!(r#"cmd_status={}"#, status_code).as_str());
+                        }
+                        if execution_value.contains_key(SSH_EXEC_CMD) {
+                            let cmd = TaskArgValue::into_inner_value::<String>(
+                                execution_value.get(SSH_EXEC_CMD).unwrap().clone(),
+                            );
+                            success_output.push('\t');
+                            success_output.push_str(format!(r#"cmd={}"#, cmd).as_str());
+                        }
+                        println!(r#"✅ task {} success. {}"#, task_id, success_output)
+                    }
+                }
+                TaskResultEnum::Error(err_msg) => {
+                    println!(r#"❌ task {} failed. cause by {}"#, task_id, err_msg);
+                }
+            }
         }
     }
 

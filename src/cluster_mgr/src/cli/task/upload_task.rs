@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use tracing::info;
 
 pub(crate) const SOURCE_PATH: &str = "source_file";
+pub(crate) const DEST_PATH: &str = "dest_file";
+pub(crate) const COPY_DIR: &str = "copy_dir";
 pub(crate) const DB_CONFIG_UPLOAD_TASK: &str = "db_config_upload";
 pub(crate) const INSTALL_MONOGRAPH_UPLOAD_TASK: &str = "install_monograph_script_upload";
 pub(crate) const MONOGRAPH_CONFIG_UPLOAD_TASK: &str = "monograph_config_upload";
@@ -52,7 +54,49 @@ macro_rules! monograph_config_task_execution {
 }
 
 impl UploadTask {
-    pub fn build_datafarm_tasks(
+    /// Upload the cassandra.yaml file to the remote host (remote host list from deployment.yaml).
+    pub fn build_upload_cass_conf_task(
+        config: &DeploymentConfig,
+    ) -> anyhow::Result<Vec<TaskInstance>> {
+        let cass_config = config.gen_cassandra_config()?;
+        let ssh_port = config.connection.ssh_port();
+        let conn_user = config.clone().connection.username;
+        let upload_cass_config_task = cass_config
+            .into_iter()
+            .map(|(host, cass_config)| {
+                let cass_config_path_str = cass_config.to_str().unwrap().to_string();
+                TaskInstance {
+                    task_input: HashMap::from([
+                        (
+                            SOURCE_PATH.to_string(),
+                            TaskArgValue::Str(cass_config_path_str),
+                        ),
+                        (
+                            DEST_PATH.to_string(),
+                            TaskArgValue::Str("apache-cassandra/conf/cassandra.yaml".to_string()),
+                        ),
+                    ]),
+                    task: Box::new(UploadTask::new(
+                        config.clone(),
+                        TaskId {
+                            cmd: "install".to_string(),
+                            task: "cassandra_config_upload".to_string(),
+                            host: host.clone(),
+                        },
+                    )),
+                    task_host: TaskHost::Remote {
+                        user: conn_user.clone(),
+                        port: ssh_port as usize,
+                        hosts: host,
+                    },
+                }
+            })
+            .collect_vec();
+        Ok(upload_cass_config_task)
+    }
+
+    /// Upload the MonographDB data_dir to the remote host.
+    pub fn build_upload_data_dir_tasks(
         config: &DeploymentConfig,
         dest_hosts: Vec<TaskHost>,
     ) -> Vec<TaskInstance> {
@@ -62,10 +106,10 @@ impl UploadTask {
             .map(|dest_host| {
                 let (_, _, host) = dest_host.ssh_conn_tuple();
                 TaskInstance {
-                    task_input: HashMap::from([(
-                        SOURCE_PATH.to_string(),
-                        TaskArgValue::Str(datafarm.clone()),
-                    )]),
+                    task_input: HashMap::from([
+                        (SOURCE_PATH.to_string(), TaskArgValue::Str(datafarm.clone())),
+                        (COPY_DIR.to_string(), TaskArgValue::Str("-r".to_string())),
+                    ]),
                     task: Box::new(UploadTask::new(
                         config.clone(),
                         TaskId {
@@ -80,7 +124,7 @@ impl UploadTask {
             .collect_vec()
     }
 
-    fn tasks_from_host_list(
+    fn task_install_from_hosts(
         service: DeploymentService,
         host_vec: Vec<String>,
         config: &DeploymentConfig,
@@ -94,7 +138,6 @@ impl UploadTask {
             None
         };
 
-        // let db_start_script_path =
         let install_db_config_path = config.clone().gen_monograph_config(None)?;
 
         let install_db_config = install_db_config_path.to_str().unwrap().to_string();
@@ -174,6 +217,8 @@ impl UploadTask {
         Ok(execution_context_vec)
     }
 
+    /// Upload installation package, MonographDB configuration file (my.cnf),
+    /// MonographDB install script, install config to remote host.
     pub fn from_config(config: &DeploymentConfig) -> anyhow::Result<Vec<TaskInstance>> {
         let all_hosts = config.get_host_as_map();
         let execution_context_vec = all_hosts
@@ -181,7 +226,7 @@ impl UploadTask {
             .map(|entry| {
                 let service = entry.0;
                 let hosts = entry.1;
-                UploadTask::tasks_from_host_list(service, hosts, config).unwrap()
+                UploadTask::task_install_from_hosts(service, hosts, config).unwrap()
             })
             .into_iter()
             .flatten()
@@ -229,28 +274,44 @@ impl TaskExecutor for UploadTask {
         let source_path_buf = PathBuf::from(source_path_str.as_str());
         // scp /xxx/local_file user@remote_host:remote_dir/file
         let remote_install_dir = self.config.install_dir();
-        //let local_file = self.source_path.to_str().unwrap();
-        let source_file_name = source_path_buf.file_name().unwrap().to_str().unwrap();
+
+        let dest_file_name = if let Some(dest_file_str) = task_input.get(DEST_PATH) {
+            TaskArgValue::into_inner_value::<String>(dest_file_str.clone())
+        } else {
+            source_path_buf
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string()
+        };
+
+        let copy_dir = if let Some(scp_dir) = task_input.get(COPY_DIR) {
+            TaskArgValue::into_inner_value::<String>(scp_dir.clone())
+        } else {
+            "".to_string()
+        };
+
         let scp_auth_key = format!("-i {}", self.config.connection.ssh_auth_key().unwrap());
         let scp_cmd = format!(
             // dir port, usr host remote_dir file_name
-            r#"mkdir -p {} && scp -o StrictHostKeyChecking=no {} -P {} {} {}@{}:{}/{}"#,
+            r#"mkdir -p {} && scp -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null {} {} -P {} {} {}@{}:{}/{}"#,
             remote_install_dir,
+            copy_dir,
             scp_auth_key,
             port,
             source_path_str,
             remote_user,
             remote_host,
             remote_install_dir,
-            source_file_name
+            dest_file_name
         );
-        info!("UploadTask remote cmd={}", scp_cmd);
+        info!("UploadTask cmd={}", scp_cmd);
+        let err_msg = format!("cmd={},source_path={}", scp_cmd, source_path_str);
         let task_rs = ssh_conn?.run_cmd(scp_cmd, false)?;
         task_return_value!(
             task_rs,
-            |status_code: usize| -> CmdErr {
-                CmdErr::UploadErr(source_path_str, status_code.to_string())
-            },
+            |status_code: usize| -> CmdErr { CmdErr::UploadErr(err_msg, status_code.to_string()) },
             "UploadTask"
         );
     }

@@ -29,7 +29,7 @@ macro_rules! cassandra_cmd {
                 //r#"bash {}/start_cassandra.bash"#,
                 $cassandra_home, $cassandra_home, java_home, $cassandra_home, $cassandra_home
             )),
-            "CassandraCmd::Status" => CassandraCmd::Status(format!("export JAVA_HOME={}; {}/bin/nodetool status", java_home, $cassandra_home)),
+            "CassandraCmd::Status" => CassandraCmd::Status(format!("export JAVA_HOME={}; {}/bin/nodetool status | grep -v ^$ | tail -n 1", java_home, $cassandra_home)),
             $("CassandraCmd::Stop" => {
                 let pid = $cmd_arg;
                 CassandraCmd::Stop(format!("kill {}", pid))
@@ -130,7 +130,10 @@ impl CassandraCtlTask {
                     host: "_NONE".to_string(),
                 },
             ),
-            CommandArgs::Stop { cluster: _ } => (
+            CommandArgs::Stop {
+                cluster: _,
+                force: _,
+            } => (
                 "stop",
                 TaskId {
                     cmd: "stop".to_string(),
@@ -215,6 +218,7 @@ impl CassandraCtlTask {
             ssh_conn,
             |output| -> bool {
                 let mut process_ready = false;
+                info!(r#"CassandraCtlTask check_status {:?}"#, output);
                 for line in output.lines() {
                     if line.trim().is_empty() {
                         continue;
@@ -222,7 +226,6 @@ impl CassandraCtlTask {
                     if !line.contains(char::is_whitespace) {
                         continue;
                     }
-                    info!("CassandraCtlTask  status={}", line);
                     if line.starts_with("UN") {
                         process_ready = true;
                     }
@@ -270,12 +273,11 @@ impl TaskExecutor for CassandraCtlTask {
             task_arg.get(CASSANDRA_CMD_STR).unwrap().clone(),
         );
         let cassandra_home = self.cassandra_home();
-
         info!(
             "CassandraCtlTask will be run. Cmd={:?}, cassandra_home={:?}",
             cmd_str, cassandra_home
         );
-        let cmd = CassandraCmd::from_string(cmd_str, cassandra_home, None);
+        let cmd = CassandraCmd::from_string(cmd_str.clone(), cassandra_home, None);
         let ssh_conn = ssh_conn_rs?;
         let exec_rs = if cmd.as_ref() == "Start" {
             cassandra_ctl!(task_host.clone(), cmd, Start, &ssh_conn, self, is_none)
@@ -295,6 +297,7 @@ impl TaskExecutor for CassandraCtlTask {
                 err.to_string()
             )))
         } else {
+            println!("CassandraCtl cmd={} success", cmd_str);
             let pid_opt = self.cassandra_pid(ssh_conn, task_host)?;
             let pid = if let Some(pid_val) = pid_opt {
                 TaskArgValue::Str(pid_val.to_string())
