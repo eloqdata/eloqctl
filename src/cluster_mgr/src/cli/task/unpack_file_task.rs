@@ -74,6 +74,7 @@ impl TaskExecutor for UnpackFileTask {
         task_host: TaskHost,
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        println!("{} execute.\n", self.task_id.pretty_string());
         ssh_conn_info! {
             self.config.connection.clone(),
             task_host,

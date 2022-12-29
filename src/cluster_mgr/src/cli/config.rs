@@ -197,7 +197,7 @@ impl DeploymentConfig {
     }
 
     pub fn gen_monograph_config(&self, db_host: Option<String>) -> anyhow::Result<PathBuf> {
-        let port = self.deployment.clone().port.monograph_port.start + 1;
+        let port = self.deployment.clone().port.monograph_port.start;
         let set_ip_list = db_host.is_some();
         let my_ini_rs = self.build_monograph_config(set_ip_list);
 

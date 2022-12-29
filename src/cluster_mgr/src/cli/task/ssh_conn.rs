@@ -12,6 +12,7 @@ use tracing::{error, info};
 pub(crate) const SSH_EXEC_CMD: &str = "_SSH_EXEC_CMD_";
 pub(crate) const SSH_EXEC_CMD_OUTPUT: &str = "_SSH_EXEC_CMD_OUTPUT_";
 pub(crate) const SSH_EXEC_CMD_STATUS: &str = "_SSH_EXEC_CMD_STATUS_";
+pub(crate) const SSH_CHECK_PROCESS_PID: &str = "_SSH_CHECK_PROCESS_PID_";
 
 #[derive(Clone, Debug)]
 pub enum SSHAuth {
@@ -109,10 +110,15 @@ impl SSHConn {
                 "SSHConn handshake error cause by {:?}",
                 handshake_err.code()
             );
-            return Err(anyhow!(CmdErr::SSHConnErr(
+            let ssh_err = CmdErr::SSHConnErr(
                 format!("{}@{}", conn_user.as_str(), host_and_port),
-                handshake_err.to_string()
-            )));
+                handshake_err.to_string(),
+            );
+            panic!("{}", ssh_err.to_string().as_str());
+            // return Err(anyhow!(CmdErr::SSHConnErr(
+            //     format!("{}@{}", conn_user.as_str(), host_and_port),
+            //     handshake_err.to_string()
+            // )));
         }
 
         let auth_rs = SSHConn::ssh_auth(&mut session, conn_user.clone(), ssh_auth);

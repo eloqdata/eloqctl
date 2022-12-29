@@ -251,6 +251,7 @@ impl TaskExecutor for UploadTask {
         remote_task_host: TaskHost,
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        println!("{} execute.\n", self.task_id.pretty_string());
         let source_ip_rs = local_ip_address::local_ip()?;
         let local_ip_addr = source_ip_rs.to_string();
         let ssh_port = self.config.connection.ssh_port();

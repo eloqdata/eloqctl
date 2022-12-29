@@ -80,6 +80,7 @@ impl TaskExecutor for DownloadTask {
         _task_host: TaskHost,
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        println!("{} execute.\n", self.task_id.pretty_string());
         let download_url =
             TaskArgValue::into_inner_value::<String>(task_input.get(DOWNLOAD_URL).unwrap().clone());
         let download_dir = TaskArgValue::into_inner_value::<String>(

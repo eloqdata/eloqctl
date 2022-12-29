@@ -9,3 +9,4 @@ mod task_group;
 mod task_utils;
 mod unpack_file_task;
 mod upload_task;
+mod task_controller;

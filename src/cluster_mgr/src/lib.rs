@@ -7,6 +7,8 @@
 // #![feature(associated_type_bounds)]
 // #![feature(type_alias_impl_trait)]
 
+extern crate core;
+
 use chrono::Utc;
 use std::fmt::Debug;
 use strum_macros::AsRefStr;

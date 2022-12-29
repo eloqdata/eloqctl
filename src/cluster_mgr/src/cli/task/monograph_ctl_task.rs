@@ -1,5 +1,5 @@
 use crate::cli::config::{DeploymentConfig, DeploymentService};
-use crate::cli::task::ssh_conn::SSHConn;
+use crate::cli::task::ssh_conn::{SSHConn, SSH_CHECK_PROCESS_PID};
 use crate::cli::task::task_base::CmdErr::MonographCtlErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
@@ -147,10 +147,9 @@ impl MonographCtlTask {
         }
     }
 
-    fn monograph_pid(&self, ssh_conn: &SSHConn) -> anyhow::Result<Option<i32>> {
+    fn monograph_pid(&self, ssh_conn: &SSHConn) -> anyhow::Result<ExecutionValue> {
         let remote_install_dir = self.config.install_dir();
         let check_status = monograph_cmd!(MonographCtlCmd::Status, remote_install_dir);
-        println!("MonographCtlTask check_status={:?}", check_status);
         check_process_pid(
             check_status.cmd_value(),
             ssh_conn,
@@ -170,6 +169,7 @@ impl TaskExecutor for MonographCtlTask {
         task_host: TaskHost,
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        println!("{} execute.\n", self.task_id.pretty_string());
         let cmd_str = self.task_id.cmd.as_str();
         let remote_install_dir = self.config.install_dir();
         ssh_conn_info! {
@@ -190,7 +190,10 @@ impl TaskExecutor for MonographCtlTask {
         let execute_rs = match cmd_str {
             "start" => {
                 if let Ok(pid_opt) = check_process_status {
-                    if pid_opt.is_none() {
+                    let pid = TaskArgValue::into_inner_value::<String>(
+                        pid_opt.get(SSH_CHECK_PROCESS_PID).unwrap().clone(),
+                    );
+                    if pid == "NONE" {
                         start_service(
                             start_cmd.cmd_value(),
                             check_status.cmd_value(),
@@ -200,11 +203,7 @@ impl TaskExecutor for MonographCtlTask {
                             },
                         )
                     } else {
-                        info!(
-                            "MonographCtlTask found MonographDB process already running. PID={:?}",
-                            pid_opt
-                        );
-                        Ok(true)
+                        Ok(HashMap::new())
                     }
                 } else {
                     error!(
@@ -219,7 +218,10 @@ impl TaskExecutor for MonographCtlTask {
             }
             "stop" => {
                 if let Ok(pid_opt) = check_process_status {
-                    if let Some(pid) = pid_opt {
+                    let pid = TaskArgValue::into_inner_value::<String>(
+                        pid_opt.get(SSH_CHECK_PROCESS_PID).unwrap().clone(),
+                    );
+                    if pid != "NONE" {
                         let stop_cmd = if let Some(force_stop) = task_arg.get(FORCE_STOP) {
                             let force_kill =
                                 TaskArgValue::into_inner_value::<String>(force_stop.clone());
@@ -231,8 +233,7 @@ impl TaskExecutor for MonographCtlTask {
                         info!("MonographCtlTask stop cmd = {:?}", stop_cmd);
                         stop_service(stop_cmd.cmd_value(), ssh_conn)
                     } else {
-                        info!("MonographCtlTask no running database processes found.");
-                        Ok(true)
+                        Ok(HashMap::new())
                     }
                 } else {
                     error!(
@@ -247,7 +248,10 @@ impl TaskExecutor for MonographCtlTask {
             }
             "restart" => {
                 if let Ok(pid_opt) = check_process_status {
-                    if let Some(pid) = pid_opt {
+                    let pid = TaskArgValue::into_inner_value::<String>(
+                        pid_opt.get(SSH_CHECK_PROCESS_PID).unwrap().clone(),
+                    );
+                    if pid != "NONE" {
                         let stop_cmd =
                             monograph_cmd!(MonographCtlCmd::Stop, remote_install_dir, pid);
                         stop_service(stop_cmd.cmd_value(), ssh_conn)?;
@@ -283,7 +287,10 @@ impl TaskExecutor for MonographCtlTask {
             }
             "status" => {
                 if let Ok(pid_opt) = check_process_status {
-                    if let Some(pid) = pid_opt {
+                    let pid = TaskArgValue::into_inner_value::<String>(
+                        pid_opt.get(SSH_CHECK_PROCESS_PID).unwrap().clone(),
+                    );
+                    if pid != "NONE" {
                         println!(
                             "MonographCtlTask found MonographDB process={:?} in {}",
                             pid, conn_host
@@ -295,7 +302,7 @@ impl TaskExecutor for MonographCtlTask {
                         );
                     };
 
-                    Ok(true)
+                    Ok(pid_opt)
                 } else {
                     error!(
                         "MonographCtlTask current cmd is Status. check process status failed. check_status_cmd={:?}",
@@ -310,11 +317,7 @@ impl TaskExecutor for MonographCtlTask {
             _ => unreachable!(),
         };
 
-        if let Ok(status) = execute_rs {
-            println!(
-                "MonographCtlTask execute cmd={} success status={}",
-                cmd_str, status
-            );
+        if let Ok(_status) = execute_rs {
             Ok(None)
         } else {
             let err_msg = execute_rs.err().unwrap().to_string();
