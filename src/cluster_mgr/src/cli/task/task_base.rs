@@ -1,21 +1,25 @@
 use crate::cli::config::{load_remote_env, DeploymentConfig};
-use crate::cli::task::task_group::{TaskExecutionContext, TASK_GROUP};
+use crate::cli::task::ssh_conn::{SSH_EXEC_CMD, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
+use crate::cli::task::task_controller::TaskController;
+use crate::cli::task::task_group::TASK_GROUP;
 use crate::cli::CommandArgs;
 use crate::enum_into_trait;
 use crate::state::task_status_operation::TaskStatusEntity;
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::StreamExt;
-use futures_async_stream::try_stream;
-use itertools::Itertools;
+use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::string::ToString;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
+use tabled::display::ExpandedDisplay;
+use tabled::object::{Columns, Rows, Segment};
+use tabled::{Alignment, Modify, ModifyObject, Table, Tabled, Width};
 use thiserror::Error;
-use tokio::sync::RwLock;
-use tracing::{error, info, instrument};
+use tracing::error;
 use ExecutionValue as LastResult;
 
 pub type EnvProps = HashMap<String, String>;
@@ -85,27 +89,18 @@ task_value_into_impl! {
 #[macro_export]
 macro_rules! task_return_value {
     ($task_result:expr, $task_err_closure:expr, $task_name:expr $(,$return_value:expr)? ) => {{
-        use $crate::cli::task::ssh_conn::{SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
+        use $crate::cli::task::ssh_conn::SSH_EXEC_CMD_STATUS;
         let task_rs = $task_result.clone();
         let task_status = task_rs.get(SSH_EXEC_CMD_STATUS).unwrap();
         let status_code = TaskArgValue::into_inner_value::<usize>(task_status.clone());
         if status_code != 0 {
-            info!(
+            println!(
                 "{} execution failure status_code={}",
                 $task_name, status_code
             );
             return Err(anyhow::anyhow!($task_err_closure(status_code)));
         } else {
-            if task_rs.get(SSH_EXEC_CMD_OUTPUT).is_some() {
-                let rtn_vlaue = task_rs.clone();
-               $(
-                let mut rtn_value = $return_value;
-                rtn_value.extend(task_rs.into_iter());
-               )*
-               return Ok(Some(rtn_vlaue));
-            } else {
-                return Ok(None);
-            }
+            return Ok(Some(task_rs));
         }
     }};
 }
@@ -132,6 +127,8 @@ pub enum CmdErr {
     ClusterAlreadyExists(String),
     #[error("Unpacking file errors. command {0}, error causes {1}")]
     UnpackErr(String, String),
+    #[error("Error interacting with cassandra. error causes {0}")]
+    CassandraOpErr(String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -169,14 +166,14 @@ impl TaskHost {
 pub type ExecutionValue = HashMap<String, TaskArgValue>;
 pub type TaskStatusRecord = Vec<HashMap<String, TaskArgValue>>;
 
-static FINISH_: LazyLock<LastResult> = LazyLock::new(|| {
+pub(crate) static FINISH_: LazyLock<LastResult> = LazyLock::new(|| {
     HashMap::from([(
         "_FINISH_SIGNAL".to_string(),
         TaskArgValue::Str("".to_string()),
     )])
 });
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Tabled, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TaskId {
     pub cmd: String,
     pub task: String,
@@ -184,8 +181,12 @@ pub struct TaskId {
 }
 
 impl TaskId {
-    pub fn string(&self) -> String {
+    pub fn format_string(&self) -> String {
         format!("host={},cmd={},task={}", self.host, self.cmd, self.task)
+    }
+
+    pub fn pretty_string(&self) -> ExpandedDisplay {
+        ExpandedDisplay::new(&[self.clone()])
     }
 
     pub fn as_json_string(&self) -> String {
@@ -234,185 +235,65 @@ pub enum TaskResultEnum {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskResultPair {
+    pub(crate) task_id: String,
+    pub(crate) result: TaskResultEnum,
+}
+
+#[derive(Tabled, Clone, Debug)]
+pub struct PrintableTaskResult {
     task_id: String,
-    result: TaskResultEnum,
+    cmd: String,
+    cmd_status: String,
+    cmd_output: String,
 }
 
-#[derive(Debug, Clone)]
-struct TaskController {
-    rx: crossbeam_channel::Receiver<TaskResultPair>,
-    tx: crossbeam_channel::Sender<TaskResultPair>,
-    task_execution_result: Arc<RwLock<HashMap<TaskId, ExecutionValue>>>,
+#[derive(Debug)]
+struct TablePrinter {
+    data: RefCell<Vec<PrintableTaskResult>>,
 }
 
-/// `TaskController` is responsible for the parallelization and coordination of tasks.
-/// Coordination refers to if there is a business dependency between tasks
-/// and if the execution of the dependent tasks is guaranteed to be completed.
-/// There are currently only linear dependencies; if there is a dependency between tasks,
-/// there is only one predecessor task in the dependency chain. `TaskController` will decide
-/// which batch of tasks can be parallelized according to the barrier in the task context.
-impl TaskController {
-    pub fn new() -> Self {
-        let (tx, rx) = crossbeam_channel::bounded(2000);
+impl TablePrinter {
+    pub(crate) fn new() -> Self {
         Self {
-            rx,
-            tx,
-            task_execution_result: Arc::new(RwLock::new(HashMap::new())),
+            data: RefCell::new(vec![]),
         }
     }
 
-    async fn get_task_execute_result(&self, task_id: TaskId) -> Option<ExecutionValue> {
-        let execution_rs_read_guard = self.task_execution_result.read().await;
-        execution_rs_read_guard.get(&task_id).cloned()
+    pub(crate) fn add_row(&self, task_id: String, execution_value: ExecutionValue) {
+        let row = PrintableTaskResult {
+            task_id,
+            cmd: TaskArgValue::into_inner_value::<String>(
+                execution_value.get(SSH_EXEC_CMD).unwrap().clone(),
+            ),
+
+            cmd_status: if TaskArgValue::into_inner_value::<usize>(
+                execution_value.get(SSH_EXEC_CMD_STATUS).unwrap().clone(),
+            ) == 0
+            {
+                "Success".to_string()
+            } else {
+                "Failure".to_string()
+            },
+            cmd_output: TaskArgValue::into_inner_value::<String>(
+                execution_value.get(SSH_EXEC_CMD_OUTPUT).unwrap().clone(),
+            ),
+        };
+        self.data.borrow_mut().push(row);
     }
 
-    async fn put_task_execute_result(&self, task_id: TaskId, execution_rs: ExecutionValue) {
-        let mut execution_rs_write_guard = self.task_execution_result.write().await;
-        execution_rs_write_guard.insert(task_id, execution_rs);
-    }
+    pub(crate) fn table_print(&self) {
+        let table_header_format = tabled::format::Format::new(|s| s.blue().to_string());
+        let mut table = Table::new(self.data.borrow().clone());
+        table
+            .with(tabled::Style::psql())
+            .with(Segment::all().modify().with(Alignment::left()))
+            .with(Modify::new(Rows::first()).with(table_header_format))
+            .with(Modify::new(Columns::single(0)).with(Width::wrap(20).keep_words()))
+            .with(Modify::new(Columns::single(1)).with(Width::wrap(50).keep_words()))
+            .with(Modify::new(Columns::single(2)).with(Width::wrap(10)))
+            .with(Modify::new(Columns::single(3)).with(Width::wrap(30).keep_words()));
 
-    fn split_task(
-        barrier: Option<Vec<usize>>,
-        tasks: Vec<TaskInstance>,
-    ) -> Vec<&'static [TaskInstance]> {
-        let tasks = Box::leak(Box::new(tasks));
-        if barrier.is_none() {
-            vec![tasks.as_slice()]
-        } else {
-            let barrier_array = barrier.as_ref().unwrap();
-            let mut begin;
-            let mut end = 0;
-            let mut all_split = vec![];
-            for (idx, barrier_val) in barrier_array.iter().enumerate() {
-                if idx == 0 {
-                    begin = 0;
-                    end = *barrier_val;
-                } else {
-                    begin = end;
-                    end = begin + *barrier_val;
-                }
-                info!("TaskController run_task_split {}..{}", begin, end);
-                let task_slice = &tasks[begin..end];
-                all_split.push(task_slice);
-            }
-            all_split
-        }
-    }
-
-    #[try_stream(boxed, ok = TaskResultPair, error = anyhow::Error)]
-    pub async fn try_stream(self) {
-        while let Ok(task_pair) = self.rx.recv() {
-            let task_rs = &task_pair.result;
-            let is_finish = match task_rs {
-                TaskResultEnum::Success(result) => {
-                    if let Some(exec_rs) = result {
-                        exec_rs.contains_key("_FINISH_SIGNAL")
-                    } else {
-                        false
-                    }
-                }
-                _ => true,
-            };
-            if is_finish {
-                break;
-            }
-            yield task_pair;
-        }
-    }
-
-    #[instrument]
-    async fn run_task_split(
-        &'static self,
-        splits: &'static [TaskInstance],
-        config: DeploymentConfig,
-    ) -> anyhow::Result<Vec<TaskResultPair>> {
-        let mut joins = vec![];
-
-        splits
-            .iter()
-            .enumerate()
-            .for_each(|(_idx, execution_context)| {
-                let tx_arc = Arc::new(&self.tx);
-                let cluster_name = config.deployment.cluster_name.clone();
-                let join = tokio::task::spawn(async move {
-                    let task = &execution_context.task;
-                    let task_input = execution_context.task_input.clone();
-                    let task_host = &execution_context.task_host;
-                    let task_id = task.identifier();
-                    let task_result_opt = self.get_task_execute_result(task_id.clone()).await;
-                    let final_task_input = if let Some(mut exec_rs) = task_result_opt {
-                        exec_rs.extend(task_input.into_iter());
-                        exec_rs
-                    } else {
-                        task_input
-                    };
-                    let execution_rs = task.execute(task_host.clone(), final_task_input).await;
-                    info!("Task {:?} execution complete", task_id);
-                    if let Ok(Some(ref inner_execution_rs)) = execution_rs.as_ref() {
-                        self.put_task_execute_result(task_id.clone(), inner_execution_rs.clone())
-                            .await;
-                    }
-                    let cmd = task_id.clone().cmd;
-                    let conn_tuple = task_host.ssh_conn_tuple();
-                    // execution_rs,cluster,task_mame,command,task_host
-                    let post_execute_rs = post_task_execute!(
-                        execution_rs,
-                        cluster_name,
-                        task_id.as_json_string(),
-                        cmd.as_str(),
-                        conn_tuple.2
-                    );
-                    info!("Save Task {:?} execution status complete", task_id);
-                    assert!(post_execute_rs.is_ok());
-                    let result = match execution_rs {
-                        Ok(rs) => TaskResultEnum::Success(rs),
-                        Err(err_msg) => TaskResultEnum::Error(err_msg.to_string()),
-                    };
-                    let task_pair = TaskResultPair {
-                        task_id: task_id.string(),
-                        result,
-                    };
-                    let send_rs = tx_arc.send(task_pair.clone());
-                    assert!(send_rs.is_ok());
-                    task_pair
-                });
-                joins.push(join);
-            });
-        let join_result = futures::future::join_all(joins).await;
-        let task_result = join_result
-            .into_iter()
-            .filter_map(|rs| rs.ok())
-            .collect_vec();
-        Ok(task_result)
-    }
-
-    /// Executes all task instances in parallel based on the `TaskExecutionContext` and returns the result.
-    ///
-    /// + --------parallel-------- + Pause  +  ------parallel----- +
-    ///
-    /// +-----+------+------+------+--------+------+-------+-------+-------+
-    /// |     |      |      |      |        |      |       |       |       |
-    /// |task1| task2| task3| task4| Barrier|task5 | task6 | task7 | ...   |
-    /// +-----+------+------+------+--------+------+-------+-------+-------+
-    pub async fn run_all_tasks(
-        &'static self,
-        task_execution: TaskExecutionContext,
-        config: DeploymentConfig,
-    ) -> anyhow::Result<Vec<TaskResultPair>> {
-        let barrier = task_execution.clone().barrier;
-        let tasks = task_execution.clone().executable;
-        let split = TaskController::split_task(barrier, tasks);
-        let mut task_result_vec = vec![];
-        for task_split in split.into_iter() {
-            let rs = self.run_task_split(task_split, config.clone()).await?;
-            task_result_vec.push(rs);
-        }
-        self.tx.send(TaskResultPair {
-            task_id: "".to_string(),
-            result: TaskResultEnum::Success(Some(FINISH_.clone())),
-        })?;
-        let rtn = task_result_vec.into_iter().flatten().collect_vec();
-        Ok(rtn)
+        println!("{}\n", table);
     }
 }
 
@@ -440,8 +321,22 @@ impl TaskMgr {
 impl TaskMgr {
     pub async fn receive_task_result(&'static self) {
         let mut result_reader = self.task_controller.clone().try_stream();
-        while let Some(Ok(rs)) = result_reader.next().await {
-            println!("TaskMgr receive task result = {:?}", rs);
+        while let Some(Ok(task_result_pair)) = result_reader.next().await {
+            let task_id: String = task_result_pair.task_id;
+            let result: TaskResultEnum = task_result_pair.result;
+
+            match result {
+                TaskResultEnum::Success(opt_rs) => {
+                    let table_printer = TablePrinter::new();
+                    if let Some(execution_value) = opt_rs {
+                        table_printer.add_row(task_id, execution_value);
+                        table_printer.table_print();
+                    }
+                }
+                TaskResultEnum::Error(err_msg) => {
+                    println!(r#"❌ task {} failed. cause by {}"#, task_id, err_msg);
+                }
+            }
         }
     }
 
@@ -461,5 +356,23 @@ impl TaskMgr {
         self.task_controller
             .run_all_tasks(tasks_execution, config)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::cli::task::task_base::TaskId;
+
+    #[test]
+    fn test_table_flat() {
+        let task_id = TaskId {
+            cmd: "deploy".to_string(),
+            task: "apache-cassandra-4.1-rc1-bin.tar.gz_unpack".to_string(),
+            host: "172.31.24.222".to_string(),
+        };
+
+        let table = task_id.pretty_string();
+        println!("{}", table);
     }
 }

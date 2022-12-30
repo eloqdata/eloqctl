@@ -16,6 +16,7 @@ pub const START_MONOGRAPH_SCRIPT: &str = "start_monographdb.bash";
 pub const START_MONOGRAPH_TEMPLATE: &str = "start_monographdb.template";
 pub const MONOGRAPH_INSTALL_TEMPLATE: &str = "monograph_install_db.template";
 pub const MONOGRAPH_INSTALL_SCRIPT: &str = "monograph_install_db.bash";
+pub const CASSANDRA_CONF_TEMPLATE: &str = "cassandra_template.yaml";
 
 #[derive(Parser, Default, Debug)]
 #[command(author, version = "1.0.0", about = "MonographDB Cluster Manager Cli")]
@@ -54,10 +55,13 @@ pub enum CommandArgs {
         cluster: String,
     },
     #[strum(serialize = "stop")]
-    /// Stop the MonographDB cluster with the specified cluster name. For example: ./cluster_mgr stop --cluster $CLUSTER_NAME
+    /// Stop the MonographDB cluster with the specified cluster name.
+    /// For example: ./cluster_mgr stop --cluster $CLUSTER_NAME --force true/false
     Stop {
-        #[arg(short = 'k', long, value_name = "CLUSTER NAME")]
+        #[arg(long, value_name = "CLUSTER NAME")]
         cluster: String,
+        #[arg(short, long, value_name = "FORCE STOP")]
+        force: String,
     },
     #[strum(serialize = "restart")]
     /// Restart the MonographDB cluster with the specified cluster name. For example: ./cluster_mgr restart --cluster $CLUSTER_NAME

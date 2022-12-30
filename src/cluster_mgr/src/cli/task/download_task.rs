@@ -80,13 +80,14 @@ impl TaskExecutor for DownloadTask {
         _task_host: TaskHost,
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        println!("{} execute.\n", self.task_id.pretty_string());
         let download_url =
             TaskArgValue::into_inner_value::<String>(task_input.get(DOWNLOAD_URL).unwrap().clone());
         let download_dir = TaskArgValue::into_inner_value::<String>(
             task_input.get(DOWNLOAD_PATH).unwrap().clone(),
         );
         let download_path = PathBuf::from(download_dir.as_str());
-        info!("DownloadTask will be start url={}", download_url);
+        info!("DownloadTask start download_url={}", download_url);
         let client = reqwest::Client::new();
         let download_url_cloned = download_url.clone();
         let rsp_rs = client.get(download_url.as_str()).send().await;

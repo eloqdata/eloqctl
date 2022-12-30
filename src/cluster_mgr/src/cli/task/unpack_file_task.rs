@@ -74,6 +74,7 @@ impl TaskExecutor for UnpackFileTask {
         task_host: TaskHost,
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        println!("{} execute.\n", self.task_id.pretty_string());
         ssh_conn_info! {
             self.config.connection.clone(),
             task_host,
@@ -97,7 +98,8 @@ impl TaskExecutor for UnpackFileTask {
             let target_dir = format!("{}/apache-cassandra", install_dir);
             (
                 format!(
-                    r#"tar -zxvf {} -C {} && mv {} {}"#,
+                    r#"mkdir -p {} && tar -zxvf {} -C {} && mv {} {}"#,
+                    install_dir,
                     remote_tar,
                     install_dir,
                     remote_tar.replace("-bin.tar.gz", ""),
@@ -107,7 +109,7 @@ impl TaskExecutor for UnpackFileTask {
             )
         };
         let unpack_cmd = unpack_pair.0;
-        info!("UnpackFileTask will be start cmd={}", unpack_cmd.as_str());
+        info!("UnpackFileTask cmd={}", unpack_cmd.as_str());
         let task_rs = ssh_conn?.run_cmd(unpack_cmd.clone(), false)?;
 
         task_return_value!(

@@ -19,9 +19,9 @@ deployment:
   storage_service:
     cassandra:
       download_url: "https://archive.apache.org/dist/cassandra/4.1-rc1/apache-cassandra-4.1-rc1-bin.tar.gz"
+      storage_cluster: "mono-cass-cluster"
       host:
         - localhost
-      config_location: "./cassandra.yaml"
     dynamodb:
       access_key_id: "",
       secret_key: ""

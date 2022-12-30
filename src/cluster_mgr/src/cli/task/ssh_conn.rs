@@ -4,6 +4,7 @@ use anyhow::anyhow;
 use ssh2::{Channel, Session};
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
+use std::env;
 use std::io::Read;
 use std::net::TcpStream;
 use std::path::Path;
@@ -12,6 +13,7 @@ use tracing::{error, info};
 pub(crate) const SSH_EXEC_CMD: &str = "_SSH_EXEC_CMD_";
 pub(crate) const SSH_EXEC_CMD_OUTPUT: &str = "_SSH_EXEC_CMD_OUTPUT_";
 pub(crate) const SSH_EXEC_CMD_STATUS: &str = "_SSH_EXEC_CMD_STATUS_";
+pub(crate) const SSH_CHECK_PROCESS_PID: &str = "_SSH_CHECK_PROCESS_PID_";
 
 #[derive(Clone, Debug)]
 pub enum SSHAuth {
@@ -109,10 +111,15 @@ impl SSHConn {
                 "SSHConn handshake error cause by {:?}",
                 handshake_err.code()
             );
-            return Err(anyhow!(CmdErr::SSHConnErr(
+            let ssh_err = CmdErr::SSHConnErr(
                 format!("{}@{}", conn_user.as_str(), host_and_port),
-                handshake_err.to_string()
-            )));
+                handshake_err.to_string(),
+            );
+            panic!("{}", ssh_err.to_string().as_str());
+            // return Err(anyhow!(CmdErr::SSHConnErr(
+            //     format!("{}@{}", conn_user.as_str(), host_and_port),
+            //     handshake_err.to_string()
+            // )));
         }
 
         let auth_rs = SSHConn::ssh_auth(&mut session, conn_user.clone(), ssh_auth);
@@ -204,11 +211,16 @@ impl SSHConn {
             );
             return Err(anyhow!(CmdErr::SSHRemoteCmdErr(cmd, run_cmd_err)));
         }
+
         let cmd_output = match cmd_output {
             RemoteCmdOutput::Stream | RemoteCmdOutput::None => {
                 self.read_output_to_buf(channel.borrow_mut(), cmd_output)
             }
             _ => {
+                if env::var("MONO_CLUSTER_PRINT_STDERR").is_ok() {
+                    let _ok = self.print_stderr(channel.borrow_mut());
+                }
+
                 let mut output = Vec::new();
                 channel.read_to_end(&mut output)?;
                 String::from_utf8(output)?
@@ -242,6 +254,17 @@ impl SSHConn {
             TaskArgValue::Str(cmd_output),
         );
         Ok(cmd_exec_rtn)
+    }
+
+    fn print_stderr(&self, channel: &mut Channel) -> anyhow::Result<()> {
+        let mut stderr_msg_vec = Vec::new();
+        let mut stderr = channel.stderr();
+        stderr.read_to_end(&mut stderr_msg_vec)?;
+        let std_msg = String::from_utf8(stderr_msg_vec)?;
+        for err_line in std_msg.lines() {
+            println!(r#"{}"#, err_line);
+        }
+        Ok(())
     }
 
     pub fn read_output_to_buf(

@@ -1,5 +1,5 @@
 use crate::cli::config::DeploymentConfig;
-use crate::cli::task::task_base::{CmdErr, TaskMgr, TaskResultPair};
+use crate::cli::task::task_base::{CmdErr, TaskMgr};
 use crate::cli::CommandArgs;
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
@@ -70,7 +70,7 @@ impl CommandExecutor {
             }
             CommandArgs::Install { cluster }
             | CommandArgs::Start { cluster }
-            | CommandArgs::Stop { cluster }
+            | CommandArgs::Stop { cluster, force: _ }
             | CommandArgs::Restart { cluster } => {
                 let tasks_status = self
                     .task_list_by_cluster(cluster, cmd_str_ref.to_string())
@@ -131,7 +131,7 @@ impl CommandExecutor {
                 Ok(config)
             }
             CommandArgs::Install { cluster }
-            | CommandArgs::Stop { cluster }
+            | CommandArgs::Stop { cluster, force: _ }
             | CommandArgs::Start { cluster }
             | CommandArgs::Restart { cluster }
             | CommandArgs::Status { cluster }
@@ -177,8 +177,8 @@ impl CommandExecutor {
             .run_tasks(cmd.clone(), config, success_task_ids)
             .await?;
         join.await?;
-        let result_json = serde_json::to_string_pretty::<Vec<TaskResultPair>>(&rs).unwrap();
-        println!(r#"{}"#, result_json);
+        // let result_json = serde_json::to_string_pretty::<Vec<TaskResultPair>>(&rs).unwrap();
+        println!(r#"all tasks complete.task_size={}"#, rs.len());
         Ok(())
     }
 }

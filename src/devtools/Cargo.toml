@@ -13,6 +13,7 @@ dialoguer = { version = "0.10", features = ["history", "completion", "fuzzy-sele
 futures = "0.3"
 futures-util = "0.3"
 indicatif = "0.17"
+libc = "0.2"
 once_cell = "1"
 os_pipe = "1"
 reqwest = { version = "0.11", features = ["stream", "json"] }
@@ -22,4 +23,3 @@ sysinfo = "0.26"
 thiserror = "1"
 tokio = { version = "1", features = ["full"] }
 toml = "0.5.9"
-libc = "0.2"
