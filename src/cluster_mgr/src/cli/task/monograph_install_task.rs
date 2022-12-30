@@ -6,7 +6,6 @@ use crate::cli::MONOGRAPH_INSTALL_SCRIPT;
 use crate::{ssh_conn_info, task_return_value};
 use async_trait::async_trait;
 use std::collections::HashMap;
-use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct MonographInstall {
@@ -47,10 +46,11 @@ impl TaskExecutor for MonographInstall {
         task_host: TaskHost,
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        println!("{} execute.\n", self.task_id.pretty_string());
         ssh_conn_info! {
             self.config.connection.clone(),
             task_host,
-            ssh_conn,
+            ssh_conn_rs,
             _conn_user,
             _conn_host
         }
@@ -62,8 +62,10 @@ impl TaskExecutor for MonographInstall {
             remote_install_dir.as_str(),
             MONOGRAPH_INSTALL_SCRIPT
         );
-        let install_rs = ssh_conn?.run_cmd(install_db_script.clone(), true)?;
+        let ssh_conn = ssh_conn_rs?;
+        let install_rs = ssh_conn.run_cmd_sync_output(install_db_script.clone())?;
 
+        println!("MonographDB install {}", install_db_script);
         task_return_value!(
             install_rs,
             |status_code: usize| -> CmdErr {

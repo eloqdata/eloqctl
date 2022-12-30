@@ -9,7 +9,6 @@ function monograph_install_db() {
   printf "MONOGRAPH_DB_INSTALL=%s\n" $MONOGRAPH_DB_INSTALL
   printf "DATA_DIR=%s\n" $data_dir
   mkdir -p $data_dir
-  export LD_LIBRARY_PATH=${MONOGRAPH_DB_INSTALL}/lib:$LD_LIBRARY_PATH
   init_db_script="${MONOGRAPH_DB_INSTALL}/scripts/mysql_install_db \
     --defaults-file=_MY_CONF --basedir=${MONOGRAPH_DB_INSTALL} \
     --datadir=${data_dir} \

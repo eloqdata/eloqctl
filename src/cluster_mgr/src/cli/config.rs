@@ -1,5 +1,5 @@
 use crate::cli::{
-    download_dir, MONOGRAPH_CONF_DYNAMO_TEMPLATE, MONOGRAPH_CONF_TEMPLATE,
+    download_dir, CASSANDRA_CONF_TEMPLATE, MONOGRAPH_CONF_DYNAMO_TEMPLATE, MONOGRAPH_CONF_TEMPLATE,
     MONOGRAPH_INSTALL_SCRIPT, MONOGRAPH_INSTALL_TEMPLATE, START_MONOGRAPH_SCRIPT,
     START_MONOGRAPH_TEMPLATE,
 };
@@ -8,6 +8,7 @@ use configparser::ini::Ini;
 use itertools::Itertools;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
+use serde_yaml::Value;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -15,16 +16,6 @@ use std::path::{Path, PathBuf};
 use strum_macros::AsRefStr;
 use thiserror::Error;
 use tracing::{error, info};
-
-#[derive(PartialEq, Eq, Clone, Error, Debug)]
-pub enum ConfigErr {
-    #[error("MonographDB storage provider config error [{0}].For now only support Cassandra or DynamoDB, \
-    You can choose either one.")]
-    StorageConfigErr(String),
-}
-
-pub const CONFIG_PATH_DIR: &str = "CLUSTER_MGR_CLI_CONFIG";
-pub const CONFIG_MARIADB_SECTION: &str = "mariadb";
 
 #[macro_export]
 macro_rules! gen_db_script {
@@ -40,6 +31,18 @@ macro_rules! gen_db_script {
     }};
 }
 
+#[derive(PartialEq, Eq, Clone, Error, Debug)]
+pub enum ConfigErr {
+    #[error("MonographDB storage provider config error [{0}].For now only support Cassandra or DynamoDB, \
+    You can choose either one.")]
+    StorageConfigErr(String),
+    #[error("The current configuration of the storage provider is not Cassandra. Storage Provider is {0}")]
+    GenCassandraConfigErr(String),
+}
+
+pub const CONFIG_PATH_DIR: &str = "CLUSTER_MGR_CLI_CONFIG";
+pub const CONFIG_MARIADB_SECTION: &str = "mariadb";
+
 #[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr)]
 pub enum DeploymentService {
     #[strum(serialize = "monograph")]
@@ -48,9 +51,11 @@ pub enum DeploymentService {
     Storage,
 }
 
-#[derive(Hash, Debug, Clone, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr)]
 pub enum StorageProvider {
+    #[strum(serialize = "cassandra")]
     Cassandra,
+    #[strum(serialize = "dynamodb")]
     DynamoDB,
 }
 
@@ -125,7 +130,7 @@ pub struct StorageService {
 pub struct Cassandra {
     pub host: Vec<String>,
     pub download_url: String,
-    pub config_location: Option<String>,
+    pub storage_cluster: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -192,7 +197,7 @@ impl DeploymentConfig {
     }
 
     pub fn gen_monograph_config(&self, db_host: Option<String>) -> anyhow::Result<PathBuf> {
-        let port = self.deployment.clone().port.monograph_port.start + 1;
+        let port = self.deployment.clone().port.monograph_port.start;
         let set_ip_list = db_host.is_some();
         let my_ini_rs = self.build_monograph_config(set_ip_list);
 
@@ -402,7 +407,7 @@ impl DeploymentConfig {
             Some(format!("/tmp/mysql{}.sock", deployment.port.mysql_port)),
         );
 
-        let use_port = deployment.port.monograph_port.start + 1;
+        let use_port = deployment.port.monograph_port.start;
         if set_ip_list {
             let ip_list = self
                 .get_host_list(DeploymentService::Monograph)
@@ -489,12 +494,76 @@ impl DeploymentConfig {
         serde_yaml::to_string(self).unwrap()
     }
 
+    pub fn load_cassandra_config_template(&self) -> anyhow::Result<HashMap<String, Value>> {
+        let cass_template_path_buf = DeploymentConfig::config_template(CASSANDRA_CONF_TEMPLATE)?;
+        let cass_opened_file = File::open(cass_template_path_buf.as_path())?;
+        // cassandra.yaml config object
+        let cass_conf_map =
+            serde_yaml::from_reader::<File, HashMap<String, Value>>(cass_opened_file)?;
+        Ok(cass_conf_map)
+    }
+
+    // key is cassandra host, value is cassandra.yaml config
+    pub fn gen_cassandra_config(&self) -> anyhow::Result<HashMap<String, PathBuf>> {
+        if self.deployment.storage_service.cassandra.is_none() {
+            let storage_provider = self.get_monograph_storage()?;
+            return Err(anyhow!(ConfigErr::GenCassandraConfigErr(
+                storage_provider.as_ref().to_string()
+            )));
+        }
+        let cass = self.deployment.clone().storage_service.cassandra.unwrap();
+        // cassandra.yaml config object
+        let mut cass_conf_map = self.load_cassandra_config_template()?;
+
+        let cassandra_hosts = self.get_host_list(DeploymentService::Storage);
+
+        let storage_cluster = if cass.storage_cluster.is_none() {
+            format!("{}_cass_cluster", self.deployment.cluster_name)
+        } else {
+            cass.storage_cluster.unwrap()
+        };
+
+        cass_conf_map.insert("cluster_name".to_string(), Value::String(storage_cluster));
+
+        let seeds = cassandra_hosts.join(",");
+
+        let seed_values = format!(
+            r#"
+           - class_name: org.apache.cassandra.locator.SimpleSeedProvider
+             parameters:
+             - seeds: {}"#,
+            seeds
+        );
+        let seed_yaml_value: Value = serde_yaml::from_str(seed_values.as_str())?;
+        cass_conf_map.insert(String::from("seed_provider"), seed_yaml_value);
+
+        let cass_config_vec = cassandra_hosts
+            .iter()
+            .map(|host| {
+                let host_value = Value::String(host.to_string());
+                cass_conf_map.insert(String::from("listen_address"), host_value.clone());
+                cass_conf_map.insert(
+                    String::from("rpc_address"),
+                    Value::String("0.0.0.0".to_string()),
+                );
+                cass_conf_map.insert(String::from("broadcast_rpc_address"), host_value.clone());
+                cass_conf_map.insert(String::from("broadcast_address"), host_value);
+                let config_path = download_dir().join(format!("cassandra_{}.yaml", host));
+                let new_config_file = File::create(config_path.as_path()).unwrap();
+                let gen_config_write = serde_yaml::to_writer(new_config_file, &cass_conf_map);
+                assert!(gen_config_write.is_ok());
+                (host.to_string(), config_path)
+            })
+            .collect::<HashMap<String, PathBuf>>();
+
+        Ok(cass_config_vec)
+    }
+
     pub fn load(path: Option<String>) -> anyhow::Result<Self> {
         let path_string = config_path_string(path)?;
         info!("DeploymentConfig load file from {}", path_string);
         let config_rs = DeploymentConfig::read_config_from_file(path_string);
         if let Ok(config) = config_rs {
-            //std::env::set_var(REMOTE_DIR_ENV, config.install_dir());
             Ok(config)
         } else {
             let config_err = config_rs.err().unwrap().to_string();
@@ -538,12 +607,17 @@ pub fn load_remote_env(path: Option<String>) -> anyhow::Result<HashMap<String, S
 #[cfg(test)]
 mod tests {
     use crate::cli::config::{load_remote_env, DeploymentConfig, CONFIG_PATH_DIR};
+    use crate::cli::CASSANDRA_CONF_TEMPLATE;
+    use serde_yaml::Value;
+    use std::collections::HashMap;
     use std::env::set_var;
+    use std::fs;
+    use std::fs::File;
     use std::path::PathBuf;
 
     fn deployment_file_path() -> String {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config");
-        std::env::set_var(CONFIG_PATH_DIR, manifest_dir.to_str().unwrap());
+        set_var(CONFIG_PATH_DIR, manifest_dir.to_str().unwrap());
         let deployment_file_path = manifest_dir.join("deployment.yaml");
         deployment_file_path.to_str().unwrap().to_string()
     }
@@ -604,5 +678,58 @@ mod tests {
         println!("rs {:?}", rs);
         assert!(rs.is_ok());
         println!("remote env props = {:?}", rs.unwrap());
+    }
+
+    #[test]
+    pub fn test_gen_cass_config() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config");
+        set_var(CONFIG_PATH_DIR, manifest_dir.to_str().unwrap());
+        let cass_template_path_rs = DeploymentConfig::config_template(CASSANDRA_CONF_TEMPLATE);
+        assert!(cass_template_path_rs.is_ok());
+        let cass_template_path = cass_template_path_rs.unwrap();
+        let cass_map_rs = serde_yaml::from_reader::<File, HashMap<String, Value>>(
+            File::open(cass_template_path.as_path()).unwrap(),
+        );
+        assert!(cass_map_rs.is_ok());
+        let mut cass_map = cass_map_rs.unwrap();
+        //println!("{:#?}", cass_map);
+        cass_map.insert(
+            "listen_address".to_string(),
+            Value::String("127.0.0.1".to_string()),
+        );
+
+        let seed_provider_str = format!(
+            r#"
+           - class_name: org.apache.cassandra.locator.SimpleSeedProvider
+             parameters:
+             - seeds: {}"#,
+            "172.172.172.172:7070"
+        );
+
+        let seed_provider_value: Value = serde_yaml::from_str(seed_provider_str.as_str()).unwrap();
+        println!("seed_provider = {:#?}", seed_provider_value);
+        cass_map.insert("seed_provider".to_string(), seed_provider_value);
+
+        let config_path = manifest_dir.join("cassandra_127.0.0.1.yaml");
+        let config_file = File::create(config_path.as_path()).unwrap();
+        let write_config_rs = serde_yaml::to_writer(config_file, &cass_map);
+        assert!(write_config_rs.is_ok());
+
+        let updated_file = serde_yaml::from_reader::<File, HashMap<String, Value>>(
+            File::open(config_path.as_path()).unwrap(),
+        );
+        assert!(updated_file.is_ok());
+
+        let final_cass_map = updated_file.unwrap();
+
+        let listen_address_value = final_cass_map.get("listen_address").unwrap();
+
+        println!("get listen_address_value={:?}", listen_address_value);
+        assert_eq!(
+            "127.0.0.1".to_string(),
+            listen_address_value.as_str().unwrap().to_string()
+        );
+        let del_config_path = fs::remove_file(config_path.as_path());
+        assert!(del_config_path.is_ok());
     }
 }

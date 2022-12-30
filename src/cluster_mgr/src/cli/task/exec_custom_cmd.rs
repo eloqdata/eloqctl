@@ -7,7 +7,6 @@ use crate::{ssh_conn_info, task_return_value};
 use async_trait::async_trait;
 use itertools::Itertools;
 use std::collections::HashMap;
-use tracing::info;
 
 #[derive(Clone, Debug)]
 pub struct ExecCustomCommand {
@@ -71,6 +70,7 @@ impl TaskExecutor for ExecCustomCommand {
         task_host: TaskHost,
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        println!("{} execute.\n", self.task_id.pretty_string());
         ssh_conn_info! {
             self.config.connection.clone(),
             task_host,

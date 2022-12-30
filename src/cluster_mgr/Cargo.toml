@@ -7,26 +7,29 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
+bytes = "1"
+cdrs-tokio = "7.0.4"
+chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
+configparser = { version = "3.0.2", features = ["indexmap"] }
 crossbeam-channel = "0.5"
+dirs = "4"
+dyn-clone = "1"
 futures = { version = "0.3", default-features = false, features = ["alloc", "thread-pool"] }
 futures-async-stream = "0.2"
+indicatif = "0.17"
+itertools = "0.10.5"
+local-ip-address = "0.4"
+owo-colors = "3"
+reqwest = { version = "0.11", features = ["json", "stream"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 serde_yaml = "0.9"
+sqlx = { version = "0.6", features = ["sqlite", "runtime-tokio-native-tls", "macros", "chrono"] }
+ssh2 = "0.9"
+strum_macros = "0.24"
+tabled = { version = "0.10.0", features = ["color", "derive"] }
+thiserror = "1"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["alloc", "ansi", "env-filter", "fmt", "matchers", "once_cell", "parking_lot", "regex", "registry", "sharded-slab", "smallvec", "std", "thread_local", "time", "tracing", "tracing-log"] }
-sqlx = { version = "0.6", features = ["sqlite", "runtime-tokio-native-tls", "macros", "chrono"] }
-chrono = "0.4"
-reqwest = { version = "0.11", features = ["json", "stream"] }
-dirs = "4"
-strum_macros = "0.24"
-ssh2 = "0.9"
-bytes = "1"
-itertools = "0.10.5"
-configparser = { version = "3.0.2", features = ["indexmap"] }
-indicatif = "0.17"
-thiserror = "1"
-dyn-clone = "1"
-serde_json = "1"
-local-ip-address = "0.4"

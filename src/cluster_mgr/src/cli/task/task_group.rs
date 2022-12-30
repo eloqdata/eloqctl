@@ -135,7 +135,7 @@ impl TaskGroup for DeploymentTaskGroup {
         } else {
             vec![]
         };
-
+        println!("DeploymentTaskGroup includes the following tasks [download_task, upload_task, unpack_task]");
         let download_tasks = ALL_DOWNLOAD_TASKS
             .iter()
             .copied()
@@ -212,19 +212,23 @@ impl TaskGroup for InstallDBTaskGroup {
 
         let mut execution_context_tuple = match storage_provider {
             StorageProvider::Cassandra => {
+                let upload_cass_config_task = UploadTask::build_upload_cass_conf_task(&config)?;
                 let cassandra_start = CassandraCtlTask::from_config(install_cmd, &config);
-                let monograph_install =
-                    MonographInstall::from_config(&config, install_db_host);
+                let monograph_install = MonographInstall::from_config(&config, install_db_host);
                 TaskExecutionContext {
                     cmd_args,
-                    barrier: Some(vec![cassandra_start.len(), monograph_install.len()]),
-                    executable: [cassandra_start, monograph_install].concat(),
+                    barrier: Some(vec![
+                        upload_cass_config_task.len(),
+                        cassandra_start.len(),
+                        monograph_install.len(),
+                    ]),
+                    executable: [upload_cass_config_task, cassandra_start, monograph_install]
+                        .concat(),
                 }
             }
             StorageProvider::DynamoDB => {
                 let monograph_is_multi_node = monograph_hosts.len() > 1;
-                let monograph_install =
-                    MonographInstall::from_config(&config, install_db_host);
+                let monograph_install = MonographInstall::from_config(&config, install_db_host);
                 TaskExecutionContext {
                     cmd_args,
                     barrier: if monograph_is_multi_node {
@@ -237,7 +241,7 @@ impl TaskGroup for InstallDBTaskGroup {
             }
         };
         if monograph_hosts.len() > 1 {
-            let dest_hosts = monograph_hosts[0..=monograph_hosts_len - 1]
+            let dest_hosts = monograph_hosts[1..=monograph_hosts_len - 1]
                 .iter()
                 .map(|host| TaskHost::Remote {
                     user: conn_user.clone(),
@@ -245,10 +249,11 @@ impl TaskGroup for InstallDBTaskGroup {
                     hosts: host.to_string(),
                 })
                 .collect_vec();
-
-            let upload_task =
-                UploadTask::build_datafarm_tasks(&config,  dest_hosts);
-
+            info!(
+                "InstallDBTaskGroup MonographDB multiple installation hosts are configured {:?}",
+                dest_hosts
+            );
+            let upload_task = UploadTask::build_upload_data_dir_tasks(&config, dest_hosts);
             let mut barrier = execution_context_tuple.barrier.unwrap();
             let mut executable = execution_context_tuple.executable;
             barrier.push(upload_task.len());
