@@ -25,6 +25,7 @@ impl ExecCustomCommand {
             .flat_map(|hosts| {
                 hosts
                     .iter()
+                    .unique()
                     .map(|host_val| {
                         let task_host = TaskHost::Remote {
                             user: conn_user.clone(),
@@ -37,7 +38,7 @@ impl ExecCustomCommand {
                                 cmd_string.clone(),
                                 TaskId {
                                     cmd: "exec_cmd".to_string(),
-                                    task: "".to_string(),
+                                    task: "custom-task".to_string(),
                                     host: host_val.clone(),
                                 },
                                 config.clone(),

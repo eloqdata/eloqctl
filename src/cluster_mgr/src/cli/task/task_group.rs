@@ -240,6 +240,8 @@ impl TaskGroup for InstallDBTaskGroup {
                 }
             }
         };
+        let mut barrier = execution_context_tuple.clone().barrier.unwrap();
+        let mut executable = execution_context_tuple.executable;
         if monograph_hosts.len() > 1 {
             let dest_hosts = monograph_hosts[1..=monograph_hosts_len - 1]
                 .iter()
@@ -254,14 +256,26 @@ impl TaskGroup for InstallDBTaskGroup {
                 dest_hosts
             );
             let upload_task = UploadTask::build_upload_data_dir_tasks(&config, dest_hosts);
-            let mut barrier = execution_context_tuple.barrier.unwrap();
-            let mut executable = execution_context_tuple.executable;
+
             barrier.push(upload_task.len());
             executable.extend(upload_task.into_iter());
 
-            execution_context_tuple.barrier = Some(barrier);
-            execution_context_tuple.executable = executable;
+            execution_context_tuple.barrier = Some(barrier.clone());
+            execution_context_tuple.executable = executable.clone();
         }
+
+        // rm -rf cc_ng/ tx_log/
+        let remote_install_dir = config.install_dir();
+        let rm_log_data_cmd = format!(
+            "rm -rf {}/datafarm/cc_ng {}/datafarm/tx_log",
+            remote_install_dir, remote_install_dir
+        );
+
+        let rm_log_data_task_instance = ExecCustomCommand::from_config(rm_log_data_cmd, &config);
+        barrier.push(rm_log_data_task_instance.len());
+        executable.extend(rm_log_data_task_instance.into_iter());
+        execution_context_tuple.barrier = Some(barrier);
+        execution_context_tuple.executable = executable;
 
         Ok(execution_context_tuple)
     }

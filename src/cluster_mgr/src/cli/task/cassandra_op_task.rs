@@ -13,7 +13,6 @@ use cdrs_tokio::retry::{ConstantReconnectionPolicy, DefaultRetryPolicy};
 use cdrs_tokio::transport::TransportTcp;
 use cdrs_tokio::types::IntoRustByName;
 use itertools::Itertools;
-use owo_colors::OwoColorize;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
@@ -155,7 +154,7 @@ impl TaskExecutor for CassandraOpTask {
                                         format!("{} un support {}", col_spec.name, col_type)
                                     }
                                 };
-                                format!("{} {}", idx.green(), col_value)
+                                format!("{}\t{}:{}", idx, col_spec.name, col_value)
                             })
                             .join("\t"),
                         None => {
