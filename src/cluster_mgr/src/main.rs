@@ -7,8 +7,12 @@ use tracing::{error, Level};
 
 #[tokio::main]
 async fn main() {
-    let level = if env::var("MONO_CLUSTER_MGR_TRACING").is_ok() {
-        Level::INFO
+    let level = if let Ok(tracing_env) = env::var("MONO_CLUSTER_MGR_TRACING") {
+        if !tracing_env.is_empty() && tracing_env.to_lowercase() == "true" {
+            Level::INFO
+        } else {
+            Level::WARN
+        }
     } else {
         Level::WARN
     };

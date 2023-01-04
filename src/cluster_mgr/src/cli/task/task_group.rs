@@ -76,7 +76,7 @@ pub static TASK_GROUP: LazyLock<HashMap<String, Box<dyn TaskGroup>>> = LazyLock:
         ("restart".to_string(), CtrlDBTaskGroup::boxed()),
         ("status".to_string(), CtrlDBTaskGroup::boxed()),
         ("exec_cmd".to_string(), CustomCmdTaskGroup::boxed()),
-        ("run_deps".to_string(), InstallRuntimeDepsTaskGroup::boxed()),
+        ("run-deps".to_string(), InstallRuntimeDepsTaskGroup::boxed()),
     ])
 });
 

@@ -101,15 +101,12 @@ impl TaskExecutor for UnpackFileTask {
                 target_dir,
             )
         } else {
+            let extract_file_name = remote_tar.replace("-bin.tar.gz", "");
             let target_dir = format!("{}/apache-cassandra", install_dir);
             (
                 format!(
-                    r#"mkdir -p {} && tar -zxvf {} -C {} && mv {} {}"#,
-                    install_dir,
-                    remote_tar,
-                    install_dir,
-                    remote_tar.replace("-bin.tar.gz", ""),
-                    target_dir
+                    r#"mkdir -p {} && rm -rf {} && tar -zxvf {} -C {} && mv {} {}"#,
+                    install_dir, target_dir, remote_tar, install_dir, extract_file_name, target_dir
                 ),
                 target_dir,
             )

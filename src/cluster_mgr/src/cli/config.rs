@@ -571,8 +571,16 @@ impl DeploymentConfig {
             let system = sysinfo::System::new();
             let curr_os_name = system.name();
             assert!(curr_os_name.is_some());
-            curr_os_name.unwrap().to_lowercase()
+            let os_name = curr_os_name.unwrap().to_lowercase();
+            if os_name.starts_with("ubuntu") {
+                "ubuntu".to_string()
+            } else if os_name.starts_with("centos") {
+                "centos".to_string()
+            } else {
+                unreachable!()
+            }
         };
+        println!("load_runtime_deps_by_os os_name={}", curr_os_name);
         let runtime_deps_file = format!("{}_runtime_deps", curr_os_name);
         let config_path = config_path_var_rs.unwrap();
         let deps_path = PathBuf::from(config_path.as_str()).join(runtime_deps_file);

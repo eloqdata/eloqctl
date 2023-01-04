@@ -260,6 +260,7 @@ impl TaskExecutor for UploadTask {
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         println!("{} execute.\n", self.task_id.pretty_string());
+
         let source_ip_rs = local_ip_address::local_ip()?;
         let local_ip_addr = source_ip_rs.to_string();
         let ssh_port = self.config.connection.ssh_port();
@@ -269,6 +270,7 @@ impl TaskExecutor for UploadTask {
             port: ssh_port as usize,
             hosts: local_ip_addr,
         };
+
         ssh_conn_info! {
             self.config.connection.clone(),
             source_task_host,
@@ -304,8 +306,7 @@ impl TaskExecutor for UploadTask {
         // scp /xxx/local_file user@remote_host:remote_dir/file
         let scp_cmd = format!(
             // dir port, usr host remote_dir file_name
-            r#"mkdir -p {} && scp -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null {} {} -P {} {} {}@{}:{}/{}"#,
-            remote_install_dir,
+            r#"scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {} {} -P {} {} {}@{}:{}/{}"#,
             copy_dir,
             scp_auth_key,
             port,

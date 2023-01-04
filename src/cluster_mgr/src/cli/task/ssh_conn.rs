@@ -86,10 +86,11 @@ impl SSHConn {
                 "SSHConn connect to remote host [{}] error. cause by {}",
                 host_and_port, conn_err
             );
-            return Err(anyhow!(CmdErr::SSHConnErr(
+            let ssh_err = CmdErr::SSHConnErr(
                 format!("{}@{}", conn_user.as_str(), host_and_port),
-                conn_err
-            )));
+                conn_err,
+            );
+            panic!("{}", ssh_err.to_string().as_str());
         }
         let session_rs = Session::new();
         if session_rs.is_err() {
@@ -97,10 +98,11 @@ impl SSHConn {
                 "SSHConn failed to establish ssh connection remote_host:{:?}",
                 host_and_port
             );
-            return Err(anyhow!(CmdErr::SSHConnErr(
+            let ssh_err = CmdErr::SSHConnErr(
                 format!("{}@{}", conn_user.as_str(), host_and_port),
-                session_rs.err().unwrap().to_string()
-            )));
+                session_rs.err().unwrap().to_string(),
+            );
+            panic!("{}", ssh_err.to_string().as_str());
         }
         let mut session = session_rs.unwrap();
         session.set_tcp_stream(tcp_conn.unwrap());
@@ -109,17 +111,13 @@ impl SSHConn {
             let handshake_err = handshake_rs.err().unwrap();
             error!(
                 "SSHConn handshake error cause by {:?}",
-                handshake_err.code()
+                handshake_err.to_string()
             );
             let ssh_err = CmdErr::SSHConnErr(
                 format!("{}@{}", conn_user.as_str(), host_and_port),
                 handshake_err.to_string(),
             );
             panic!("{}", ssh_err.to_string().as_str());
-            // return Err(anyhow!(CmdErr::SSHConnErr(
-            //     format!("{}@{}", conn_user.as_str(), host_and_port),
-            //     handshake_err.to_string()
-            // )));
         }
 
         let auth_rs = SSHConn::ssh_auth(&mut session, conn_user.clone(), ssh_auth);
@@ -150,7 +148,6 @@ impl SSHConn {
             return Err(anyhow!(auth_rs.err().unwrap().to_string()));
         }
         if session.authenticated() {
-            // info!("SSHConn Authentication success. {:?}", ssh_auth);
             Ok(())
         } else {
             let auth_err = anyhow!(format!(

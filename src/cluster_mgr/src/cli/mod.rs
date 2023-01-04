@@ -83,8 +83,8 @@ pub enum CommandArgs {
         #[arg(short, long, value_name = "CLUSTER NAME")]
         cluster: String,
     },
-    #[strum(serialize = "run_deps")]
-    /// Install MonographDB runtime dependencies. For example: ./cluster_mgr run_deps --topology_file
+    #[strum(serialize = "run-deps")]
+    /// Install MonographDB runtime dependencies. For example: ./cluster_mgr run-deps --topology-file $DEPLOYMENT.YAML
     RunDeps {
         #[arg(short, long, value_name = "CLUSTER TOPOLOGY FILE")]
         topology_file: String,
