@@ -305,44 +305,59 @@ impl TaskGroup for CtrlDBTaskGroup {
         config: DeploymentConfig,
         _successful_tasks: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let task_execution_context_tuple = match cmd_arg.as_ref() {
-            "start" | "restart" => {
-                let storage_provider = config.get_monograph_storage()?;
-                match storage_provider {
-                    StorageProvider::Cassandra => {
-                        let cassandra_ctl_task_instance =
-                            CassandraCtlTask::from_config(cmd_arg.clone(), &config);
-                        let mono_ctl_task_instance =
-                            MonographCtlTask::from_config(cmd_arg.clone(), &config);
+        let cmd_ref = cmd_arg.as_ref();
+        let storage_provider = config.get_monograph_storage()?;
 
-                        let barrier = vec![
-                            cassandra_ctl_task_instance.len(),
-                            mono_ctl_task_instance.len(),
-                        ];
-                        let mut executable = IndexMap::new();
-                        executable.extend(cassandra_ctl_task_instance.into_iter());
-                        executable.extend(mono_ctl_task_instance.into_iter());
-                        TaskExecutionContext {
-                            cmd_args: cmd_arg.clone(),
-                            barrier: Some(barrier),
-                            executable,
-                        }
-                    }
-                    StorageProvider::DynamoDB => TaskExecutionContext {
-                        cmd_args: cmd_arg.clone(),
-                        barrier: None,
-                        executable: MonographCtlTask::from_config(cmd_arg.clone(), &config),
-                    },
-                }
-            }
-            _ => TaskExecutionContext {
-                cmd_args: cmd_arg.clone(),
-                barrier: None,
-                executable: MonographCtlTask::from_config(cmd_arg.clone(), &config),
-            },
+        let start_cass_if_need = (cmd_ref == "start" || cmd_ref == "restart")
+            && storage_provider == StorageProvider::Cassandra;
+
+        let mut mut_executable = if start_cass_if_need {
+            CassandraCtlTask::from_config(cmd_arg.clone(), &config)
+        } else {
+            IndexMap::default()
         };
 
-        Ok(task_execution_context_tuple)
+        let mut barrier = if !mut_executable.is_empty() {
+            vec![mut_executable.len()]
+        } else {
+            vec![]
+        };
+
+        let batch_cmd = match cmd_arg {
+            CommandArgs::Restart {
+                cluster: ref cluster_name,
+            } => {
+                vec![
+                    CommandArgs::Stop {
+                        cluster: cluster_name.clone(),
+                        force: Some("false".to_string()),
+                    },
+                    CommandArgs::Start {
+                        cluster: cluster_name.to_string(),
+                    },
+                ]
+            }
+            _ => {
+                vec![cmd_arg.clone()]
+            }
+        };
+
+        for cmd in batch_cmd {
+            let crl_task_instance = MonographCtlTask::from_config(cmd.clone(), &config);
+            barrier.push(crl_task_instance.len());
+            mut_executable.extend(crl_task_instance.into_iter());
+        }
+
+        let final_barrier = if start_cass_if_need {
+            Some(barrier)
+        } else {
+            None
+        };
+        Ok(TaskExecutionContext {
+            cmd_args: cmd_arg.clone(),
+            barrier: final_barrier,
+            executable: mut_executable,
+        })
     }
 }
 

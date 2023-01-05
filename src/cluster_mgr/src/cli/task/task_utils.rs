@@ -74,35 +74,37 @@ pub(crate) fn start_service(
     }
 }
 
-pub(crate) fn start_service_wait_complete<F>(
-    start_cmd: String,
+pub(crate) fn ctl_action_wait_complete<F1, F2>(
+    ctl_cmd: String,
     check_cmd: String,
     ssh_conn: &SSHConn,
-    check_fn: F,
+    ctl_fn: F2,
+    check_fn: F1,
 ) -> anyhow::Result<ExecutionValue>
 where
-    F: Fn(String) -> bool,
+    F1: Fn(String) -> bool,
+    F2: Fn(String, &SSHConn) -> anyhow::Result<ExecutionValue>,
 {
-    let mut start_rs = start_service(start_cmd, ssh_conn)?;
+    let mut ctl_action_rs = ctl_fn(ctl_cmd, ssh_conn)?;
     let process_ready =
         wait_process_complete(check_cmd, ssh_conn, Duration::from_secs(5 * 60), check_fn)?;
-    if let Some(output) = start_rs.get(SSH_EXEC_CMD_OUTPUT) {
+    if let Some(output) = ctl_action_rs.get(SSH_EXEC_CMD_OUTPUT) {
         let final_output = format!(
-            r#"output={}, process_running={}"#,
+            r#"output={},check control func return={}"#,
             TaskArgValue::into_inner_value::<String>(output.clone()),
             process_ready
         );
-        start_rs.insert(
+        ctl_action_rs.insert(
             SSH_EXEC_CMD_OUTPUT.to_string(),
             TaskArgValue::Str(final_output),
         );
     } else {
-        start_rs.insert(
+        ctl_action_rs.insert(
             SSH_EXEC_CMD_OUTPUT.to_string(),
-            TaskArgValue::Str(format!("process_running={}", process_ready)),
+            TaskArgValue::Str(format!("check control func return={}", process_ready)),
         );
     }
-    Ok(start_rs)
+    Ok(ctl_action_rs)
 }
 
 pub(crate) fn wait_process_complete<F>(
@@ -131,8 +133,7 @@ where
         let exec_rs = rs.as_ref().unwrap();
         let output_value = exec_rs.get(SSH_EXEC_CMD_OUTPUT).unwrap();
         let output_string = TaskArgValue::into_inner_value::<String>(output_value.clone());
-        info!("CheckStatus output={}", output_string.as_str());
-        process_ready = parser_output(output_string);
+        process_ready = parser_output(output_string.clone());
         if process_ready {
             break;
         } else {

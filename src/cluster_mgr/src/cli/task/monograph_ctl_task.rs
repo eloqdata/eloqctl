@@ -1,12 +1,14 @@
 use crate::cli::config::{DeploymentConfig, DeploymentService};
 use crate::cli::task::ssh_conn::{SSHConn, SSH_CHECK_PROCESS_PID};
-use crate::cli::task::task_base::CmdErr::MonographCtlErr;
 use crate::cli::task::task_base::{
-    ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
+    CmdErr, CmdErr::MonographCtlErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId,
+    TaskInstance,
 };
-use crate::cli::task::task_utils::{check_process_pid, start_service_wait_complete, stop_service};
+use crate::cli::task::task_utils::{
+    check_process_pid, ctl_action_wait_complete, start_service, stop_service,
+};
 use crate::cli::CommandArgs;
-use crate::{get_ctl_cmd_string, ssh_conn_info};
+use crate::{get_ctl_cmd_string, ssh_conn_info, task_return_value};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -14,36 +16,36 @@ use std::collections::HashMap;
 use strum_macros::AsRefStr;
 use tracing::{error, info};
 
-const START_MONOGRAPH: &str = "start";
-const STOP_MONOGRAPH: &str = "stop";
-const RESTART_MONOGRAPH: &str = "restart";
-const MONOGRAPH_STATUS: &str = "status";
-pub(crate) const FORCE_STOP: &str = "force_stop";
-
 #[derive(Clone, Debug, Eq, PartialEq, AsRefStr)]
 pub enum MonographCtlCmd {
+    #[strum(serialize = "start")]
     Start(String),
+    #[strum(serialize = "stop")]
     Stop(String),
+    #[strum(serialize = "force_stop")]
+    ForceStop(String),
+    #[strum(serialize = "status")]
     Status(String),
 }
 
-get_ctl_cmd_string!(MonographCtlCmd, Start, Stop, Status);
+get_ctl_cmd_string!(MonographCtlCmd, Start, Stop, ForceStop, Status);
 
 macro_rules! monograph_cmd {
     ($ctl_cmd:ty,$remote_install_home:expr $(, $cmd_arg:expr)? $(,)?) => {{
         let ctl_cmd = stringify!($ctl_cmd);
+        let mysqld_pid = format!(r#"ps uxwe | grep {}/monographdb-release/install/bin/mysqld | grep -v grep | "#, $remote_install_home);
+        let output_pid = r#"awk '{print $2}'"#;
         match ctl_cmd {
-           $(
+            $(
             "MonographCtlCmd::Start" => MonographCtlCmd::Start(format!(r"mkdir -p {}/monographdb-release/logs && cd {}/monographdb-release/install &&  export LD_LIBRARY_PATH={}/monographdb-release/install/lib:$LD_LIBRARY_PATH; {}/monographdb-release/install/bin/mysqld --defaults-file={}/my_{}.cnf > {}/monographdb-release/logs/mysqld_start.log 2>&1 &",
                $remote_install_home, $remote_install_home, $remote_install_home,
                $remote_install_home,$remote_install_home,$cmd_arg, $remote_install_home)),
-            "MonographCtlCmd::Stop" => {
-               MonographCtlCmd::Stop(format!("kill {}",$cmd_arg))
-            },
             )*
+            "MonographCtlCmd::ForceStop" => MonographCtlCmd::ForceStop(format!("{} {} | xargs kill -9", mysqld_pid, output_pid)),
+            "MonographCtlCmd::Stop" => {
+               MonographCtlCmd::Stop(format!("{} {} | xargs kill", mysqld_pid, output_pid))
+            },
             "MonographCtlCmd::Status" => {
-               let mysqld_pid = format!(r#"echo `ps uxwe | grep {}/monographdb-release/install/bin/mysqld | grep -v grep | "#, $remote_install_home);
-               let output_pid = r#"awk '{print $2}'`"#;
                let ps_cmd = format!(r#"{} {} "#, mysqld_pid, output_pid);
                MonographCtlCmd::Status(ps_cmd)
             },
@@ -54,78 +56,104 @@ macro_rules! monograph_cmd {
     }};
 }
 
+macro_rules! monograph_ctl {
+    ($self:ident, $mono_process_status:expr, {$op:tt, $pid_check_expr:expr}, $ctl_func:expr) => {{
+        if let Ok(ref process_info) = $mono_process_status {
+            let pid = TaskArgValue::into_inner_value::<String>(
+                process_info.get(SSH_CHECK_PROCESS_PID).unwrap().clone(),
+            );
+            if pid $op $pid_check_expr {
+                $ctl_func()
+            } else {
+               Ok($mono_process_status?)
+            }
+        } else {
+            error!(
+                "MonographCtlTask process status failed. check_status_cmd={:?}",
+                $mono_process_status
+            );
+            Err(anyhow!(MonographCtlErr(
+                $self.ctl_cmd.cmd_value(),
+                $mono_process_status.err().unwrap().to_string()
+            )))
+        }
+    }};
+}
+
 #[derive(Debug, Clone)]
 pub struct MonographCtlTask {
     config: DeploymentConfig,
     task_id: TaskId,
+    ctl_cmd: MonographCtlCmd,
 }
 
 impl MonographCtlTask {
     pub fn from_config(
-        cmd: CommandArgs,
+        cmd_arg: CommandArgs,
         config: &DeploymentConfig,
     ) -> IndexMap<TaskId, TaskInstance> {
-        let mut is_force_stop = false;
-        let task_id = match cmd {
-            CommandArgs::Start { cluster: _ } => TaskId {
-                cmd: START_MONOGRAPH.to_string(),
-                task: "monographdb-start".to_string(),
-                host: "".to_string(),
-            },
-            CommandArgs::Stop { cluster: _, force } => {
-                is_force_stop = !force.is_empty() && force.to_lowercase() == "true";
-                TaskId {
-                    cmd: STOP_MONOGRAPH.to_string(),
-                    task: "monographdb-stop".to_string(),
-                    host: "".to_string(),
-                }
-            }
-            CommandArgs::Status { cluster: _ } => TaskId {
-                cmd: MONOGRAPH_STATUS.to_string(),
-                task: "monographdb-status".to_string(),
-                host: "".to_string(),
-            },
-            CommandArgs::Restart { cluster: _ } => TaskId {
-                cmd: RESTART_MONOGRAPH.to_string(),
-                task: "monographdb-restart".to_string(),
-                host: "".to_string(),
-            },
-            _ => {
-                unreachable!()
-            }
-        };
         let conn_user = &config.connection.username;
         let ssh_port = config.connection.ssh_port();
-        let hosts = config.get_host_list(DeploymentService::Monograph);
-        hosts
+        let remote_install_dir = config.install_dir();
+        let mono_hosts = config.get_host_list(DeploymentService::Monograph);
+
+        let is_force_stop = match cmd_arg {
+            CommandArgs::Stop {
+                cluster: _,
+                ref force,
+            } => force.is_some() && force.as_ref().unwrap().as_str() == "true",
+            _ => false,
+        };
+        let cmd_str_ref = cmd_arg.as_ref();
+        mono_hosts
             .iter()
             .map(|host| {
-                let remote_host = TaskHost::Remote {
-                    user: conn_user.clone(),
-                    port: ssh_port as usize,
-                    hosts: host.clone(),
+                let task_id = TaskId {
+                    cmd: cmd_str_ref.to_string(),
+                    task: format!("monographdb-{}", cmd_str_ref),
+                    host: host.to_string(),
                 };
-                let mut special_task_id = task_id.clone();
-                special_task_id.host = host.clone();
-                let task_input = if is_force_stop {
-                    HashMap::from([(FORCE_STOP.to_string(), TaskArgValue::Str("-9".to_string()))])
-                } else {
-                    HashMap::default()
+
+                let ctl_cmd = match cmd_str_ref {
+                    "start" => {
+                        monograph_cmd!(MonographCtlCmd::Start, remote_install_dir, host.clone())
+                    }
+                    "status" => {
+                        monograph_cmd!(MonographCtlCmd::Status, remote_install_dir)
+                    }
+                    "stop" => {
+                        if is_force_stop {
+                            monograph_cmd!(MonographCtlCmd::ForceStop, remote_install_dir)
+                        } else {
+                            monograph_cmd!(MonographCtlCmd::Stop, remote_install_dir)
+                        }
+                    }
+                    _ => {
+                        unreachable!()
+                    }
                 };
                 (
-                    special_task_id.clone(),
+                    task_id.clone(),
                     TaskInstance {
-                        task_input,
-                        task: Box::new(MonographCtlTask::new(config.clone(), special_task_id)),
-                        task_host: remote_host,
+                        task_input: HashMap::default(),
+                        task: Box::new(MonographCtlTask::new(config.clone(), task_id, ctl_cmd)),
+                        task_host: TaskHost::Remote {
+                            user: conn_user.clone(),
+                            port: ssh_port as usize,
+                            hosts: host.to_string(),
+                        },
                     },
                 )
             })
             .collect::<IndexMap<TaskId, TaskInstance>>()
     }
 
-    pub fn new(config: DeploymentConfig, task_id: TaskId) -> Self {
-        Self { config, task_id }
+    pub fn new(config: DeploymentConfig, task_id: TaskId, ctl_cmd: MonographCtlCmd) -> Self {
+        Self {
+            config,
+            task_id,
+            ctl_cmd,
+        }
     }
 
     fn parse_monograph_pid(output: String) -> Option<i32> {
@@ -147,6 +175,7 @@ impl MonographCtlTask {
                 pid = Some(parse_rs);
                 break;
             }
+            println!("MonographCtlTask found MonographDB PID={:?}", pid);
             pid
         }
     }
@@ -171,165 +200,61 @@ impl TaskExecutor for MonographCtlTask {
     async fn execute(
         &self,
         task_host: TaskHost,
-        task_arg: HashMap<String, TaskArgValue>,
+        _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         println!("{} execute.\n", self.task_id.pretty_string());
-        let cmd_str = self.task_id.cmd.as_str();
-        let remote_install_dir = self.config.install_dir();
         ssh_conn_info! {
             self.config.connection.clone(),
             task_host,
             ssh_conn_rs,
             _conn_user,
-            conn_host
+            _conn_host
         }
-        let ssh_conn = &ssh_conn_rs?;
-        let check_process_status = self.monograph_pid(ssh_conn);
-        let check_status = monograph_cmd!(MonographCtlCmd::Status, remote_install_dir);
-        let start_cmd = monograph_cmd!(MonographCtlCmd::Start, remote_install_dir, conn_host);
-        info!(
-            "MonographCtlTask cmd={}, remote_host={:?}",
-            cmd_str, conn_host
-        );
-        let execute_rs = match cmd_str {
-            "start" => {
-                if let Ok(ref pid_opt) = check_process_status {
-                    let pid = TaskArgValue::into_inner_value::<String>(
-                        pid_opt.get(SSH_CHECK_PROCESS_PID).unwrap().clone(),
-                    );
-                    if pid == "NONE" {
-                        start_service_wait_complete(
-                            start_cmd.cmd_value(),
-                            check_status.cmd_value(),
-                            ssh_conn,
-                            |output| -> bool {
-                                MonographCtlTask::parse_monograph_pid(output).is_some()
-                            },
-                        )
-                    } else {
-                        Ok(check_process_status?)
-                    }
-                } else {
-                    error!(
-                        "MonographCtlTask current cmd is Start.Check process status failed. check_status_cmd={:?}",
-                        check_status
-                    );
-                    Err(anyhow!(MonographCtlErr(
-                        check_status.cmd_value(),
-                        check_process_status.err().unwrap().to_string()
-                    )))
-                }
-            }
-            "stop" => {
-                if let Ok(ref pid_opt) = check_process_status {
-                    let pid = TaskArgValue::into_inner_value::<String>(
-                        pid_opt.get(SSH_CHECK_PROCESS_PID).unwrap().clone(),
-                    );
-                    if pid != "NONE" {
-                        let stop_cmd = if let Some(force_stop) = task_arg.get(FORCE_STOP) {
-                            let force_kill =
-                                TaskArgValue::into_inner_value::<String>(force_stop.clone());
-                            let kill_signal = format!("{} {}", force_kill, pid);
-                            monograph_cmd!(MonographCtlCmd::Stop, remote_install_dir, kill_signal)
-                        } else {
-                            monograph_cmd!(MonographCtlCmd::Stop, remote_install_dir, pid)
-                        };
-                        info!("MonographCtlTask stop cmd = {:?}", stop_cmd);
-                        stop_service(stop_cmd.cmd_value(), ssh_conn)
-                    } else {
-                        Ok(check_process_status?)
-                    }
-                } else {
-                    error!(
-                        "MonographCtlTask current cmd is Stop.Check process status failed. check_status_cmd={:?}",
-                        check_status
-                    );
-                    Err(anyhow!(MonographCtlErr(
-                        check_status.cmd_value(),
-                        check_process_status.err().unwrap().to_string()
-                    )))
-                }
-            }
-            "restart" => {
-                if let Ok(pid_opt) = check_process_status {
-                    let pid = TaskArgValue::into_inner_value::<String>(
-                        pid_opt.get(SSH_CHECK_PROCESS_PID).unwrap().clone(),
-                    );
-                    if pid != "NONE" {
-                        let stop_cmd =
-                            monograph_cmd!(MonographCtlCmd::Stop, remote_install_dir, pid);
-                        stop_service(stop_cmd.cmd_value(), ssh_conn)?;
-
-                        start_service_wait_complete(
-                            start_cmd.cmd_value(),
-                            check_status.cmd_value(),
-                            ssh_conn,
-                            |output| -> bool {
-                                MonographCtlTask::parse_monograph_pid(output).is_some()
-                            },
-                        )
-                    } else {
-                        start_service_wait_complete(
-                            start_cmd.cmd_value(),
-                            check_status.cmd_value(),
-                            ssh_conn,
-                            |output| -> bool {
-                                MonographCtlTask::parse_monograph_pid(output).is_some()
-                            },
-                        )
-                    }
-                } else {
-                    error!(
-                        "MonographCtlTask current cmd is Restart. check process status failed. check_status_cmd={:?}",
-                        check_status
-                    );
-                    Err(anyhow!(MonographCtlErr(
-                        check_status.cmd_value(),
-                        check_process_status.err().unwrap().to_string()
-                    )))
-                }
-            }
+        let ssh_conn = ssh_conn_rs?;
+        let remote_install_dir = self.config.install_dir();
+        let check_status_cmd =
+            monograph_cmd!(MonographCtlCmd::Status, remote_install_dir).cmd_value();
+        let check_process_status = self.monograph_pid(&ssh_conn);
+        let ctl_cmd_ref = self.ctl_cmd.as_ref();
+        let mono_ctl_rs = match ctl_cmd_ref {
             "status" => {
-                if let Ok(pid_opt) = check_process_status {
-                    let pid = TaskArgValue::into_inner_value::<String>(
-                        pid_opt.get(SSH_CHECK_PROCESS_PID).unwrap().clone(),
-                    );
-                    if pid != "NONE" {
-                        println!(
-                            "MonographCtlTask found MonographDB process={:?} in {}",
-                            pid, conn_host
-                        );
-                    } else {
-                        println!(
-                            "MonographCtlTask not found MonographDB process in {}",
-                            conn_host
-                        );
-                    };
-
-                    Ok(pid_opt)
-                } else {
-                    error!(
-                        "MonographCtlTask current cmd is Status. check process status failed. check_status_cmd={:?}",
-                        check_status
-                    );
-                    Err(anyhow!(MonographCtlErr(
-                        check_status.cmd_value(),
-                        check_process_status.err().unwrap().to_string()
-                    )))
-                }
+                monograph_ctl!(self, check_process_status, {==, "NONE"}, || -> anyhow::Result<ExecutionValue> {
+                    self.monograph_pid(&ssh_conn)
+                })
             }
-            _ => unreachable!(),
+            "stop" | "force_stop" => {
+                let stop_cmd = self.ctl_cmd.cmd_value();
+                monograph_ctl!(self, check_process_status, {!=, "NONE"}, || -> anyhow::Result<ExecutionValue> {
+                    ctl_action_wait_complete(stop_cmd, check_status_cmd, &ssh_conn,
+                        |stop_cmd, ssh_conn| -> anyhow::Result<ExecutionValue> { stop_service(stop_cmd, ssh_conn)},
+                        |output| -> bool {
+                           MonographCtlTask::parse_monograph_pid(output).is_none()
+                        },
+                    )
+                })
+            }
+            "start" => {
+                let start_cmd = self.ctl_cmd.cmd_value();
+                monograph_ctl!(self, check_process_status, {==, "NONE"}, || -> anyhow::Result<ExecutionValue> {
+                    ctl_action_wait_complete(start_cmd,check_status_cmd,&ssh_conn,
+                                       |start_cmd, ssh_conn| -> anyhow::Result<ExecutionValue> { start_service(start_cmd, ssh_conn)},
+                                       |output| -> bool { MonographCtlTask::parse_monograph_pid(output).is_some() },
+
+                    )
+                })
+            }
+            _ => {
+                unreachable!()
+            }
         };
 
-        if let Ok(status) = execute_rs {
-            Ok(Some(status))
-        } else {
-            let err_msg = execute_rs.err().unwrap().to_string();
-            error!(
-                "MonographCtlTask execute cmd {} failed. {}",
-                cmd_str, err_msg
-            );
-            Err(anyhow!(MonographCtlErr(cmd_str.to_string(), err_msg)))
-        }
+        let ctl_rtn_value = mono_ctl_rs?;
+        task_return_value!(
+            ctl_rtn_value,
+            |status_code: usize| -> CmdErr {
+                CmdErr::MonographCtlErr(self.ctl_cmd.cmd_value(), status_code.to_string())
+            },
+            "MonographCtlTask"
+        )
     }
 }

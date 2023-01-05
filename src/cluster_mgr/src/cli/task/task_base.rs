@@ -354,6 +354,10 @@ impl TaskMgr {
             .tasks(cmd_args, config.clone(), success_task)
             .unwrap();
 
+        println!(
+            "TaskMgr start current barrier={:?}",
+            tasks_execution.barrier
+        );
         self.task_controller
             .run_all_tasks(tasks_execution, config)
             .await

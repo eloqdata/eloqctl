@@ -61,7 +61,7 @@ pub enum CommandArgs {
         #[arg(long, value_name = "CLUSTER NAME")]
         cluster: String,
         #[arg(short, long, value_name = "FORCE STOP")]
-        force: String,
+        force: Option<String>,
     },
     #[strum(serialize = "restart")]
     /// Restart the MonographDB cluster with the specified cluster name. For example: ./cluster_mgr restart --cluster $CLUSTER_NAME
