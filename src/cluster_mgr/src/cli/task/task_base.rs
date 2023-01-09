@@ -89,20 +89,15 @@ task_value_into_impl! {
 #[macro_export]
 macro_rules! task_return_value {
     ($task_result:expr, $task_err_closure:expr, $task_name:expr $(,$return_value:expr)? ) => {{
-        use $crate::cli::task::ssh_conn::SSH_EXEC_CMD;
+        // use $crate::cli::task::ssh_conn::SSH_EXEC_CMD;
         use $crate::cli::task::ssh_conn::SSH_EXEC_CMD_STATUS;
         let task_rs = $task_result.clone();
         let task_status = task_rs.get(SSH_EXEC_CMD_STATUS).unwrap();
         let status_code = TaskArgValue::into_inner_value::<usize>(task_status.clone());
         if status_code != 0 {
-            let cmd = TaskArgValue::into_inner_value::<String>(
-                task_rs.get(SSH_EXEC_CMD).unwrap().clone(),
-            );
-            println!(
-                "{} execution failure cmd={}, status_code={}",
-                $task_name, cmd, status_code
-            );
-            return Err(anyhow::anyhow!($task_err_closure(status_code)));
+            let cmd_err = $task_err_closure(status_code);
+            println!("{:?}", cmd_err);
+            return Err(anyhow::anyhow!(cmd_err));
         } else {
             return Ok(Some(task_rs));
         }

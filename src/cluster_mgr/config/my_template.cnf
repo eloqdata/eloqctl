@@ -5,6 +5,7 @@ datadir=_INSTALL_DIR/datafarm
 lc_messages_dir=_INSTALL_DIR/share
 plugin_dir=_INSTALL_DIR/plugin
 max_connections=500
+core_file
 skip-log-bin
 port=3300
 socket=/tmp/mysqld3300.sock

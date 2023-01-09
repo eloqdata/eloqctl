@@ -105,8 +105,8 @@ impl TaskExecutor for UnpackFileTask {
             let target_dir = format!("{}/apache-cassandra", install_dir);
             (
                 format!(
-                    r#"mkdir -p {} && rm -rf {} && tar -zxvf {} -C {} && mv {} {}"#,
-                    install_dir, target_dir, remote_tar, install_dir, extract_file_name, target_dir
+                    r#"mkdir -p {} && tar -zxvf {} -C {}; mv {} {}"#,
+                    install_dir, remote_tar, install_dir, extract_file_name, target_dir
                 ),
                 target_dir,
             )
@@ -114,7 +114,6 @@ impl TaskExecutor for UnpackFileTask {
         let unpack_cmd = unpack_pair.0;
         info!("UnpackFileTask cmd={}", unpack_cmd.as_str());
         let task_rs = ssh_conn?.run_cmd(unpack_cmd.clone(), false)?;
-
         task_return_value!(
             task_rs,
             |status_code: usize| -> CmdErr {

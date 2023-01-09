@@ -36,3 +36,4 @@ tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["alloc", "ansi", "env-filter", "fmt", "matchers", "once_cell", "parking_lot", "regex", "registry", "sharded-slab", "smallvec", "std", "thread_local", "time", "tracing", "tracing-log"] }
 url = { version = "2", features = ["serde"] }
+

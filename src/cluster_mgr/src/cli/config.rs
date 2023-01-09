@@ -55,6 +55,7 @@ pub enum StorageProvider {
     DynamoDB,
 }
 
+#[derive(Debug, Clone)]
 pub enum DownloadUrl {
     Local(String),
     Remote(String),
@@ -65,6 +66,26 @@ impl DownloadUrl {
         match self {
             DownloadUrl::Local(_url) => true,
             DownloadUrl::Remote(_url) => false,
+        }
+    }
+
+    pub fn file_name(&self) -> String {
+        let url_string = match self {
+            DownloadUrl::Local(local_url) => local_url.to_string(),
+            DownloadUrl::Remote(remote_url) => remote_url.to_string(),
+        };
+        let url = Url::parse(url_string.as_str()).unwrap();
+        let path_segments = url.path_segments().unwrap();
+        path_segments.last().unwrap().to_string()
+    }
+
+    pub fn get_url(&self) -> String {
+        match self {
+            DownloadUrl::Local(url_string) => {
+                let url = Url::parse(url_string.as_str()).unwrap();
+                url.path().to_string()
+            }
+            DownloadUrl::Remote(url) => url.to_string(),
         }
     }
 
@@ -683,7 +704,7 @@ pub fn load_remote_env(path: Option<String>) -> anyhow::Result<HashMap<String, S
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::config::{load_remote_env, DeploymentConfig, CONFIG_PATH_DIR};
+    use crate::cli::config::{load_remote_env, DeploymentConfig, DownloadUrl, CONFIG_PATH_DIR};
     use crate::cli::CASSANDRA_CONF_TEMPLATE;
     use serde_yaml::Value;
     use std::collections::HashMap;
@@ -807,5 +828,17 @@ mod tests {
         );
         let del_config_path = fs::remove_file(config_path.as_path());
         assert!(del_config_path.is_ok());
+    }
+
+    #[test]
+    pub fn test_download_url_enum() {
+        let url_string = "file://home/ubuntu/monographdb-release-bin.tar.gz";
+        let url = DownloadUrl::from_url_str(url_string);
+        assert!(url.is_ok());
+        let mono_local_url = url.unwrap();
+        assert!(mono_local_url.is_local());
+        println!("{}", mono_local_url.get_url());
+        let mono_file_name = mono_local_url.file_name();
+        println!("mono_file_name {:?}", mono_file_name);
     }
 }

@@ -39,7 +39,7 @@ impl DownloadFromRemoteTask {
         if !mono_download_url.is_local() {
             download_url_vec.push(mono_download_url_string);
         }
-        let mut download_url_vec = vec![deployment_cloned.install_image.clone()];
+
         if let Some(cassandra) = &config.deployment.storage_service.cassandra {
             let cass_download_url_string = &cassandra.download_url;
             let cass_download_url = DownloadUrl::from_url_str(cass_download_url_string.as_str())?;

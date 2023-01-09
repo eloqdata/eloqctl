@@ -13,6 +13,7 @@ use std::process::Command;
 use tracing::error;
 
 const SOURCE_DIR: &str = "_source_dir";
+const DEST_DIR: &str = "_dest_dir";
 
 #[derive(Clone, Debug)]
 pub struct LocalCopyTask {
@@ -20,7 +21,7 @@ pub struct LocalCopyTask {
 }
 
 macro_rules! build_copy_task_instances {
-    ($task_instance:expr,  $download_url:expr, $task_name:expr) => {
+    ($task_instance:expr,  $source_url:expr, $dest_url:expr, $task_name:expr) => {
         let task_id = TaskId {
             cmd: "deploy".to_string(),
             task: $task_name,
@@ -30,11 +31,11 @@ macro_rules! build_copy_task_instances {
         $task_instance.insert(
             task_id.clone(),
             TaskInstance {
-                task_input: HashMap::from([(
-                    SOURCE_DIR.to_string(),
-                    TaskArgValue::Str($download_url.to_string()),
-                )]),
-                task: Box::new(LocalCopyTask::new( task_id)),
+                task_input: HashMap::from([
+                    (SOURCE_DIR.to_string(), TaskArgValue::Str($source_url)),
+                    (DEST_DIR.to_string(), TaskArgValue::Str($dest_url)),
+                ]),
+                task: Box::new(LocalCopyTask::new(task_id)),
                 task_host: TaskHost::Local,
             },
         )
@@ -52,7 +53,8 @@ impl LocalCopyTask {
         if mono_download_url.is_local() {
             build_copy_task_instances!(
                 local_copy_task_instance,
-                mono_install_image.clone(),
+                mono_download_url.get_url(),
+                mono_download_url.file_name(),
                 "copy_monograph".to_string()
             );
         }
@@ -63,7 +65,8 @@ impl LocalCopyTask {
             if cassandra_download.is_local() {
                 build_copy_task_instances!(
                     local_copy_task_instance,
-                    cassandra_download_string,
+                    cassandra_download.get_url(),
+                    cassandra_download.file_name(),
                     "copy_cassandra".to_string()
                 );
             }
@@ -71,7 +74,7 @@ impl LocalCopyTask {
         Ok(local_copy_task_instance)
     }
 
-    pub fn new( task_id: TaskId) -> Self {
+    pub fn new(task_id: TaskId) -> Self {
         Self { task_id }
     }
 }
@@ -98,11 +101,10 @@ impl TaskExecutor for LocalCopyTask {
             Err(anyhow!(CmdErr::CopyTaskErr(source_dir_string)))
         } else {
             let download_dir = download_dir();
-            let dest_file_path = download_dir
-                .join(source_dir_string.clone())
-                .to_str()
-                .unwrap()
-                .to_string();
+
+            let dest_file =
+                TaskArgValue::into_inner_value::<String>(task_arg.get(DEST_DIR).unwrap().clone());
+            let dest_file_path = download_dir.join(dest_file).to_str().unwrap().to_string();
             let mut copy_cmd = Command::new("cp");
             let copy_cmd_args = if source_path.is_dir() {
                 vec!["-r".to_string(), source_dir_string, dest_file_path]
