@@ -246,6 +246,21 @@ impl UploadTask {
     pub fn new(config: DeploymentConfig, task_id: TaskId) -> Self {
         Self { config, task_id }
     }
+
+    pub fn create_remote_directory(&self, remote_task_host: TaskHost) -> anyhow::Result<()> {
+        ssh_conn_info! {
+            self.config.connection.clone(),
+            remote_task_host,
+            ssh_conn_rs,
+            _conn_user,
+            _conn_host
+        }
+        let mkdir = format!("mkdir -p {}", self.config.install_dir());
+        let ssh_conn = ssh_conn_rs?;
+        let mkdir_output = ssh_conn.run_cmd_sync_output(mkdir)?;
+        info!("UploadTask create remote dir complete={:?}", mkdir_output);
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -260,6 +275,7 @@ impl TaskExecutor for UploadTask {
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         println!("{} execute.\n", self.task_id.pretty_string());
+        self.create_remote_directory(remote_task_host.clone())?;
 
         let source_ip_rs = local_ip_address::local_ip()?;
         let local_ip_addr = source_ip_rs.to_string();
@@ -274,16 +290,18 @@ impl TaskExecutor for UploadTask {
         ssh_conn_info! {
             self.config.connection.clone(),
             source_task_host,
-            ssh_conn,
+            ssh_conn_rs,
             _conn_user,
             _conn_host
         }
+        let remote_install_dir = self.config.install_dir();
+        let ssh_conn = ssh_conn_rs?;
+
         let (remote_user, port, remote_host) = remote_task_host.ssh_conn_tuple();
         let source_path_str =
             TaskArgValue::into_inner_value::<String>(task_input.get(SOURCE_PATH).unwrap().clone());
 
         let source_path_buf = PathBuf::from(source_path_str.as_str());
-        let remote_install_dir = self.config.install_dir();
 
         let dest_file_name = if let Some(dest_file_str) = task_input.get(DEST_PATH) {
             TaskArgValue::into_inner_value::<String>(dest_file_str.clone())
@@ -318,7 +336,7 @@ impl TaskExecutor for UploadTask {
         );
         info!("UploadTask cmd={}", scp_cmd);
         let err_msg = format!("cmd={},source_path={}", scp_cmd, source_path_str);
-        let task_rs = ssh_conn?.run_cmd(scp_cmd, false)?;
+        let task_rs = ssh_conn.run_cmd_sync_output(scp_cmd)?;
         task_return_value!(
             task_rs,
             |status_code: usize| -> CmdErr { CmdErr::UploadErr(err_msg, status_code.to_string()) },

@@ -5,9 +5,10 @@ datadir=_INSTALL_DIR/datafarm
 lc_messages_dir=_INSTALL_DIR/share
 plugin_dir=_INSTALL_DIR/plugin
 max_connections=500
+core_file
 skip-log-bin
-port=4007
-socket=/tmp/mysqld4007.sock
+port=3300
+socket=/tmp/mysqld3300.sock
 plugin_load_add=ha_monograph
 monograph
 monograph_cass_hosts=127.0.0.1
@@ -18,3 +19,7 @@ monograph_cass_password=cassandra
 monograph_local_ip=127.0.0.1:5000
 monograph_ip_list=127.0.0.1:5000
 #monograph_metrics_port=18081
+monograph_enable_mvcc=off
+transaction_isolation=READ-COMMITTED
+monograph_cc_protocol=OCC
+monograph_node_memory_limit_mb=4000

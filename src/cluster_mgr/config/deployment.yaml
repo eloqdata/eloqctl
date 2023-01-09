@@ -2,14 +2,13 @@ connection:
   username: "mono"
   auth_type: "keypair"
   auth:
-    password: "xxx"
-    keypair: "XXXX"
+    keypair: "/home/$USER/.ssh/id_rsa"
 deployment:
-  install_image: "http://download_url/monographdb-release.tar.gz"
+  install_image: "file:///home/ubuntu/monographdb-release.tar.gz"
   cluster_name: "mono-poc"
   install_dir: "/data1/opt"
   port:
-    mysql_port: 5007
+    mysql_port: 3300
     monograph_port:
       start: 8100
       end: 8200
@@ -22,12 +21,8 @@ deployment:
       storage_cluster: "mono-cass-cluster"
       host:
         - localhost
-    dynamodb:
-      access_key_id: "",
-      secret_key: ""
-      region: "XXXX",
-      endpoint: "";
-#  monitor:
-#    host:
-#      - 10.10.10.10
-#    grafana_port: 3000
+#    dynamodb:
+#      access_key_id: "",
+#      secret_key: ""
+#      region: "XXXX",
+#      endpoint: "";

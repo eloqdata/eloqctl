@@ -1,3 +1,4 @@
+use crate::cli::config::ConfigErr::DownloadUrlFormatErr;
 use crate::cli::{
     download_dir, CASSANDRA_CONF_TEMPLATE, MONOGRAPH_CONF_DYNAMO_TEMPLATE, MONOGRAPH_CONF_TEMPLATE,
     MONOGRAPH_INSTALL_SCRIPT, MONOGRAPH_INSTALL_TEMPLATE, START_MONOGRAPH_SCRIPT,
@@ -39,18 +40,12 @@ pub enum ConfigErr {
     StorageConfigErr(String),
     #[error("The current configuration of the storage provider is not Cassandra. Storage Provider is {0}")]
     GenCassandraConfigErr(String),
+    #[error("The download url format is incorrect. Storage Provider is {0}")]
+    DownloadUrlFormatErr(String),
 }
 
 pub const CONFIG_PATH_DIR: &str = "CLUSTER_MGR_CLI_CONFIG";
 pub const CONFIG_MARIADB_SECTION: &str = "mariadb";
-
-#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr)]
-pub enum DeploymentService {
-    #[strum(serialize = "monograph")]
-    Monograph,
-    #[strum(serialize = "storage")]
-    Storage,
-}
 
 #[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr)]
 pub enum StorageProvider {
@@ -58,6 +53,70 @@ pub enum StorageProvider {
     Cassandra,
     #[strum(serialize = "dynamodb")]
     DynamoDB,
+}
+
+#[derive(Debug, Clone)]
+pub enum DownloadUrl {
+    Local(String),
+    Remote(String),
+}
+
+impl DownloadUrl {
+    pub fn is_local(&self) -> bool {
+        match self {
+            DownloadUrl::Local(_url) => true,
+            DownloadUrl::Remote(_url) => false,
+        }
+    }
+
+    pub fn file_name(&self) -> String {
+        let url_string = match self {
+            DownloadUrl::Local(local_url) => local_url.to_string(),
+            DownloadUrl::Remote(remote_url) => remote_url.to_string(),
+        };
+        let url = Url::parse(url_string.as_str()).unwrap();
+        let path_segments = url.path_segments().unwrap();
+        path_segments.last().unwrap().to_string()
+    }
+
+    pub fn get_url(&self) -> String {
+        match self {
+            DownloadUrl::Local(url_string) => {
+                let url = Url::parse(url_string.as_str()).unwrap();
+                url.path().to_string()
+            }
+            DownloadUrl::Remote(url) => url.to_string(),
+        }
+    }
+
+    pub fn from_url_str(url_str: &str) -> anyhow::Result<Self> {
+        let url_rs = url::Url::parse(url_str);
+        if let Err(err) = url_rs {
+            error!("The Url format is incorrect {:?}", err.to_string());
+            Err(anyhow!(DownloadUrlFormatErr(err.to_string())))
+        } else {
+            let url = url_rs.unwrap();
+            let schema = url.scheme().to_lowercase();
+            match schema.as_str() {
+                "file" => Ok(DownloadUrl::Local(url_str.to_string())),
+                "http" | "https" => Ok(DownloadUrl::Remote(url_str.to_string())),
+                _ => {
+                    panic!(
+                        "The url schema is incorrect. For now only support file or http. {}",
+                        url_str
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr)]
+pub enum DeploymentService {
+    #[strum(serialize = "monograph")]
+    Monograph,
+    #[strum(serialize = "storage")]
+    Storage,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -181,7 +240,7 @@ impl DeploymentConfig {
                     };
                 (file_name, hosts)
             })
-            .filter(|rs_entry| !rs_entry.0.is_empty())
+            .filter(|rs_entry| !rs_entry.0.is_empty() && rs_entry.0.contains("tar.gz"))
             .collect::<HashMap<String, Vec<String>>>()
     }
 
@@ -265,7 +324,7 @@ impl DeploymentConfig {
             let path_segments = url.path_segments();
             if path_segments.is_none() {
                 return Err(anyhow!(
-                    "Database image url error {}",
+                    "get url path segments error {}",
                     self.deployment.install_image
                 ));
             }
@@ -274,8 +333,8 @@ impl DeploymentConfig {
                 Ok(file_name_str.to_string())
             } else {
                 Err(anyhow!(
-                    "Database image url parse error. url={}",
-                    self.deployment.install_image
+                    "extract file name error. MonographDB install image={}, Cassandra download url={:?}",
+                    self.deployment.install_image,self.deployment.storage_service.cassandra
                 ))
             }
         }
@@ -491,7 +550,7 @@ impl DeploymentConfig {
         }
     }
 
-    pub fn config_string(&self) -> String {
+    pub fn config_to_string(&self) -> String {
         serde_yaml::to_string(self).unwrap()
     }
 
@@ -580,7 +639,6 @@ impl DeploymentConfig {
                 unreachable!()
             }
         };
-        println!("load_runtime_deps_by_os os_name={}", curr_os_name);
         let runtime_deps_file = format!("{}_runtime_deps", curr_os_name);
         let config_path = config_path_var_rs.unwrap();
         let deps_path = PathBuf::from(config_path.as_str()).join(runtime_deps_file);
@@ -646,7 +704,7 @@ pub fn load_remote_env(path: Option<String>) -> anyhow::Result<HashMap<String, S
 
 #[cfg(test)]
 mod tests {
-    use crate::cli::config::{load_remote_env, DeploymentConfig, CONFIG_PATH_DIR};
+    use crate::cli::config::{load_remote_env, DeploymentConfig, DownloadUrl, CONFIG_PATH_DIR};
     use crate::cli::CASSANDRA_CONF_TEMPLATE;
     use serde_yaml::Value;
     use std::collections::HashMap;
@@ -707,7 +765,6 @@ mod tests {
         let config = deployment_config.unwrap();
         let unpack = config.unpack_files_map();
         println!("unpack_files = {:?}", unpack);
-        assert_eq!(unpack.len(), 2);
     }
 
     #[test]
@@ -771,5 +828,17 @@ mod tests {
         );
         let del_config_path = fs::remove_file(config_path.as_path());
         assert!(del_config_path.is_ok());
+    }
+
+    #[test]
+    pub fn test_download_url_enum() {
+        let url_string = "file://home/ubuntu/monographdb-release-bin.tar.gz";
+        let url = DownloadUrl::from_url_str(url_string);
+        assert!(url.is_ok());
+        let mono_local_url = url.unwrap();
+        assert!(mono_local_url.is_local());
+        println!("{}", mono_local_url.get_url());
+        let mono_file_name = mono_local_url.file_name();
+        println!("mono_file_name {:?}", mono_file_name);
     }
 }

@@ -15,7 +15,8 @@ Monograph Waiter is a development and management tool for MonographDB that inclu
 
 - If you do not have Rust installed, please follow the command below to install it.
 
-> NOTE: For Ubuntu, you need to install pkg-config and libssl-dev. run sudo apt install pkg-config libssl-dev
+> NOTE: For Ubuntu, you need to install compile-time dependencies for rust. run sudo apt install build-essential
+> pkg-config libssl-dev
 
 ```shell
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -35,13 +36,6 @@ cargo build --release
 cargo make --no-workspace  --makefile Makefile.toml  cluster_mgr_pkg/devtools_pkg
 ```
 
-- Run
-
-```shell
-cd mono_waiter_dist
-./monograph_waiter --config $PWD/config
-```
-
 ## Features
 
 ### Devtools
@@ -59,4 +53,4 @@ cd mono_waiter_dist
 ## How to use
 
 Please look at the documentation for more information about the design, implementation, and
-commands.  [devtools](./doc/command.md) or [cluster_mgr](./doc/cluster_mgr.md)
+commands.  [devtools](./doc/devtools_cmd.md) or [cluster_mgr](./doc/cluster_mgr.md)

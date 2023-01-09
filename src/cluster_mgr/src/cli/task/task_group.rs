@@ -1,6 +1,6 @@
 use crate::cli::config::{DeploymentConfig, DeploymentService, StorageProvider};
 use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
-use crate::cli::task::download_task::{DownloadTask, ALL_DOWNLOAD_TASKS};
+use crate::cli::task::download_task::{DownloadFromRemoteTask, ALL_DOWNLOAD_TASKS};
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::monograph_ctl_task::MonographCtlTask;
 use crate::cli::task::monograph_install_task::MonographInstall;
@@ -8,6 +8,7 @@ use crate::cli::task::runtime_deps_install::RuntimeDepsInstallation;
 use crate::cli::task::task_base::{TaskHost, TaskId, TaskInstance};
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload_task::{UploadTask, ALL_UPLOAD_TASKS};
+use crate::cli::task::local_copy_task::LocalCopyTask;
 use crate::cli::CommandArgs;
 use crate::state::task_status_operation::TaskStatusEntity;
 use dyn_clone::DynClone;
@@ -146,6 +147,7 @@ impl TaskGroup for DeploymentTaskGroup {
         } else {
             vec![]
         };
+
         let download_tasks = ALL_DOWNLOAD_TASKS
             .iter()
             .copied()
@@ -153,7 +155,7 @@ impl TaskGroup for DeploymentTaskGroup {
             .collect_vec();
 
         let download_execution = deploy_task_match!(
-            DownloadTask,
+            DownloadFromRemoteTask,
             download_tasks,
             all_success_tasks.clone(),
             &config
@@ -178,13 +180,16 @@ impl TaskGroup for DeploymentTaskGroup {
         let unpack_execution =
             deploy_task_match!(UnpackFileTask, unpack_tasks, all_success_tasks, &config);
 
+        let mut copy_or_download_task_instances = LocalCopyTask::form_config(&config)?;
+        copy_or_download_task_instances.extend(download_execution.into_iter());
+
         let barrier = vec![
-            download_execution.len(),
+            copy_or_download_task_instances.len(),
             upload_execution.len(),
             unpack_execution.len(),
         ];
         let mut executable = IndexMap::new();
-        executable.extend(download_execution.into_iter());
+        executable.extend(copy_or_download_task_instances.into_iter());
         executable.extend(upload_execution.into_iter());
         executable.extend(unpack_execution.into_iter());
 

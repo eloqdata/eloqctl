@@ -113,7 +113,7 @@ impl CommandExecutor {
                     .collect_vec()
                     .join(";");
 
-                let config_string = config.config_string();
+                let config_string = config.config_to_string();
                 info!(
                     "CmdExecutor save DeploymentConfig {} {}",
                     config_string, all_hosts

@@ -89,16 +89,15 @@ task_value_into_impl! {
 #[macro_export]
 macro_rules! task_return_value {
     ($task_result:expr, $task_err_closure:expr, $task_name:expr $(,$return_value:expr)? ) => {{
+        // use $crate::cli::task::ssh_conn::SSH_EXEC_CMD;
         use $crate::cli::task::ssh_conn::SSH_EXEC_CMD_STATUS;
         let task_rs = $task_result.clone();
         let task_status = task_rs.get(SSH_EXEC_CMD_STATUS).unwrap();
         let status_code = TaskArgValue::into_inner_value::<usize>(task_status.clone());
         if status_code != 0 {
-            println!(
-                "{} execution failure status_code={}",
-                $task_name, status_code
-            );
-            return Err(anyhow::anyhow!($task_err_closure(status_code)));
+            let cmd_err = $task_err_closure(status_code);
+            println!("{:?}", cmd_err);
+            return Err(anyhow::anyhow!(cmd_err));
         } else {
             return Ok(Some(task_rs));
         }
@@ -129,6 +128,8 @@ pub enum CmdErr {
     UnpackErr(String, String),
     #[error("Error interacting with cassandra. error causes {0}")]
     CassandraOpErr(String),
+    #[error("Error executing LocalCopyTask; please check if the source path exists path {0}")]
+    CopyTaskErr(String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -375,7 +376,7 @@ mod tests {
         let task_id = TaskId {
             cmd: "deploy".to_string(),
             task: "apache-cassandra-4.1-rc1-bin.tar.gz_unpack".to_string(),
-            host: "172.31.24.222".to_string(),
+            host: "172.0.0.1".to_string(),
         };
 
         let table = task_id.pretty_string();

@@ -30,25 +30,24 @@
 ### Command list
 
 ```text
-Usage: cluster_mgr [OPTIONS] [COMMAND]
-
 Commands:
   deploy
-          Deploy the MonographDB cluster by specifying the cluster_topology.yaml file. For example: ./cluster_mgr deploy --topology-file  $DEPLOYMENT.YML
+          Deploy the MonographDB cluster by specifying the cluster_topology.yaml file. For example: ./cluster_mgr deploy --topology-file  ${PWD}/config/$DEPLOYMENT.YML
   install
-          Install MonographDB to generate catalog. You need to specify the cluster name. For example: `./cluster_mgr install --cluster $CLUSTER_NAME`
+          Install MonographDB to generate catalog. You need to specify the cluster name.\n For example: ./cluster_mgr install --cluster $CLUSTER_NAME
   start
           Start the MonographDB cluster with the specified cluster name. For example: ./cluster_mgr start  --cluster $CLUSTER_NAME
   stop
-          Stop the MonographDB cluster with the specified cluster name. For example: ./cluster_mgr stop --cluster $CLUSTER_NAME
+          Stop the MonographDB cluster with the specified cluster name. For example: ./cluster_mgr stop --cluster $CLUSTER_NAME --force true/false
   restart
           Restart the MonographDB cluster with the specified cluster name. For example: ./cluster_mgr restart --cluster $CLUSTER_NAME
   exec
-          Execute custom shell commands. For example: ./cluster_mgr exec --command "ls -la /data1/" --cluster $$CLUSTER_NAME
+          Execute custom shell commands. For example: ./cluster_mgr exec --command "ls -la /data1/" --cluster $CLUSTER_NAME
   status
           Check MonographDB cluster status. For example: ./cluster_mgr status -cluster $CLUSTER_NAME
+  run-deps
+          Install MonographDB runtime dependencies. For example: ./cluster_mgr run-deps --topology-file $DEPLOYMENT.YAML
   help
           Print this message or the help of the given subcommand(s)
-
 ```
 
