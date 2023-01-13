@@ -1,8 +1,10 @@
 use crate::cli::config::DeploymentConfig;
+use crate::cli::ssh::SSHCommandOption::CollectOutput;
+use crate::cli::ssh::SSHSession;
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::{ssh_conn_info, task_return_value};
+use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -96,15 +98,14 @@ impl TaskExecutor for RuntimeDepsInstallation {
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         println!("{} execute.\n", self.task_id.pretty_string());
-        ssh_conn_info! {
-            self.config.connection.clone(),
-            task_host,
-            ssh_conn_rs,
-            _conn_user,
-            _conn_host
-        }
-        let ssh_conn = ssh_conn_rs?;
-        let install_dep_cmd_rs = ssh_conn.run_cmd_sync_output(self.install_dep_cmd.clone())?;
+        let ssh_session =
+            SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
+                .await?;
+        let install_dep_cmd_rs = ssh_session
+            .command(self.install_dep_cmd.clone().as_str(), CollectOutput)
+            .await?;
+
+        ssh_session.close().await?;
         task_return_value!(
             install_dep_cmd_rs,
             |status_code: usize| -> CmdErr {

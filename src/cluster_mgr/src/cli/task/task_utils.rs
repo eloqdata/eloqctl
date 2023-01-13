@@ -1,7 +1,9 @@
-use crate::cli::task::ssh_conn::{
-    SSHConn, SSH_CHECK_PROCESS_PID, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS,
-};
+use crate::cli::ssh::SSHCommandOption::CollectOutput;
+use crate::cli::ssh::SSHSession;
+use std::future::Future;
+
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue};
+use crate::cli::{CMD_OUTPUT, CMD_STATUS};
 use crate::state::state_base::StateOperation;
 use crate::state::state_mgr::{STATE_MGR, TASK_STATUS_STATE};
 use crate::state::task_status_operation::{TaskStatusEntity, TaskStatusOperation};
@@ -9,112 +11,103 @@ use anyhow::anyhow;
 use std::time::Duration;
 use tracing::{error, info};
 
-pub(crate) fn stop_service(stop_cmd: String, ssh_conn: &SSHConn) -> anyhow::Result<ExecutionValue> {
-    let stop_status = ssh_conn.run_cmd(stop_cmd.clone(), false)?;
-    info!("Stop cmd={},status_code={:?}", stop_cmd, stop_status,);
-    Ok(stop_status)
-}
+pub(crate) const PROCESS_PID: &str = "_process_pid_";
 
-pub(crate) fn check_process_pid<F>(
+pub(crate) async fn check_process_pid<F>(
     check_cmd: String,
-    ssh_conn: &SSHConn,
+    ssh_conn: SSHSession,
     parser_output: F,
 ) -> anyhow::Result<ExecutionValue>
 where
     F: Fn(String) -> Option<i32>,
 {
-    let mut cmd_exec_rs = ssh_conn.run_cmd_sync_output(check_cmd.clone())?;
-    let cmd_status = cmd_exec_rs.get(SSH_EXEC_CMD_STATUS).unwrap();
-
+    let mut cmd_exec_rs = ssh_conn.command(check_cmd.as_str(), CollectOutput).await?;
+    let cmd_status = cmd_exec_rs.get(CMD_STATUS).unwrap();
     if 0 != TaskArgValue::into_inner_value::<usize>(cmd_status.clone()) {
         error!("check_process_pid fails status={:?}", cmd_status);
         return Err(anyhow!("Cmd {} execution fails", check_cmd));
     }
-    let cmd_output_value = cmd_exec_rs.get(SSH_EXEC_CMD_OUTPUT).unwrap();
+    let cmd_output_value = cmd_exec_rs.get(CMD_OUTPUT).unwrap();
 
     let output = TaskArgValue::into_inner_value::<String>(cmd_output_value.clone());
     info!("check_process_pid cmd={},output={}", check_cmd, output);
 
     if let Some(pid_num) = parser_output(output) {
         cmd_exec_rs.insert(
-            SSH_CHECK_PROCESS_PID.to_string(),
+            PROCESS_PID.to_string(),
             TaskArgValue::Str(pid_num.to_string()),
         );
     } else {
         cmd_exec_rs.insert(
-            SSH_CHECK_PROCESS_PID.to_string(),
+            PROCESS_PID.to_string(),
             TaskArgValue::Str("NONE".to_string()),
         );
     }
     Ok(cmd_exec_rs)
 }
 
-pub(crate) fn start_service(
-    start_cmd: String,
-    ssh_conn: &SSHConn,
-) -> anyhow::Result<ExecutionValue> {
-    let start_rs = ssh_conn.run_cmd(start_cmd.clone(), true)?;
+pub(crate) async fn ctl_cmd(cmd: String, ssh_conn: SSHSession) -> anyhow::Result<ExecutionValue> {
+    let start_rs = ssh_conn.command(cmd.as_str(), CollectOutput).await?; //ssh_conn.run_cmd(start_cmd.clone(), true)?;
     let status_code =
-        TaskArgValue::into_inner_value::<usize>(start_rs.get(SSH_EXEC_CMD_STATUS).unwrap().clone());
+        TaskArgValue::into_inner_value::<usize>(start_rs.get(CMD_STATUS).unwrap().clone());
     info!(
         "Start command execution completed.cmd={},status_code={}",
-        start_cmd, status_code
+        cmd, status_code
     );
     if status_code != 0 {
         error!(
             "Start command execution failed. status_code={}, cmd={}",
-            status_code, start_cmd
+            status_code, cmd
         );
         Err(anyhow!(format!(
             "Start failed cmd={}, cmd_code={}",
-            start_cmd, status_code
+            cmd, status_code
         )))
     } else {
         Ok(start_rs)
     }
 }
 
-pub(crate) fn ctl_action_wait_complete<F1, F2>(
+pub(crate) async fn ctl_action_wait_complete<F1, F2, Fut2>(
     ctl_cmd: String,
     check_cmd: String,
-    ssh_conn: &SSHConn,
+    ssh_conn: SSHSession,
     ctl_fn: F2,
     check_fn: F1,
 ) -> anyhow::Result<ExecutionValue>
 where
     F1: Fn(String) -> bool,
-    F2: Fn(String, &SSHConn) -> anyhow::Result<ExecutionValue>,
+    F2: Fn(String, SSHSession) -> Fut2,
+    Fut2: Future<Output = anyhow::Result<ExecutionValue>> + 'static,
 {
-    let mut ctl_action_rs = ctl_fn(ctl_cmd, ssh_conn)?;
+    let mut ctl_action_rs = ctl_fn(ctl_cmd, ssh_conn.clone()).await?;
     let process_ready =
-        wait_process_complete(check_cmd, ssh_conn, Duration::from_secs(5 * 60), check_fn)?;
-    if let Some(output) = ctl_action_rs.get(SSH_EXEC_CMD_OUTPUT) {
+        wait_process_complete(check_cmd, ssh_conn, Duration::from_secs(5 * 60), check_fn).await?;
+    if let Some(output) = ctl_action_rs.get(CMD_OUTPUT) {
         let final_output = format!(
             r#"output={},check control func return={}"#,
             TaskArgValue::into_inner_value::<String>(output.clone()),
             process_ready
         );
-        ctl_action_rs.insert(
-            SSH_EXEC_CMD_OUTPUT.to_string(),
-            TaskArgValue::Str(final_output),
-        );
+        ctl_action_rs.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(final_output));
     } else {
         ctl_action_rs.insert(
-            SSH_EXEC_CMD_OUTPUT.to_string(),
+            CMD_OUTPUT.to_string(),
             TaskArgValue::Str(format!("check control func return={}", process_ready)),
         );
     }
     Ok(ctl_action_rs)
 }
 
-pub(crate) fn wait_process_complete<F>(
+pub(crate) async fn wait_process_complete<F>(
     check_status_cmd: String,
-    ssh_conn: &SSHConn,
+    ssh_conn: SSHSession,
     wait_timeout: Duration,
     parser_output: F,
 ) -> anyhow::Result<bool>
 where
     F: Fn(String) -> bool,
+    // Fut: Future<Output = bool>,
 {
     let sleep_duration = Duration::from_secs(1);
     let mut timeout_remaining = wait_timeout;
@@ -124,14 +117,16 @@ where
             info!("CheckStatus timeout");
             break;
         }
-        let rs = ssh_conn.run_cmd_sync_output(check_status_cmd.clone());
+        let rs = ssh_conn
+            .command(check_status_cmd.as_str(), CollectOutput)
+            .await;
         if rs.as_ref().is_err() {
             let err_msg = rs.err().unwrap().to_string();
             error!("CheckStatus return failed. {}", err_msg);
             return Err(anyhow!(err_msg));
         }
         let exec_rs = rs.as_ref().unwrap();
-        let output_value = exec_rs.get(SSH_EXEC_CMD_OUTPUT).unwrap();
+        let output_value = exec_rs.get(CMD_OUTPUT).unwrap();
         let output_string = TaskArgValue::into_inner_value::<String>(output_value.clone());
         process_ready = parser_output(output_string.clone());
         if process_ready {

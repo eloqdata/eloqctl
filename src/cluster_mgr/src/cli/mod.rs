@@ -7,8 +7,13 @@ use tracing::error;
 
 pub mod cmd_base;
 pub mod config;
+#[allow(dead_code)]
+pub mod ssh;
 pub mod task;
 
+pub const CMD_STATUS: &str = "_cmd_status_";
+pub const CMD_OUTPUT: &str = "_cmd_output_";
+pub const CMD: &str = "_cmd_";
 pub const MONOGRAPH_CONF: &str = "my.cnf";
 pub const MONOGRAPH_CONF_TEMPLATE: &str = "my_template.cnf";
 pub const MONOGRAPH_CONF_DYNAMO_TEMPLATE: &str = "my_template_dynamo.cnf";

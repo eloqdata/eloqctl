@@ -1,9 +1,11 @@
 use crate::cli::config::{DeploymentConfig, DeploymentService, StorageProvider};
 use crate::cli::download_dir;
+use crate::cli::ssh::SSHCommandOption::CollectOutput;
+use crate::cli::ssh::SSHSession;
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::{ssh_conn_info, task_return_value};
+use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -247,17 +249,14 @@ impl UploadTask {
         Self { config, task_id }
     }
 
-    pub fn create_remote_directory(&self, remote_task_host: TaskHost) -> anyhow::Result<()> {
-        ssh_conn_info! {
-            self.config.connection.clone(),
+    pub async fn create_remote_directory(&self, remote_task_host: TaskHost) -> anyhow::Result<()> {
+        let ssh_session = SSHSession::from_task_host(
             remote_task_host,
-            ssh_conn_rs,
-            _conn_user,
-            _conn_host
-        }
+            self.config.connection.ssh_auth_key().unwrap(),
+        )
+        .await?;
         let mkdir = format!("mkdir -p {}", self.config.install_dir());
-        let ssh_conn = ssh_conn_rs?;
-        let mkdir_output = ssh_conn.run_cmd_sync_output(mkdir)?;
+        let mkdir_output = ssh_session.command(mkdir.as_str(), CollectOutput).await?;
         info!("UploadTask create remote dir complete={:?}", mkdir_output);
         Ok(())
     }
@@ -275,7 +274,8 @@ impl TaskExecutor for UploadTask {
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         println!("{} execute.\n", self.task_id.pretty_string());
-        self.create_remote_directory(remote_task_host.clone())?;
+        self.create_remote_directory(remote_task_host.clone())
+            .await?;
 
         let source_ip_rs = local_ip_address::local_ip()?;
         let local_ip_addr = source_ip_rs.to_string();
@@ -287,15 +287,13 @@ impl TaskExecutor for UploadTask {
             hosts: local_ip_addr,
         };
 
-        ssh_conn_info! {
-            self.config.connection.clone(),
+        let ssh_session = SSHSession::from_task_host(
             source_task_host,
-            ssh_conn_rs,
-            _conn_user,
-            _conn_host
-        }
+            self.config.connection.ssh_auth_key().unwrap(),
+        )
+        .await?;
+
         let remote_install_dir = self.config.install_dir();
-        let ssh_conn = ssh_conn_rs?;
 
         let (remote_user, port, remote_host) = remote_task_host.ssh_conn_tuple();
         let source_path_str =
@@ -336,7 +334,8 @@ impl TaskExecutor for UploadTask {
         );
         info!("UploadTask cmd={}", scp_cmd);
         let err_msg = format!("cmd={},source_path={}", scp_cmd, source_path_str);
-        let task_rs = ssh_conn.run_cmd_sync_output(scp_cmd)?;
+        let task_rs = ssh_session.command(scp_cmd.as_str(), CollectOutput).await?;
+        ssh_session.close().await?;
         task_return_value!(
             task_rs,
             |status_code: usize| -> CmdErr { CmdErr::UploadErr(err_msg, status_code.to_string()) },

@@ -1,10 +1,9 @@
 use crate::cli::config::{DeploymentConfig, DownloadUrl};
-use crate::cli::task::ssh_conn::{SSH_EXEC_CMD, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
 use crate::cli::task::task_base::CmdErr::DownloadErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::cli::{download_dir, file_process_progress};
+use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS, download_dir, file_process_progress};
 use anyhow::anyhow;
 use futures::stream::StreamExt;
 use indexmap::IndexMap;
@@ -206,15 +205,15 @@ impl TaskExecutor for DownloadFromRemoteTask {
         let mut download_result = HashMap::new();
 
         download_result.insert(
-            SSH_EXEC_CMD.to_string(),
+            CMD.to_string(),
             TaskArgValue::Str(self.task_id.format_string()),
         );
         download_result.insert(
-            SSH_EXEC_CMD_OUTPUT.to_string(),
+            CMD_OUTPUT.to_string(),
             TaskArgValue::Str(local_file_path.to_str().unwrap().to_string()),
         );
 
-        download_result.insert(SSH_EXEC_CMD_STATUS.to_string(), TaskArgValue::Number(0));
+        download_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
 
         Ok(Some(download_result))
     }

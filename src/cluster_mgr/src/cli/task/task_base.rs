@@ -1,8 +1,8 @@
 use crate::cli::config::{load_remote_env, DeploymentConfig};
-use crate::cli::task::ssh_conn::{SSH_EXEC_CMD, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
+// use crate::cli::task::ssh_conn::{SSH_EXEC_CMD, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
 use crate::cli::task::task_controller::TaskController;
 use crate::cli::task::task_group::TASK_GROUP;
-use crate::cli::CommandArgs;
+use crate::cli::{CommandArgs, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::enum_into_trait;
 use crate::state::task_status_operation::TaskStatusEntity;
 use async_trait::async_trait;
@@ -90,9 +90,9 @@ task_value_into_impl! {
 macro_rules! task_return_value {
     ($task_result:expr, $task_err_closure:expr, $task_name:expr $(,$return_value:expr)? ) => {{
         // use $crate::cli::task::ssh_conn::SSH_EXEC_CMD;
-        use $crate::cli::task::ssh_conn::SSH_EXEC_CMD_STATUS;
+        use $crate::cli::CMD_STATUS;
         let task_rs = $task_result.clone();
-        let task_status = task_rs.get(SSH_EXEC_CMD_STATUS).unwrap();
+        let task_status = task_rs.get(CMD_STATUS).unwrap();
         let status_code = TaskArgValue::into_inner_value::<usize>(task_status.clone());
         if status_code != 0 {
             let cmd_err = $task_err_closure(status_code);
@@ -264,11 +264,11 @@ impl TaskResultPrinter {
         let row = PrintableTaskResult {
             task_id,
             cmd: TaskArgValue::into_inner_value::<String>(
-                execution_value.get(SSH_EXEC_CMD).unwrap().clone(),
+                execution_value.get(CMD).unwrap().clone(),
             ),
 
             cmd_status: if TaskArgValue::into_inner_value::<usize>(
-                execution_value.get(SSH_EXEC_CMD_STATUS).unwrap().clone(),
+                execution_value.get(CMD_STATUS).unwrap().clone(),
             ) == 0
             {
                 "Success".green().to_string()
@@ -276,7 +276,7 @@ impl TaskResultPrinter {
                 "Failure".red().to_string()
             },
             cmd_output: TaskArgValue::into_inner_value::<String>(
-                execution_value.get(SSH_EXEC_CMD_OUTPUT).unwrap().clone(),
+                execution_value.get(CMD_OUTPUT).unwrap().clone(),
             ),
         };
         self.data.borrow_mut().push(row);
