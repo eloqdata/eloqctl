@@ -1,5 +1,4 @@
 use crate::cli::config::{load_remote_env, DeploymentConfig};
-// use crate::cli::task::ssh_conn::{SSH_EXEC_CMD, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
 use crate::cli::task::task_controller::TaskController;
 use crate::cli::task::task_group::TASK_GROUP;
 use crate::cli::{CommandArgs, CMD, CMD_OUTPUT, CMD_STATUS};
@@ -89,7 +88,6 @@ task_value_into_impl! {
 #[macro_export]
 macro_rules! task_return_value {
     ($task_result:expr, $task_err_closure:expr, $task_name:expr $(,$return_value:expr)? ) => {{
-        // use $crate::cli::task::ssh_conn::SSH_EXEC_CMD;
         use $crate::cli::CMD_STATUS;
         let task_rs = $task_result.clone();
         let task_status = task_rs.get(CMD_STATUS).unwrap();
@@ -234,6 +232,15 @@ pub enum TaskResultEnum {
     Error(String),
 }
 
+impl TaskResultEnum {
+    pub fn is_success(&self) -> bool {
+        match self {
+            TaskResultEnum::Success(_) => true,
+            TaskResultEnum::Error(_) => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskResultPair {
     pub(crate) task_id: String,
@@ -362,24 +369,5 @@ impl TaskMgr {
         self.task_controller
             .run_all_tasks(tasks_execution, config)
             .await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::cli::task::task_base::TaskId;
-    // use indexmap::IndexMap;
-    // use itertools::Itertools;
-
-    #[test]
-    fn test_table_flat() {
-        let task_id = TaskId {
-            cmd: "deploy".to_string(),
-            task: "apache-cassandra-4.1-rc1-bin.tar.gz_unpack".to_string(),
-            host: "172.0.0.1".to_string(),
-        };
-
-        let table = task_id.pretty_string();
-        println!("{}", table);
     }
 }

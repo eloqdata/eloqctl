@@ -7,7 +7,7 @@ use crate::state::task_status_operation::TaskStatusEntity;
 use futures_async_stream::try_stream;
 use itertools::Itertools;
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 #[derive(Debug, Clone)]
 pub struct TaskController {
@@ -86,8 +86,8 @@ impl TaskController {
 
         splits
             .iter()
-            .enumerate()
-            .for_each(|(_idx, execution_context)| {
+            //.enumerate()
+            .for_each(|execution_context| {
                 let tx_arc = Arc::new(&self.tx);
                 let cluster_name = config.deployment.cluster_name.clone();
                 let join = tokio::task::spawn(async move {
@@ -111,7 +111,10 @@ impl TaskController {
                     assert!(post_execute_rs.is_ok());
                     let result = match execution_rs {
                         Ok(rs) => TaskResultEnum::Success(rs),
-                        Err(err_msg) => TaskResultEnum::Error(err_msg.to_string()),
+                        Err(err_msg) => {
+                            error!("Task {:?} execution fail", task_id);
+                            TaskResultEnum::Error(err_msg.to_string())
+                        }
                     };
                     let task_pair = TaskResultPair {
                         task_id: task_id.format_string(),
@@ -123,6 +126,7 @@ impl TaskController {
                 });
                 joins.push(join);
             });
+
         let join_result = futures::future::join_all(joins).await;
         let task_result = join_result
             .into_iter()
