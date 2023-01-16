@@ -4,6 +4,7 @@ use cluster_mgr::cli::config::CONFIG_PATH_DIR;
 use cluster_mgr::cli::ClusterMgrCommandArgs;
 use std::env;
 use tracing::{error, Level};
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {
@@ -17,7 +18,12 @@ async fn main() {
         Level::WARN
     };
     println!("ClusterMgr Tracing Level = {:?}", level);
-    tracing_subscriber::fmt().with_max_level(level).init();
+    let filter = EnvFilter::from_default_env()
+        .add_directive("russh::client::encrypted=warn".parse().unwrap());
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .with_env_filter(filter)
+        .init();
     let cluster_mgr_cmd = ClusterMgrCommandArgs::parse();
     let config_path = match cluster_mgr_cmd.config {
         Some(ref config) => config.to_str().unwrap().to_string(),

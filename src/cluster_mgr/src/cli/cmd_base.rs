@@ -1,3 +1,4 @@
+use crate::cli::cmd_printer::{CmdPrinter, Printable};
 use crate::cli::config::DeploymentConfig;
 use crate::cli::task::task_base::{CmdErr, TaskMgr};
 use crate::cli::CommandArgs;
@@ -8,6 +9,7 @@ use crate::state::task_status_operation::{TaskStatusEntity, TaskStatusOperation}
 use crate::StateValue;
 use anyhow::anyhow;
 use itertools::Itertools;
+use owo_colors::OwoColorize;
 use tracing::{error, info};
 
 #[derive(Clone)]
@@ -33,21 +35,28 @@ impl CommandExecutor {
     async fn task_list_by_cluster(
         &self,
         cluster_name: String,
-        command: String,
+        status: Option<i32>,
+        command: Option<String>,
     ) -> anyhow::Result<Vec<TaskStatusEntity>> {
         let task_state_operation = self
             .state_mgr
             .get_state_operation::<TaskStatusOperation>(TASK_STATUS_STATE);
 
+        let mut cond_text = "cluster_name=$1 ".to_string();
+        let mut bind_values = vec![StateValue::Varchar(cluster_name.clone())];
+        if let Some(task_status) = status {
+            cond_text.push_str(" and task_status=$2");
+            bind_values.push(StateValue::Integer(task_status))
+        }
+        if let Some(cmd_val) = command {
+            cond_text.push_str(" and command = $3");
+            bind_values.push(StateValue::Varchar(cmd_val))
+        }
         let task_status_entity = task_state_operation
             .load(|| -> Option<QueryCondition> {
                 Some(QueryCondition {
-                    cond_text: " cluster_name=$1 and task_status=$2 and command = $3".to_string(),
-                    bind_values: vec![
-                        StateValue::Varchar(cluster_name.clone()),
-                        StateValue::Integer(0),
-                        StateValue::Varchar(command.clone()),
-                    ],
+                    cond_text: cond_text.clone(),
+                    bind_values: bind_values.clone(),
                 })
             })
             .await?;
@@ -64,7 +73,7 @@ impl CommandExecutor {
                 let config_rs = DeploymentConfig::load(Some(topology_file))?;
                 let cluster = config_rs.deployment.cluster_name;
                 let tasks_status = self
-                    .task_list_by_cluster(cluster, cmd_str_ref.to_string())
+                    .task_list_by_cluster(cluster, Some(0), Some(cmd_str_ref.to_string()))
                     .await?;
                 Ok(Some(tasks_status))
             }
@@ -73,7 +82,7 @@ impl CommandExecutor {
             | CommandArgs::Stop { cluster, force: _ }
             | CommandArgs::Restart { cluster } => {
                 let tasks_status = self
-                    .task_list_by_cluster(cluster, cmd_str_ref.to_string())
+                    .task_list_by_cluster(cluster, Some(0), Some(cmd_str_ref.to_string()))
                     .await?;
                 Ok(Some(tasks_status))
             }
@@ -135,6 +144,7 @@ impl CommandExecutor {
             | CommandArgs::Start { cluster }
             | CommandArgs::Restart { cluster }
             | CommandArgs::Status { cluster }
+            | CommandArgs::TaskStatus { cluster }
             | CommandArgs::Exec {
                 command: _,
                 cluster,
@@ -162,26 +172,51 @@ impl CommandExecutor {
         }
     }
 
+    async fn simple_cmd_handle(&self, cmd: CommandArgs) -> anyhow::Result<()> {
+        if let CommandArgs::TaskStatus {
+            cluster: cluster_value,
+        } = cmd
+        {
+            let task_status = self
+                .task_list_by_cluster(cluster_value.to_string(), None, None)
+                .await?;
+            let cmd_printer = CmdPrinter::new();
+            task_status.iter().for_each(|status| {
+                let task = status.clone().task;
+                cmd_printer.add_row(task, status, |task, status| -> Printable {
+                    Printable {
+                        task_id: task,
+                        cmd: status.clone().command,
+                        cmd_status: if status.task_status == 0 {
+                            "Success".green().to_string()
+                        } else {
+                            "Failure".red().to_string()
+                        },
+                        cmd_output: "".to_string(),
+                    }
+                })
+            });
+            cmd_printer.table_print();
+        }
+        Ok(())
+    }
+
     pub async fn run(&'static self, cmd: CommandArgs) -> anyhow::Result<()> {
-        let config = self.get_config(cmd.clone()).await?;
-        let success_task_ids = match cmd.as_ref() {
-            "exec_cmd" => None,
-            _ => self.get_success_tasks(cmd.clone()).await?,
-        };
-        info!(
-            "CmdExecutor load config from StateMgr successfully.{:#?}",
-            config
-        );
-        let join = tokio::task::spawn(async move {
-            self.task_mgr.receive_task_result().await;
-        });
-        let rs = self
-            .task_mgr
-            .run_tasks(cmd.clone(), config, success_task_ids)
-            .await?;
-        join.await?;
-        // let result_json = serde_json::to_string_pretty::<Vec<TaskResultPair>>(&rs).unwrap();
-        println!(r#"all tasks complete.task_size={}"#, rs.len());
+        if !cmd.is_parallel_cmd() {
+            self.simple_cmd_handle(cmd).await?;
+        } else {
+            let config = self.get_config(cmd.clone()).await?;
+            let success_task_ids = self.get_success_tasks(cmd.clone()).await?;
+            let join = tokio::task::spawn(async move {
+                self.task_mgr.receive_task_result().await;
+            });
+            let rs = self
+                .task_mgr
+                .run_tasks(cmd.clone(), config, success_task_ids)
+                .await?;
+            join.await?;
+            println!(r#"all tasks complete.task_size={}"#, rs.len());
+        }
         Ok(())
     }
 }

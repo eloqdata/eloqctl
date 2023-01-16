@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Clone)]
 pub struct SSHClient {}
@@ -67,7 +67,7 @@ impl SSHSession {
         host: &str,
         port: usize,
     ) -> anyhow::Result<Self> {
-        let ssh_config = Arc::new(russh::client::Config {
+        let ssh_config = Arc::new(client::Config {
             connection_timeout: Some(Duration::from_secs(5)),
             ..Default::default()
         });
@@ -115,6 +115,9 @@ impl SSHSession {
                 ChannelMsg::ExitStatus { exit_status } => {
                     status_code = exit_status;
                 }
+                ChannelMsg::Failure => {
+                    error!("ssh channel receive failure msg.");
+                }
                 _ => {}
             }
         }
@@ -132,7 +135,7 @@ impl SSHSession {
     }
 
     pub async fn close(&self) -> anyhow::Result<()> {
-        println!("SSHSession close() invoke.");
+        info!("SSHSession close() invoke.");
         let session = self.session.lock().await;
         session
             .disconnect(Disconnect::ByApplication, "", "English")

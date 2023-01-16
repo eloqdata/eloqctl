@@ -3,7 +3,7 @@ use crate::cli::task::task_base::CmdErr::DownloadErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS, download_dir, file_process_progress};
+use crate::cli::{download_dir, file_process_progress, CMD, CMD_OUTPUT, CMD_STATUS};
 use anyhow::anyhow;
 use futures::stream::StreamExt;
 use indexmap::IndexMap;

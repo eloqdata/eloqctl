@@ -1,5 +1,3 @@
-// #![feature(async_closure)]
-
 mod cassandra_ctl_task;
 mod cassandra_op_task;
 mod download_task;

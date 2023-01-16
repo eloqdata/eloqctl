@@ -9,6 +9,7 @@ use crate::cli::{CMD_OUTPUT, MONOGRAPH_INSTALL_SCRIPT};
 use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
+use owo_colors::OwoColorize;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -89,7 +90,9 @@ impl TaskExecutor for MonographInstall {
             _ => false,
         };
         if keyspace_exists {
-            println!("MonographDB keyspace exists.");
+            let keyspace_name = self.config.get_monograph_keyspace()?;
+            let format = r#"MonographDB keyspace already exists."#.red();
+            println!("{} => {}", format, keyspace_name.red());
             return Ok(None);
         }
         let ssh_session =

@@ -7,7 +7,7 @@ use crate::cli::task::task_base::{
     TaskInstance,
 };
 use crate::cli::task::task_utils::{check_process_pid, PROCESS_PID};
-use crate::cli::{CommandArgs, CMD_OUTPUT};
+use crate::cli::{CommandArgs, CMD_STATUS};
 use crate::get_ctl_cmd_string;
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -270,7 +270,7 @@ impl CassandraCtlTask {
                 )
                 .await?
                 .unwrap();
-            let status_value = op_status.get(CMD_OUTPUT).unwrap();
+            let status_value = op_status.get(CMD_STATUS).unwrap();
             let status_code = TaskArgValue::into_inner_value::<usize>(status_value.clone());
             if status_code == 0 {
                 println!("Cassandra Cluster UP now");

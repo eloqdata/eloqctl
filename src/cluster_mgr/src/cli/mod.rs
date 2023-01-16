@@ -6,6 +6,7 @@ use strum_macros::AsRefStr;
 use tracing::error;
 
 pub mod cmd_base;
+mod cmd_printer;
 pub mod config;
 #[allow(dead_code)]
 pub mod ssh;
@@ -102,6 +103,19 @@ pub enum CommandArgs {
         #[arg(short, long, value_name = "CLUSTER TOPOLOGY FILE")]
         topology_file: String,
     },
+    /// List task execution status.
+    /// For example ./cluster_mgr task-status --cluster $CLUSTER_NAME
+    #[strum(serialize = "task_status")]
+    TaskStatus {
+        #[arg(short, long, value_name = "CLUSTER NAME")]
+        cluster: String,
+    },
+}
+
+impl CommandArgs {
+    pub fn is_parallel_cmd(&self) -> bool {
+        !matches!(self, CommandArgs::TaskStatus { cluster: _ })
+    }
 }
 
 pub fn download_dir() -> PathBuf {

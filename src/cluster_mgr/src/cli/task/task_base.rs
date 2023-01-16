@@ -1,3 +1,4 @@
+use crate::cli::cmd_printer::{CmdPrinter, Printable};
 use crate::cli::config::{load_remote_env, DeploymentConfig};
 use crate::cli::task::task_controller::TaskController;
 use crate::cli::task::task_group::TASK_GROUP;
@@ -9,14 +10,12 @@ use dyn_clone::DynClone;
 use futures::StreamExt;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::string::ToString;
 use std::sync::LazyLock;
 use tabled::display::ExpandedDisplay;
-use tabled::object::{Columns, Rows, Segment};
-use tabled::{Alignment, Modify, ModifyObject, Table, Tabled, Width};
+use tabled::Tabled;
 use thiserror::Error;
 use tracing::error;
 use ExecutionValue as LastResult;
@@ -247,64 +246,6 @@ pub struct TaskResultPair {
     pub(crate) result: TaskResultEnum,
 }
 
-#[derive(Tabled, Clone, Debug)]
-pub struct PrintableTaskResult {
-    task_id: String,
-    cmd: String,
-    cmd_status: String,
-    cmd_output: String,
-}
-
-#[derive(Debug)]
-struct TaskResultPrinter {
-    data: RefCell<Vec<PrintableTaskResult>>,
-}
-
-impl TaskResultPrinter {
-    pub(crate) fn new() -> Self {
-        Self {
-            data: RefCell::new(vec![]),
-        }
-    }
-
-    pub(crate) fn add_row(&self, task_id: String, execution_value: ExecutionValue) {
-        let row = PrintableTaskResult {
-            task_id,
-            cmd: TaskArgValue::into_inner_value::<String>(
-                execution_value.get(CMD).unwrap().clone(),
-            ),
-
-            cmd_status: if TaskArgValue::into_inner_value::<usize>(
-                execution_value.get(CMD_STATUS).unwrap().clone(),
-            ) == 0
-            {
-                "Success".green().to_string()
-            } else {
-                "Failure".red().to_string()
-            },
-            cmd_output: TaskArgValue::into_inner_value::<String>(
-                execution_value.get(CMD_OUTPUT).unwrap().clone(),
-            ),
-        };
-        self.data.borrow_mut().push(row);
-    }
-
-    pub(crate) fn table_print(&self) {
-        let table_header_format = tabled::format::Format::new(|s| s.blue().to_string());
-        let mut table = Table::new(self.data.borrow().clone());
-        table
-            .with(tabled::Style::psql())
-            .with(Segment::all().modify().with(Alignment::left()))
-            .with(Modify::new(Rows::first()).with(table_header_format))
-            .with(Modify::new(Columns::single(0)).with(Width::wrap(20).keep_words()))
-            .with(Modify::new(Columns::single(1)).with(Width::wrap(50).keep_words()))
-            .with(Modify::new(Columns::single(2)).with(Width::wrap(10)))
-            .with(Modify::new(Columns::single(3)).with(Width::wrap(30).keep_words()));
-
-        println!("{}\n", table);
-    }
-}
-
 /// `TaskMgr` is the entry point for task invocation, calling `TaskGroup` and  `TaskController`
 /// based on command input.
 #[derive(Clone)]
@@ -335,9 +276,32 @@ impl TaskMgr {
 
             match result {
                 TaskResultEnum::Success(opt_rs) => {
-                    let table_printer = TaskResultPrinter::new();
+                    let table_printer = CmdPrinter::new();
                     if let Some(execution_value) = opt_rs {
-                        table_printer.add_row(task_id, execution_value);
+                        table_printer.add_row(
+                            task_id,
+                            execution_value,
+                            |task_id, execution_value| -> Printable {
+                                Printable {
+                                    task_id,
+                                    cmd: TaskArgValue::into_inner_value::<String>(
+                                        execution_value.get(CMD).unwrap().clone(),
+                                    ),
+
+                                    cmd_status: if TaskArgValue::into_inner_value::<usize>(
+                                        execution_value.get(CMD_STATUS).unwrap().clone(),
+                                    ) == 0
+                                    {
+                                        "Success".green().to_string()
+                                    } else {
+                                        "Failure".red().to_string()
+                                    },
+                                    cmd_output: TaskArgValue::into_inner_value::<String>(
+                                        execution_value.get(CMD_OUTPUT).unwrap().clone(),
+                                    ),
+                                }
+                            },
+                        );
                         table_printer.table_print();
                     }
                 }
