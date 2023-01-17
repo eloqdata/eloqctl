@@ -1,23 +1,18 @@
 use crate::cli::config::DeploymentConfig;
 use crate::cli::task::task_base::FINISH_;
-use crate::cli::task::task_base::{
-    ExecutionValue, TaskId, TaskInstance, TaskResultEnum, TaskResultPair,
-};
+use crate::cli::task::task_base::{TaskInstance, TaskResultEnum, TaskResultPair};
 use crate::cli::task::task_group::TaskExecutionContext;
 use crate::post_task_execute;
 use crate::state::task_status_operation::TaskStatusEntity;
 use futures_async_stream::try_stream;
 use itertools::Itertools;
-use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use tracing::{info, instrument};
+use tracing::{error, info, instrument};
 
 #[derive(Debug, Clone)]
 pub struct TaskController {
     rx: crossbeam_channel::Receiver<TaskResultPair>,
     tx: crossbeam_channel::Sender<TaskResultPair>,
-    task_execution_result: Arc<RwLock<HashMap<TaskId, ExecutionValue>>>,
 }
 
 /// `TaskController` is responsible for the parallelization and coordination of tasks.
@@ -29,21 +24,7 @@ pub struct TaskController {
 impl TaskController {
     pub fn new() -> Self {
         let (tx, rx) = crossbeam_channel::bounded(2000);
-        Self {
-            rx,
-            tx,
-            task_execution_result: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-
-    async fn get_task_execute_result(&self, task_id: TaskId) -> Option<ExecutionValue> {
-        let execution_rs_read_guard = self.task_execution_result.read().await;
-        execution_rs_read_guard.get(&task_id).cloned()
-    }
-
-    async fn put_task_execute_result(&self, task_id: TaskId, execution_rs: ExecutionValue) {
-        let mut execution_rs_write_guard = self.task_execution_result.write().await;
-        execution_rs_write_guard.insert(task_id, execution_rs);
+        Self { rx, tx }
     }
 
     fn split_task(
@@ -105,8 +86,8 @@ impl TaskController {
 
         splits
             .iter()
-            .enumerate()
-            .for_each(|(_idx, execution_context)| {
+            //.enumerate()
+            .for_each(|execution_context| {
                 let tx_arc = Arc::new(&self.tx);
                 let cluster_name = config.deployment.cluster_name.clone();
                 let join = tokio::task::spawn(async move {
@@ -114,19 +95,8 @@ impl TaskController {
                     let task_input = execution_context.task_input.clone();
                     let task_host = &execution_context.task_host;
                     let task_id = task.identifier();
-                    let task_result_opt = self.get_task_execute_result(task_id.clone()).await;
-                    let final_task_input = if let Some(mut exec_rs) = task_result_opt {
-                        exec_rs.extend(task_input.into_iter());
-                        exec_rs
-                    } else {
-                        task_input
-                    };
-                    let execution_rs = task.execute(task_host.clone(), final_task_input).await;
+                    let execution_rs = task.execute(task_host.clone(), task_input).await;
                     info!("Task {:?} execution complete", task_id);
-                    if let Ok(Some(ref inner_execution_rs)) = execution_rs.as_ref() {
-                        self.put_task_execute_result(task_id.clone(), inner_execution_rs.clone())
-                            .await;
-                    }
                     let cmd = task_id.clone().cmd;
                     let conn_tuple = task_host.ssh_conn_tuple();
                     // execution_rs,cluster,task_mame,command,task_host
@@ -141,7 +111,10 @@ impl TaskController {
                     assert!(post_execute_rs.is_ok());
                     let result = match execution_rs {
                         Ok(rs) => TaskResultEnum::Success(rs),
-                        Err(err_msg) => TaskResultEnum::Error(err_msg.to_string()),
+                        Err(err_msg) => {
+                            error!("Task {:?} execution fail", task_id);
+                            TaskResultEnum::Error(err_msg.to_string())
+                        }
                     };
                     let task_pair = TaskResultPair {
                         task_id: task_id.format_string(),
@@ -153,6 +126,7 @@ impl TaskController {
                 });
                 joins.push(join);
             });
+
         let join_result = futures::future::join_all(joins).await;
         let task_result = join_result
             .into_iter()

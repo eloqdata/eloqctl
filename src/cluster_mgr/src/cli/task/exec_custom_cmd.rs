@@ -1,9 +1,10 @@
 use crate::cli::config::DeploymentConfig;
-use crate::cli::task::ssh_conn::SSH_EXEC_CMD_OUTPUT;
+use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::{ssh_conn_info, task_return_value};
+use crate::cli::{ssh, CMD_OUTPUT};
+use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -80,18 +81,17 @@ impl TaskExecutor for ExecCustomCommand {
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         println!("{} execute.\n", self.task_id.pretty_string());
-        ssh_conn_info! {
-            self.config.connection.clone(),
+        let ssh_session = ssh::SSHSession::from_task_host(
             task_host,
-            ssh_conn_rs,
-            _conn_user,
-            conn_host
-        }
+            self.config.connection.ssh_auth_key().unwrap(),
+        )
+        .await?;
+        let (conn_host, _) = ssh_session.ssh_conn_info();
+        let exec_cmd_rs = ssh_session
+            .command(self.cmd.clone().as_str(), CollectOutput)
+            .await?;
 
-        let ssh_conn = ssh_conn_rs?;
-        let exec_cmd_rs = ssh_conn.run_cmd_sync_output(self.cmd.clone())?;
-
-        if let Some(output) = exec_cmd_rs.get(SSH_EXEC_CMD_OUTPUT) {
+        if let Some(output) = exec_cmd_rs.get(CMD_OUTPUT) {
             println!(
                 r#"Host {} Cmd {} output
               {}"#,
@@ -100,12 +100,13 @@ impl TaskExecutor for ExecCustomCommand {
                 TaskArgValue::into_inner_value::<String>(output.clone())
             );
         }
+        ssh_session.close().await?;
         task_return_value!(
             exec_cmd_rs,
             |status_code: usize| -> CmdErr {
                 CmdErr::ExecUserCmdErr(self.cmd.clone(), status_code.to_string())
             },
-            "UserCustomCommand"
+            "ExecCustomCommand"
         )
     }
 }

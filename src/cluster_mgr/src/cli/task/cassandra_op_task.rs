@@ -1,17 +1,15 @@
 use crate::cli::config::{DeploymentConfig, DeploymentService};
-use crate::cli::task::ssh_conn::{SSH_EXEC_CMD, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
+use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use async_trait::async_trait;
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{Session, SessionBuilder, TcpSessionBuilder};
 use cdrs_tokio::cluster::{NodeAddress, NodeTcpConfigBuilder, TcpConnectionManager};
-use cdrs_tokio::frame::message_result::ColType;
 use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 use cdrs_tokio::retry::{ConstantReconnectionPolicy, DefaultRetryPolicy};
 use cdrs_tokio::transport::TransportTcp;
-use cdrs_tokio::types::IntoRustByName;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -106,15 +104,12 @@ impl TaskExecutor for CassandraOpTask {
         let cass_session = self.cassandra_session().await;
         let mut task_result = HashMap::new();
         let cql_stmt = TaskArgValue::into_inner_value::<String>(cql_stmt_input.unwrap().clone());
-        task_result.insert(
-            SSH_EXEC_CMD.to_string(),
-            TaskArgValue::Str(cql_stmt.clone()),
-        );
+        task_result.insert(CMD.to_string(), TaskArgValue::Str(cql_stmt.clone()));
         if let Err(cass_err) = cass_session {
             let err_msg = cass_err.to_string();
             error!("Create new cassandra connection error cause by {}", err_msg);
-            task_result.insert(SSH_EXEC_CMD_STATUS.to_string(), TaskArgValue::Number(1));
-            task_result.insert(SSH_EXEC_CMD_OUTPUT.to_string(), TaskArgValue::Str(err_msg));
+            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+            task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(err_msg));
             return Ok(Some(task_result));
         }
         let session = cass_session?;
@@ -125,15 +120,15 @@ impl TaskExecutor for CassandraOpTask {
                 "Error querying cassandra stmt={}, error msg ={}",
                 cql_stmt, err_msg
             );
-            task_result.insert(SSH_EXEC_CMD_STATUS.to_string(), TaskArgValue::Number(1));
-            task_result.insert(SSH_EXEC_CMD_OUTPUT.to_string(), TaskArgValue::Str(err_msg));
+            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+            task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(err_msg));
             return Ok(Some(task_result));
         }
 
         let result = query_rs.unwrap().response_body()?;
         let query_result = result.clone().into_rows();
         let metadata = result.as_rows_metadata();
-        task_result.insert(SSH_EXEC_CMD_STATUS.to_string(), TaskArgValue::Number(0));
+        task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
         if let Some(rows) = query_result {
             let row_as_string = rows
                 .iter()
@@ -145,24 +140,7 @@ impl TaskExecutor for CassandraOpTask {
                             .iter()
                             .map(|col_spec| {
                                 let col_type = col_spec.clone().col_type.id;
-                                let col_value = match col_type {
-                                    ColType::Varchar => {
-                                        let char_val: String = row
-                                            .get_r_by_name(col_spec.name.as_str())
-                                            .expect("NONE");
-                                        char_val
-                                    }
-                                    ColType::Boolean => {
-                                        let bool_val: bool = row
-                                            .get_r_by_name(col_spec.name.as_str())
-                                            .expect("NONE");
-                                        bool_val.to_string()
-                                    }
-                                    _ => {
-                                        format!("{} un support {}", col_spec.name, col_type)
-                                    }
-                                };
-                                format!("{}\t{}:{}", idx, col_spec.name, col_value)
+                                format!("{}\t{}:{}", idx, col_spec.name, col_type)
                             })
                             .join("\t"),
                         None => {
@@ -173,16 +151,10 @@ impl TaskExecutor for CassandraOpTask {
                 })
                 .join("\n");
             println!("{}", row_as_string);
-            task_result.insert(
-                SSH_EXEC_CMD_OUTPUT.to_string(),
-                TaskArgValue::Str(row_as_string),
-            );
+            task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(row_as_string));
         } else {
             println!("CassandraOpTask No data was queried.");
-            task_result.insert(
-                SSH_EXEC_CMD_OUTPUT.to_string(),
-                TaskArgValue::Str("".to_string()),
-            );
+            task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str("".to_string()));
         }
 
         Ok(Some(task_result))

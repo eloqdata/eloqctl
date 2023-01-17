@@ -1,8 +1,9 @@
 use crate::cli::config::DeploymentConfig;
+use crate::cli::ssh::{SSHCommandOption, SSHSession};
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::{ssh_conn_info, task_return_value};
+use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -81,13 +82,11 @@ impl TaskExecutor for UnpackFileTask {
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         println!("{} execute.\n", self.task_id.pretty_string());
-        ssh_conn_info! {
-            self.config.connection.clone(),
+        let ssh_session = SSHSession::from_task_host(
             task_host,
-            ssh_conn,
-            _conn_user,
-            _conn_host
-        }
+            self.config.connection.ssh_auth_key().unwrap().to_string(),
+        )
+        .await?;
         let remote_tar =
             TaskArgValue::into_inner_value::<String>(task_input.get(REMOTE_TAR).unwrap().clone());
         let install_dir = self.config.install_dir();
@@ -105,15 +104,19 @@ impl TaskExecutor for UnpackFileTask {
             let target_dir = format!("{}/apache-cassandra", install_dir);
             (
                 format!(
-                    r#"mkdir -p {} && tar -zxvf {} -C {}; mv {} {}"#,
-                    install_dir, remote_tar, install_dir, extract_file_name, target_dir
+                    r#"rm -rf {} > /dev/null; mkdir -p {} && tar -zxvf {} -C {}; mv {} {}"#,
+                    target_dir, install_dir, remote_tar, install_dir, extract_file_name, target_dir
                 ),
                 target_dir,
             )
         };
         let unpack_cmd = unpack_pair.0;
         info!("UnpackFileTask cmd={}", unpack_cmd.as_str());
-        let task_rs = ssh_conn?.run_cmd(unpack_cmd.clone(), false)?;
+        let task_rs = ssh_session
+            .command(unpack_cmd.clone().as_str(), SSHCommandOption::None)
+            .await?;
+
+        ssh_session.close().await?;
         task_return_value!(
             task_rs,
             |status_code: usize| -> CmdErr {

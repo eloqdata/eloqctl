@@ -1,8 +1,8 @@
+use crate::cli::cmd_printer::{CmdPrinter, Printable};
 use crate::cli::config::{load_remote_env, DeploymentConfig};
-use crate::cli::task::ssh_conn::{SSH_EXEC_CMD, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
 use crate::cli::task::task_controller::TaskController;
 use crate::cli::task::task_group::TASK_GROUP;
-use crate::cli::CommandArgs;
+use crate::cli::{CommandArgs, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::enum_into_trait;
 use crate::state::task_status_operation::TaskStatusEntity;
 use async_trait::async_trait;
@@ -10,14 +10,12 @@ use dyn_clone::DynClone;
 use futures::StreamExt;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::string::ToString;
 use std::sync::LazyLock;
 use tabled::display::ExpandedDisplay;
-use tabled::object::{Columns, Rows, Segment};
-use tabled::{Alignment, Modify, ModifyObject, Table, Tabled, Width};
+use tabled::Tabled;
 use thiserror::Error;
 use tracing::error;
 use ExecutionValue as LastResult;
@@ -89,10 +87,9 @@ task_value_into_impl! {
 #[macro_export]
 macro_rules! task_return_value {
     ($task_result:expr, $task_err_closure:expr, $task_name:expr $(,$return_value:expr)? ) => {{
-        // use $crate::cli::task::ssh_conn::SSH_EXEC_CMD;
-        use $crate::cli::task::ssh_conn::SSH_EXEC_CMD_STATUS;
+        use $crate::cli::CMD_STATUS;
         let task_rs = $task_result.clone();
-        let task_status = task_rs.get(SSH_EXEC_CMD_STATUS).unwrap();
+        let task_status = task_rs.get(CMD_STATUS).unwrap();
         let status_code = TaskArgValue::into_inner_value::<usize>(task_status.clone());
         if status_code != 0 {
             let cmd_err = $task_err_closure(status_code);
@@ -234,68 +231,19 @@ pub enum TaskResultEnum {
     Error(String),
 }
 
+impl TaskResultEnum {
+    pub fn is_success(&self) -> bool {
+        match self {
+            TaskResultEnum::Success(_) => true,
+            TaskResultEnum::Error(_) => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskResultPair {
     pub(crate) task_id: String,
     pub(crate) result: TaskResultEnum,
-}
-
-#[derive(Tabled, Clone, Debug)]
-pub struct PrintableTaskResult {
-    task_id: String,
-    cmd: String,
-    cmd_status: String,
-    cmd_output: String,
-}
-
-#[derive(Debug)]
-struct TaskResultPrinter {
-    data: RefCell<Vec<PrintableTaskResult>>,
-}
-
-impl TaskResultPrinter {
-    pub(crate) fn new() -> Self {
-        Self {
-            data: RefCell::new(vec![]),
-        }
-    }
-
-    pub(crate) fn add_row(&self, task_id: String, execution_value: ExecutionValue) {
-        let row = PrintableTaskResult {
-            task_id,
-            cmd: TaskArgValue::into_inner_value::<String>(
-                execution_value.get(SSH_EXEC_CMD).unwrap().clone(),
-            ),
-
-            cmd_status: if TaskArgValue::into_inner_value::<usize>(
-                execution_value.get(SSH_EXEC_CMD_STATUS).unwrap().clone(),
-            ) == 0
-            {
-                "Success".green().to_string()
-            } else {
-                "Failure".red().to_string()
-            },
-            cmd_output: TaskArgValue::into_inner_value::<String>(
-                execution_value.get(SSH_EXEC_CMD_OUTPUT).unwrap().clone(),
-            ),
-        };
-        self.data.borrow_mut().push(row);
-    }
-
-    pub(crate) fn table_print(&self) {
-        let table_header_format = tabled::format::Format::new(|s| s.blue().to_string());
-        let mut table = Table::new(self.data.borrow().clone());
-        table
-            .with(tabled::Style::psql())
-            .with(Segment::all().modify().with(Alignment::left()))
-            .with(Modify::new(Rows::first()).with(table_header_format))
-            .with(Modify::new(Columns::single(0)).with(Width::wrap(20).keep_words()))
-            .with(Modify::new(Columns::single(1)).with(Width::wrap(50).keep_words()))
-            .with(Modify::new(Columns::single(2)).with(Width::wrap(10)))
-            .with(Modify::new(Columns::single(3)).with(Width::wrap(30).keep_words()));
-
-        println!("{}\n", table);
-    }
 }
 
 /// `TaskMgr` is the entry point for task invocation, calling `TaskGroup` and  `TaskController`
@@ -328,9 +276,32 @@ impl TaskMgr {
 
             match result {
                 TaskResultEnum::Success(opt_rs) => {
-                    let table_printer = TaskResultPrinter::new();
+                    let table_printer = CmdPrinter::new();
                     if let Some(execution_value) = opt_rs {
-                        table_printer.add_row(task_id, execution_value);
+                        table_printer.add_row(
+                            task_id,
+                            execution_value,
+                            |task_id, execution_value| -> Printable {
+                                Printable {
+                                    task_id,
+                                    cmd: TaskArgValue::into_inner_value::<String>(
+                                        execution_value.get(CMD).unwrap().clone(),
+                                    ),
+
+                                    cmd_status: if TaskArgValue::into_inner_value::<usize>(
+                                        execution_value.get(CMD_STATUS).unwrap().clone(),
+                                    ) == 0
+                                    {
+                                        "Success".green().to_string()
+                                    } else {
+                                        "Failure".red().to_string()
+                                    },
+                                    cmd_output: TaskArgValue::into_inner_value::<String>(
+                                        execution_value.get(CMD_OUTPUT).unwrap().clone(),
+                                    ),
+                                }
+                            },
+                        );
                         table_printer.table_print();
                     }
                 }
@@ -362,24 +333,5 @@ impl TaskMgr {
         self.task_controller
             .run_all_tasks(tasks_execution, config)
             .await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::cli::task::task_base::TaskId;
-    // use indexmap::IndexMap;
-    // use itertools::Itertools;
-
-    #[test]
-    fn test_table_flat() {
-        let task_id = TaskId {
-            cmd: "deploy".to_string(),
-            task: "apache-cassandra-4.1-rc1-bin.tar.gz_unpack".to_string(),
-            host: "172.0.0.1".to_string(),
-        };
-
-        let table = task_id.pretty_string();
-        println!("{}", table);
     }
 }

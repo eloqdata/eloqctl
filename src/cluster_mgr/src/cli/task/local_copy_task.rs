@@ -1,9 +1,8 @@
 use crate::cli::config::{DeploymentConfig, DownloadUrl};
-use crate::cli::download_dir;
-use crate::cli::task::ssh_conn::{SSH_EXEC_CMD, SSH_EXEC_CMD_OUTPUT, SSH_EXEC_CMD_STATUS};
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
+use crate::cli::{download_dir, CMD, CMD_OUTPUT, CMD_STATUS};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -125,26 +124,18 @@ impl TaskExecutor for LocalCopyTask {
             let status = copy_cmd.status()?;
 
             let mut copy_task_rs = HashMap::from([
-                (SSH_EXEC_CMD.to_string(), TaskArgValue::Str(copy_cmd_str)),
-                (
-                    SSH_EXEC_CMD_OUTPUT.to_string(),
-                    TaskArgValue::Str("".to_string()),
-                ),
+                (CMD.to_string(), TaskArgValue::Str(copy_cmd_str)),
+                (CMD_OUTPUT.to_string(), TaskArgValue::Str("".to_string())),
             ]);
             if status.success() {
-                copy_task_rs.insert(SSH_EXEC_CMD_STATUS.to_string(), TaskArgValue::Number(0));
+                copy_task_rs.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
             } else {
                 error!("LocalCopyTask failed. command status code={:?}", status);
                 if let Some(code) = status.code() {
-                    copy_task_rs.insert(
-                        SSH_EXEC_CMD_STATUS.to_string(),
-                        TaskArgValue::Number(code as usize),
-                    );
+                    copy_task_rs
+                        .insert(CMD_STATUS.to_string(), TaskArgValue::Number(code as usize));
                 } else {
-                    copy_task_rs.insert(
-                        SSH_EXEC_CMD_STATUS.to_string(),
-                        TaskArgValue::Number(usize::MAX),
-                    );
+                    copy_task_rs.insert(CMD_STATUS.to_string(), TaskArgValue::Number(usize::MAX));
                 }
             }
             Ok(Some(copy_task_rs))

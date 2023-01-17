@@ -284,6 +284,22 @@ impl DeploymentConfig {
         }
     }
 
+    pub fn get_monograph_keyspace(&self) -> anyhow::Result<String> {
+        let download_dir = download_dir();
+        let my_local = download_dir.join("my_local.cnf");
+        if !my_local.exists() {
+            self.gen_monograph_config(None)?;
+        }
+        let mut my_ini_local = Ini::new();
+        let _config_map_rs = my_ini_local.load(my_local).unwrap();
+        if let Some(keyspace) = my_ini_local.get(CONFIG_MARIADB_SECTION, "monograph_keyspace_name")
+        {
+            Ok(keyspace)
+        } else {
+            Ok("mono".to_string())
+        }
+    }
+
     pub fn install_dir(&self) -> String {
         format!(
             "{}/{}",
