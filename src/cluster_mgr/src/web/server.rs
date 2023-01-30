@@ -1,5 +1,7 @@
-use crate::web::web_handler::{check_cmd_status, check_health};
+use crate::cli::cmd_base::CommandExecutor;
+use crate::web::web_handler::{check_cmd_status, check_health, ctl_cluster, deploy_cluster};
 use actix_web::{middleware, web, App, HttpServer};
+use std::sync::Arc;
 use tracing::info;
 
 macro_rules! server_listen_addr {
@@ -24,12 +26,15 @@ impl CliMgrHttpServer {
         let listen_addr = server_listen_addr!(addr, "127.0.0.1");
         let listen_port = server_listen_addr!(port, 8090);
         info!("CliMgrHttpServer start at {listen_addr}:{listen_port}");
-        let server = HttpServer::new(|| {
+        let cmd_executor = web::Data::new(Arc::new(CommandExecutor::new()));
+        let server = HttpServer::new(move || {
             App::new()
                 .wrap(middleware::Logger::default())
-                .app_data(web::JsonConfig::default().limit(4096))
+                .app_data(cmd_executor.clone())
                 .service(check_health)
                 .service(check_cmd_status)
+                .service(deploy_cluster)
+                .service(ctl_cluster)
                 .service(
                     web::resource("/")
                         .route(web::get().to(|| async { "Hi man. I'm CliMgrHttpServer" })),

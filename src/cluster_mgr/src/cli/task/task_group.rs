@@ -20,7 +20,6 @@ use tracing::info;
 
 #[derive(Clone)]
 pub struct TaskExecutionContext {
-    pub cmd_args: CommandArgs,
     pub barrier: Option<Vec<usize>>,
     pub executable: IndexMap<TaskId, TaskInstance>,
 }
@@ -138,7 +137,7 @@ impl DeploymentTaskGroup {
 impl TaskGroup for DeploymentTaskGroup {
     fn tasks(
         &self,
-        cmd_args: CommandArgs,
+        _cmd_args: CommandArgs,
         config: DeploymentConfig,
         successful_tasks: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<TaskExecutionContext> {
@@ -194,7 +193,7 @@ impl TaskGroup for DeploymentTaskGroup {
         executable.extend(unpack_execution.into_iter());
 
         Ok(TaskExecutionContext {
-            cmd_args,
+            // cmd_args,
             barrier: Some(barrier),
             executable,
         })
@@ -204,7 +203,7 @@ impl TaskGroup for DeploymentTaskGroup {
 impl TaskGroup for InstallDBTaskGroup {
     fn tasks(
         &self,
-        cmd_args: CommandArgs,
+        _cmd_args: CommandArgs,
         config: DeploymentConfig,
         _successful_tasks: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<TaskExecutionContext> {
@@ -243,7 +242,7 @@ impl TaskGroup for InstallDBTaskGroup {
                 executable.extend(cassandra_start.into_iter());
                 executable.extend(monograph_install.into_iter());
                 TaskExecutionContext {
-                    cmd_args,
+                    //cmd_args,
                     barrier: Some(barrier),
                     executable,
                 }
@@ -252,7 +251,7 @@ impl TaskGroup for InstallDBTaskGroup {
                 let monograph_is_multi_node = monograph_hosts.len() > 1;
                 let monograph_install = MonographInstall::from_config(&config, install_db_host);
                 TaskExecutionContext {
-                    cmd_args,
+                    //cmd_args,
                     barrier: if monograph_is_multi_node {
                         Some(vec![monograph_install.len()])
                     } else {
@@ -358,7 +357,6 @@ impl TaskGroup for CtrlDBTaskGroup {
             None
         };
         Ok(TaskExecutionContext {
-            cmd_args: cmd_arg.clone(),
             barrier: final_barrier,
             executable: mut_executable,
         })
@@ -372,7 +370,7 @@ impl TaskGroup for CustomCmdTaskGroup {
         config: DeploymentConfig,
         _successful_tasks: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let user_command = match cmd_arg.clone() {
+        let user_command = match cmd_arg {
             CommandArgs::Exec {
                 command,
                 cluster: _,
@@ -384,7 +382,6 @@ impl TaskGroup for CustomCmdTaskGroup {
         let exec_cmd_task_execution = ExecCustomCommand::from_config(user_command, &config);
 
         Ok(TaskExecutionContext {
-            cmd_args: cmd_arg,
             barrier: None,
             executable: exec_cmd_task_execution,
         })
@@ -394,13 +391,12 @@ impl TaskGroup for CustomCmdTaskGroup {
 impl TaskGroup for InstallRuntimeDepsTaskGroup {
     fn tasks(
         &self,
-        cmd_arg: CommandArgs,
+        _cmd_arg: CommandArgs,
         config: DeploymentConfig,
         _already_successful: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<TaskExecutionContext> {
         let install_runtime_deps = RuntimeDepsInstallation::from_config(&config)?;
         Ok(TaskExecutionContext {
-            cmd_args: cmd_arg,
             barrier: None,
             executable: install_runtime_deps,
         })

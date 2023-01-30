@@ -1,30 +1,39 @@
-// use crate::cli::cmd_base::CommandExecutor;
+use actix_web::error;
+use anyhow::Error;
 use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
+use derive_more::Error;
+use error::ResponseError;
 use serde_json::Value;
-// use std::sync::LazyLock;
 
 pub mod server;
 mod web_handler;
 
 pub(crate) static SUPPORT_CMD: [&str; 5] = ["deploy", "install", "start", "stop", "status"];
 
-#[derive(Deserialize, Serialize)]
-pub struct Response {
-    code: usize,
-    msg: String,
-    data: Value,
+#[derive(Debug, Error)]
+pub struct WebHandleError {
+    err: anyhow::Error,
 }
 
-impl Response {
-    fn succ_def() -> Self {
-        Self {
-            code: 200,
-            msg: "".to_string(),
-            data: Value::Null,
-        }
+impl Display for WebHandleError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "handler error: {}", self.err)
     }
 }
 
-// pub(crate) static CMD_EXECUTOR: LazyLock<CommandExecutor> =
-//     LazyLock::new(|| CommandExecutor::default());
+impl ResponseError for WebHandleError {}
+
+impl From<Error> for WebHandleError {
+    fn from(value: Error) -> Self {
+        WebHandleError { err: value }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Response {
+    code: usize,
+    msg: Option<String>,
+    data: Option<Value>,
+}

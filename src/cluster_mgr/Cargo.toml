@@ -15,6 +15,7 @@ chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 configparser = { version = "3.0.2", features = ["indexmap"] }
 crossbeam-channel = "0.5"
+derive_more = "0.99"
 dirs = "4"
 dyn-clone = "1"
 futures = { version = "0.3", default-features = false, features = ["alloc", "thread-pool"] }

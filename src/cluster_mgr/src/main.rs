@@ -46,6 +46,6 @@ async fn main() {
     let cmd_executor = Box::leak(Box::new(CommandExecutor::new()));
     if let Some(command) = cluster_mgr_cmd.command {
         println!("ClusterMgr receive {:?} command", command.clone());
-        let _rs = cmd_executor.run(command).await;
+        let _rs = cmd_executor.run(command, None).await;
     }
 }

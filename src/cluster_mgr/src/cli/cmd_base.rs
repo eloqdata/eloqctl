@@ -1,6 +1,6 @@
 use crate::cli::cmd_printer::{CmdPrinter, Printable};
 use crate::cli::config::DeploymentConfig;
-use crate::cli::task::task_base::{CmdErr, TaskId, TaskMgr};
+use crate::cli::task::task_base::{CmdErr, TaskMgr};
 use crate::cli::CommandArgs;
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
@@ -10,15 +10,13 @@ use crate::StateValue;
 use anyhow::anyhow;
 use itertools::Itertools;
 use owo_colors::OwoColorize;
-// use std::future::Future;
+use std::sync::Arc;
 use tracing::{error, info};
-
-// type SimpleCmdHandler = Box<dyn Fn() -> Box<dyn Future<Output = ()>> + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct CommandExecutor {
     task_mgr: TaskMgr,
-    state_mgr: StateMgr,
+    state_mgr: Arc<StateMgr>,
 }
 
 impl Default for CommandExecutor {
@@ -32,7 +30,66 @@ impl CommandExecutor {
         println!("CommandExecutor init.");
         Self {
             task_mgr: TaskMgr::new(),
-            state_mgr: STATE_MGR.clone(),
+            state_mgr: Arc::new(STATE_MGR.clone()),
+        }
+    }
+
+    pub async fn get_task_status_by_hosts(
+        &self,
+        cluster: &str,
+        command: &str,
+        hosts: &[String],
+    ) -> anyhow::Result<Vec<TaskStatusEntity>> {
+        let mut bind_value = vec![
+            StateValue::Varchar(cluster.to_string()),
+            StateValue::Varchar(command.to_string()),
+        ];
+        let bind_host = hosts
+            .iter()
+            .map(|host| StateValue::Varchar(host.to_string()))
+            .collect_vec();
+        bind_value.extend(bind_host.into_iter());
+        let mut query_cond_text = "cluster = $1 and command = $2 and ".to_string();
+        let placeholder = (3..bind_value.len()).map(|i| format!("${i}")).join(",");
+        query_cond_text.push_str(placeholder.as_str());
+
+        let task_state_operation = self
+            .state_mgr
+            .get_state_operation::<TaskStatusOperation>(TASK_STATUS_STATE);
+
+        let task_status_entity = task_state_operation
+            .load(|| -> Option<QueryCondition> {
+                Some(QueryCondition {
+                    cond_text: query_cond_text.clone(),
+                    bind_values: bind_value.clone(),
+                })
+            })
+            .await?;
+        Ok(task_status_entity)
+    }
+
+    pub async fn get_cluster_host(&self, cluster: &str) -> anyhow::Result<Option<Vec<String>>> {
+        let deployment_state = self
+            .state_mgr
+            .get_state_operation::<DeploymentOperation>(DEPLOYMENT_STATE);
+        let deployment_entity_vec = deployment_state
+            .load(|| -> Option<QueryCondition> {
+                Some(QueryCondition {
+                    cond_text: "cluster = $1".to_string(),
+                    bind_values: vec![StateValue::Varchar(cluster.to_string())],
+                })
+            })
+            .await?;
+
+        if let Some(deployment_entity) = deployment_entity_vec.first().as_ref() {
+            let host_vec = deployment_entity
+                .host_list
+                .split(';')
+                .map(|host| host.to_string())
+                .collect_vec();
+            Ok(Some(host_vec))
+        } else {
+            Ok(None)
         }
     }
 
@@ -69,29 +126,59 @@ impl CommandExecutor {
 
     async fn get_success_tasks(
         &self,
-        cmd: CommandArgs,
+        cmd_str: String,
+        cluster: String,
     ) -> anyhow::Result<Option<Vec<TaskStatusEntity>>> {
-        let cmd_str_ref = cmd.as_ref();
-        match cmd.clone() {
-            CommandArgs::Deploy { topology_file } => {
-                let config_rs = DeploymentConfig::load(Some(topology_file))?;
-                let cluster = config_rs.deployment.cluster_name;
-                let tasks_status = self
-                    .task_list_by_cluster(cluster, Some(0), Some(cmd_str_ref.to_string()))
-                    .await?;
-                Ok(Some(tasks_status))
-            }
-            CommandArgs::Install { cluster }
-            | CommandArgs::Start { cluster }
-            | CommandArgs::Stop { cluster, force: _ }
-            | CommandArgs::Restart { cluster } => {
-                let tasks_status = self
-                    .task_list_by_cluster(cluster, Some(0), Some(cmd_str_ref.to_string()))
-                    .await?;
-                Ok(Some(tasks_status))
-            }
-            _ => Ok(None),
+        let tasks_status = self
+            .task_list_by_cluster(cluster, Some(0), Some(cmd_str))
+            .await?;
+        Ok(Some(tasks_status))
+    }
+
+    async fn save_deployment_config(&self, config: &DeploymentConfig) -> anyhow::Result<()> {
+        let deployment_operation = self
+            .state_mgr
+            .get_state_operation::<DeploymentOperation>(DEPLOYMENT_STATE);
+
+        let curr_cluster = &config.deployment.cluster_name;
+        let deployment_entity = deployment_operation
+            .load(|| -> Option<QueryCondition> {
+                Some(QueryCondition {
+                    cond_text: "cluster_name = $1".to_string(),
+                    bind_values: vec![StateValue::Varchar(curr_cluster.clone())],
+                })
+            })
+            .await?;
+        if !deployment_entity.is_empty() {
+            error!("current cluster {} already exists.", curr_cluster);
+            return Err(anyhow!(CmdErr::ClusterAlreadyExists(
+                curr_cluster.to_string()
+            )));
         }
+        let all_hosts = config
+            .get_host_as_map()
+            .iter()
+            .flat_map(|entry| entry.1)
+            .cloned()
+            .collect_vec()
+            .join(";");
+
+        let config_string = config.config_to_string();
+        info!(
+            "CmdExecutor save DeploymentConfig {} {}",
+            config_string, all_hosts
+        );
+        let default_timestamp = chrono::DateTime::default();
+        deployment_operation
+            .put(DeploymentEntity {
+                cluster_name: config.deployment.clone().cluster_name,
+                deployment_config: config_string,
+                host_list: all_hosts,
+                create_timestamp: default_timestamp,
+                update_timestamp: default_timestamp,
+            })
+            .await?;
+        Ok(())
     }
 
     async fn get_config(&self, cmd: CommandArgs) -> anyhow::Result<Option<DeploymentConfig>> {
@@ -99,47 +186,7 @@ impl CommandExecutor {
             CommandArgs::Deploy { topology_file } => {
                 let config_rs = DeploymentConfig::load(Some(topology_file));
                 let config = config_rs.unwrap().clone();
-                let deployment_operation = self
-                    .state_mgr
-                    .get_state_operation::<DeploymentOperation>(DEPLOYMENT_STATE);
-
-                let curr_cluster = &config.deployment.cluster_name;
-                let deployment_entity = deployment_operation
-                    .load(|| -> Option<QueryCondition> {
-                        Some(QueryCondition {
-                            cond_text: "cluster_name = $1".to_string(),
-                            bind_values: vec![StateValue::Varchar(curr_cluster.clone())],
-                        })
-                    })
-                    .await?;
-                if !deployment_entity.is_empty() {
-                    error!("current cluster {} already exists.", curr_cluster);
-                    return Err(anyhow!(CmdErr::ClusterAlreadyExists(
-                        curr_cluster.to_string()
-                    )));
-                }
-                let all_hosts = config
-                    .get_host_as_map()
-                    .iter()
-                    .flat_map(|entry| entry.1)
-                    .cloned()
-                    .collect_vec()
-                    .join(";");
-
-                let config_string = config.config_to_string();
-                info!(
-                    "CmdExecutor save DeploymentConfig {} {}",
-                    config_string, all_hosts
-                );
-                deployment_operation
-                    .put(DeploymentEntity {
-                        cluster_name: config.deployment.clone().cluster_name,
-                        deployment_config: config_string,
-                        host_list: all_hosts,
-                        create_timestamp: Default::default(),
-                        update_timestamp: Default::default(),
-                    })
-                    .await?;
+                self.save_deployment_config(&config).await?;
                 info!("CmdExecutor Save DeploymentConfig successfully.");
                 Ok(Some(config))
             }
@@ -174,7 +221,6 @@ impl CommandExecutor {
             CommandArgs::RunDeps { topology_file } => {
                 Ok(Some(DeploymentConfig::load(Some(topology_file))?))
             }
-            CommandArgs::Web { port: _ } => Ok(None),
         }
     }
 
@@ -207,34 +253,31 @@ impl CommandExecutor {
         Ok(())
     }
 
-    pub async fn all_tasks(&self, cmd: CommandArgs) -> Option<Vec<TaskId>> {
-        if cmd.is_parallel_cmd() {
-            None
-        } else {
-            let config = self.get_config(cmd.clone()).await.ok()?;
-            let success_task = self.get_success_tasks(cmd.clone()).await.ok()?;
-            let context_rs = self
-                .task_mgr
-                .task_context(cmd, &config.unwrap(), success_task);
-            assert!(context_rs.is_ok());
-            let context = context_rs.unwrap();
-            let task_ids = context.list_task_ids();
-            Some(task_ids)
-        }
-    }
-
-    pub async fn run(&'static self, cmd: CommandArgs) -> anyhow::Result<()> {
+    pub async fn run(
+        &'static self,
+        cmd: CommandArgs,
+        deployment_config: Option<DeploymentConfig>,
+    ) -> anyhow::Result<()> {
         if !cmd.is_parallel_cmd() {
             self.simple_cmd_handle(cmd).await?;
         } else {
-            let config = self.get_config(cmd.clone()).await?;
-            let success_task_ids = self.get_success_tasks(cmd.clone()).await?;
+            let config = match deployment_config {
+                Some(config) => {
+                    self.save_deployment_config(&config).await?;
+                    config
+                }
+                None => self.get_config(cmd.clone()).await?.unwrap(),
+            };
+            let cluster = &config.deployment.cluster_name;
+            let success_task_ids = self
+                .get_success_tasks(cmd.as_ref().to_string(), cluster.clone())
+                .await?;
             let join = tokio::task::spawn(async move {
                 self.task_mgr.receive_task_result().await;
             });
             let rs = self
                 .task_mgr
-                .run_tasks(cmd.clone(), config.unwrap(), success_task_ids)
+                .run_tasks(cmd, config, success_task_ids)
                 .await?;
             join.await?;
             println!(r#"all tasks complete.task_size={}"#, rs.len());

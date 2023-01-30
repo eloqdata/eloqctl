@@ -649,6 +649,7 @@ dependencies = [
  "clap",
  "configparser",
  "crossbeam-channel",
+ "derive_more",
  "dirs",
  "dyn-clone",
  "futures",
