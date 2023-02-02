@@ -520,6 +520,13 @@ impl DeploymentConfig {
         ])
     }
 
+    pub fn get_unique_host_list(&self) -> Vec<String> {
+        let mut hosts_vec = self.get_host_list(DeploymentService::Monograph);
+        let storage_hosts = self.get_host_list(DeploymentService::Storage);
+        hosts_vec.extend(storage_hosts.into_iter());
+        hosts_vec.into_iter().unique().collect_vec()
+    }
+
     pub fn get_host_list(&self, service: DeploymentService) -> Vec<String> {
         match service {
             DeploymentService::Storage => {

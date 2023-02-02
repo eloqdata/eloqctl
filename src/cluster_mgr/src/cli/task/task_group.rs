@@ -6,7 +6,7 @@ use crate::cli::task::local_copy_task::LocalCopyTask;
 use crate::cli::task::monograph_ctl_task::MonographCtlTask;
 use crate::cli::task::monograph_install_task::MonographInstall;
 use crate::cli::task::runtime_deps_install::RuntimeDepsInstallation;
-use crate::cli::task::task_base::{TaskHost, TaskId, TaskInstance};
+use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload_task::{UploadTask, ALL_UPLOAD_TASKS};
 use crate::cli::CommandArgs;
@@ -17,19 +17,6 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use tracing::info;
-
-#[derive(Clone)]
-pub struct TaskExecutionContext {
-    pub cmd_args: CommandArgs,
-    pub barrier: Option<Vec<usize>>,
-    pub executable: IndexMap<TaskId, TaskInstance>,
-}
-
-impl TaskExecutionContext {
-    pub fn list_task_ids(&self) -> Vec<TaskId> {
-        self.executable.keys().cloned().collect_vec()
-    }
-}
 
 /// `TaskGroup` base on different business logic, multiple tasks are organized into task groups,
 /// and barriers are inserted between task lists according to dependencies.
@@ -138,7 +125,7 @@ impl DeploymentTaskGroup {
 impl TaskGroup for DeploymentTaskGroup {
     fn tasks(
         &self,
-        cmd_args: CommandArgs,
+        _cmd_args: CommandArgs,
         config: DeploymentConfig,
         successful_tasks: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<TaskExecutionContext> {
@@ -194,7 +181,7 @@ impl TaskGroup for DeploymentTaskGroup {
         executable.extend(unpack_execution.into_iter());
 
         Ok(TaskExecutionContext {
-            cmd_args,
+            task_group: "deploy".to_string(),
             barrier: Some(barrier),
             executable,
         })
@@ -204,7 +191,7 @@ impl TaskGroup for DeploymentTaskGroup {
 impl TaskGroup for InstallDBTaskGroup {
     fn tasks(
         &self,
-        cmd_args: CommandArgs,
+        _cmd_args: CommandArgs,
         config: DeploymentConfig,
         _successful_tasks: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<TaskExecutionContext> {
@@ -243,7 +230,7 @@ impl TaskGroup for InstallDBTaskGroup {
                 executable.extend(cassandra_start.into_iter());
                 executable.extend(monograph_install.into_iter());
                 TaskExecutionContext {
-                    cmd_args,
+                    task_group: "install".to_string(),
                     barrier: Some(barrier),
                     executable,
                 }
@@ -252,7 +239,7 @@ impl TaskGroup for InstallDBTaskGroup {
                 let monograph_is_multi_node = monograph_hosts.len() > 1;
                 let monograph_install = MonographInstall::from_config(&config, install_db_host);
                 TaskExecutionContext {
-                    cmd_args,
+                    task_group: "install".to_string(),
                     barrier: if monograph_is_multi_node {
                         Some(vec![monograph_install.len()])
                     } else {
@@ -358,7 +345,7 @@ impl TaskGroup for CtrlDBTaskGroup {
             None
         };
         Ok(TaskExecutionContext {
-            cmd_args: cmd_arg.clone(),
+            task_group: format!("control-{cmd_ref}"),
             barrier: final_barrier,
             executable: mut_executable,
         })
@@ -372,7 +359,7 @@ impl TaskGroup for CustomCmdTaskGroup {
         config: DeploymentConfig,
         _successful_tasks: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let user_command = match cmd_arg.clone() {
+        let user_command = match cmd_arg {
             CommandArgs::Exec {
                 command,
                 cluster: _,
@@ -384,7 +371,7 @@ impl TaskGroup for CustomCmdTaskGroup {
         let exec_cmd_task_execution = ExecCustomCommand::from_config(user_command, &config);
 
         Ok(TaskExecutionContext {
-            cmd_args: cmd_arg,
+            task_group: "exec_cmd".to_string(),
             barrier: None,
             executable: exec_cmd_task_execution,
         })
@@ -394,13 +381,13 @@ impl TaskGroup for CustomCmdTaskGroup {
 impl TaskGroup for InstallRuntimeDepsTaskGroup {
     fn tasks(
         &self,
-        cmd_arg: CommandArgs,
+        _cmd_arg: CommandArgs,
         config: DeploymentConfig,
         _already_successful: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<TaskExecutionContext> {
         let install_runtime_deps = RuntimeDepsInstallation::from_config(&config)?;
         Ok(TaskExecutionContext {
-            cmd_args: cmd_arg,
+            task_group: "run-deps".to_string(),
             barrier: None,
             executable: install_runtime_deps,
         })

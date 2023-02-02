@@ -1,5 +1,6 @@
 [workspace]
 members = [
-    "src/cluster_mgr"
-    ,
-    "src/devtools"]
+  "src/cluster_mgr",
+  "src/devtools",
+  "src/rest_api"
+]

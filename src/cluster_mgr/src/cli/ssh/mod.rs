@@ -41,6 +41,7 @@ pub enum SSHCommandOption {
     None,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct SSHSession {
     session: Arc<Mutex<client::Handle<SSHClient>>>,

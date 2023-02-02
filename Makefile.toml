@@ -25,10 +25,30 @@ command = "cargo"
 args = ["build", "--package", "devtools", "--release"]
 dependencies = ["format"]
 
+[tasks.rest_api_build]
+command = "cargo"
+args = ["build", "--package", "rest_api", "--release"]
+dependencies = ["format"]
 
 [tasks.clippy]
 command = "cargo"
 args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+[tasks.rest_api_pkg]
+script = '''
+#!/bin/bash
+MONO_CLI_MGR_REST_API="mono_cluster_mgr_rest_dest"
+WORKING_DIR=${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
+PROJECT_DIR=${CARGO_MAKE_CURRENT_TASK_INITIAL_MAKEFILE_DIRECTORY}
+TARGET="$WORKING_DIR"/target/release/rest_api
+function build_rest_pkg() {
+   mkdir -p "$MONO_CLI_MGR_REST_API" && mkdir -p "$MONO_CLI_MGR_REST_API"/config
+   cp -r ${PROJECT_DIR}/src/cluster_mgr/config/* "$MONO_CLI_MGR_REST_API/config"
+   cp "$TARGET" "$MONO_CLI_MGR_REST_API"
+}
+build_rest_pkg
+'''
+dependencies = ["rest_api_build"]
 
 [tasks.devtools_pkg]
 script = '''
@@ -57,7 +77,6 @@ function build_cluster_mgr() {
   mkdir -p "$CLUSTER_MGR_DIST_DIR" && mkdir -p "$CLUSTER_MGR_DIST_DIR"/config
   cp -r $WORKSPACE_DIR/src/cluster_mgr/config/* "$CLUSTER_MGR_DIST_DIR/config"
   cp "$CLUSTER_MGR_RELEASE" "$CLUSTER_MGR_DIST_DIR"
-  rm -rf $WORKSPACE_DIR/src/devtools/$CLUSTER_MGR_DIST_DIR
 }
 build_cluster_mgr
 '''

@@ -1,13 +1,12 @@
 use crate::cli::config::DeploymentConfig;
-use crate::cli::task::task_base::FINISH_;
+use crate::cli::task::task_base::{TaskExecutionContext, FINISH_};
 use crate::cli::task::task_base::{TaskInstance, TaskResultEnum, TaskResultPair};
-use crate::cli::task::task_group::TaskExecutionContext;
 use crate::post_task_execute;
 use crate::state::task_status_operation::TaskStatusEntity;
 use futures_async_stream::try_stream;
 use itertools::Itertools;
 use std::sync::Arc;
-use tracing::{error, info, instrument};
+use tracing::{error, info};
 
 #[derive(Debug, Clone)]
 pub struct TaskController {
@@ -27,18 +26,21 @@ impl TaskController {
         Self { rx, tx }
     }
 
-    fn split_task(
-        barrier: Option<Vec<usize>>,
-        tasks: Vec<TaskInstance>,
-    ) -> Vec<&'static [TaskInstance]> {
-        let tasks = Box::leak(Box::new(tasks));
+    fn split_task(task_execution_context: &TaskExecutionContext) -> Vec<&'static [TaskInstance]> {
+        let barrier = task_execution_context.clone().barrier;
+        let task_install_vec = task_execution_context
+            .executable
+            .values()
+            .cloned()
+            .collect_vec();
+        let tasks = Box::leak(Box::new(task_install_vec));
         if barrier.is_none() {
             vec![tasks.as_slice()]
         } else {
             let barrier_array = barrier.as_ref().unwrap();
             let mut begin;
             let mut end = 0;
-            let mut all_split = vec![];
+            let mut split = vec![];
             for (idx, barrier_val) in barrier_array.iter().enumerate() {
                 if idx == 0 {
                     begin = 0;
@@ -49,9 +51,9 @@ impl TaskController {
                 }
                 info!("TaskController run_task_split {}..{}", begin, end);
                 let task_slice = &tasks[begin..end];
-                all_split.push(task_slice);
+                split.push(task_slice);
             }
-            all_split
+            split
         }
     }
 
@@ -76,20 +78,22 @@ impl TaskController {
         }
     }
 
-    #[instrument]
     async fn run_task_split(
         &'static self,
+        task_group: String,
         splits: &'static [TaskInstance],
         config: DeploymentConfig,
     ) -> anyhow::Result<Vec<TaskResultPair>> {
         let mut joins = vec![];
 
+        // let task_group_arc = Arc::new(task_group);
         splits
             .iter()
             //.enumerate()
             .for_each(|execution_context| {
                 let tx_arc = Arc::new(&self.tx);
                 let cluster_name = config.deployment.cluster_name.clone();
+                let task_group_arc = Arc::new(task_group.clone());
                 let join = tokio::task::spawn(async move {
                     let task = &execution_context.task;
                     let task_input = execution_context.task_input.clone();
@@ -97,14 +101,15 @@ impl TaskController {
                     let task_id = task.identifier();
                     let execution_rs = task.execute(task_host.clone(), task_input).await;
                     info!("Task {:?} execution complete", task_id);
-                    let cmd = task_id.clone().cmd;
+                    //let cmd = task_id.clone().cmd;
                     let conn_tuple = task_host.ssh_conn_tuple();
                     // execution_rs,cluster,task_mame,command,task_host
+                    //let task_group_copy = Arc::clone(&task_group_arc.clone());
                     let post_execute_rs = post_task_execute!(
                         execution_rs,
                         cluster_name,
                         task_id.as_json_string(),
-                        cmd.as_str(),
+                        task_group_arc.as_str(),
                         conn_tuple.2
                     );
                     info!("Save Task {:?} execution status complete", task_id);
@@ -145,16 +150,16 @@ impl TaskController {
     /// +-----+------+------+------+--------+------+-------+-------+-------+
     pub async fn run_all_tasks(
         &'static self,
-        task_execution: TaskExecutionContext,
+        task_execution_context: TaskExecutionContext,
         config: DeploymentConfig,
     ) -> anyhow::Result<Vec<TaskResultPair>> {
-        let barrier = task_execution.clone().barrier;
-        let tasks = task_execution.clone().executable;
-        let task_vec = tasks.values().cloned().collect_vec();
-        let split = TaskController::split_task(barrier, task_vec);
+        let task_group_string = task_execution_context.clone().task_group;
+        let split = TaskController::split_task(&task_execution_context);
         let mut task_result_vec = vec![];
         for task_split in split.into_iter() {
-            let rs = self.run_task_split(task_split, config.clone()).await?;
+            let rs = self
+                .run_task_split(task_group_string.clone(), task_split, config.clone())
+                .await?;
             task_result_vec.push(rs);
         }
         self.tx.send(TaskResultPair {

@@ -8,7 +8,6 @@ use tracing::error;
 pub mod cmd_base;
 mod cmd_printer;
 pub mod config;
-#[allow(dead_code)]
 pub mod ssh;
 pub mod task;
 
@@ -51,12 +50,6 @@ pub enum CommandArgs {
         #[arg(short = 'c', long, value_name = "CLUSTER NAME")]
         cluster: String,
     },
-    // #[strum(serialize = "web")]
-    // /// Start ClusterMgrCli's webservice on the specified port.
-    // Web {
-    //     #[arg(short, long, value_name = "WEB SERVICE PORT")]
-    //     port: i16,
-    // },
     #[strum(serialize = "start")]
     /// Start the MonographDB cluster with the specified cluster name.
     /// For example: ./cluster_mgr start  --cluster $CLUSTER_NAME

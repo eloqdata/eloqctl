@@ -8,6 +8,8 @@ use crate::state::task_status_operation::TaskStatusEntity;
 use async_trait::async_trait;
 use dyn_clone::DynClone;
 use futures::StreamExt;
+use indexmap::IndexMap;
+use itertools::Itertools;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -17,13 +19,26 @@ use std::sync::LazyLock;
 use tabled::display::ExpandedDisplay;
 use tabled::Tabled;
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, info};
 use ExecutionValue as LastResult;
 
 pub type EnvProps = HashMap<String, String>;
-
+pub static NOT_PRINT_TASK_RESULT: &str = "NOT_PRINT_TASK_RESULT";
 pub(crate) static REMOTE_ENV_PROPS: LazyLock<anyhow::Result<EnvProps>> =
     LazyLock::new(|| load_remote_env(None));
+
+#[derive(Clone)]
+pub struct TaskExecutionContext {
+    pub task_group: String,
+    pub barrier: Option<Vec<usize>>,
+    pub executable: IndexMap<TaskId, TaskInstance>,
+}
+
+impl TaskExecutionContext {
+    pub fn list_task_ids(&self) -> Vec<TaskId> {
+        self.executable.keys().cloned().collect_vec()
+    }
+}
 
 #[macro_export]
 macro_rules! get_ctl_cmd_string {
@@ -273,7 +288,6 @@ impl TaskMgr {
         while let Some(Ok(task_result_pair)) = result_reader.next().await {
             let task_id: String = task_result_pair.task_id;
             let result: TaskResultEnum = task_result_pair.result;
-
             match result {
                 TaskResultEnum::Success(opt_rs) => {
                     let table_printer = CmdPrinter::new();
@@ -307,10 +321,22 @@ impl TaskMgr {
                 }
                 TaskResultEnum::Error(err_msg) => {
                     let err_msg = format!(r#"task {task_id} failed. cause by {err_msg}"#);
-                    println!("{}", err_msg.red());
+                    error!("{}", err_msg.red());
                 }
             }
         }
+    }
+
+    pub fn task_context(
+        &self,
+        cmd_args: CommandArgs,
+        config: &DeploymentConfig,
+        success_task: Option<Vec<TaskStatusEntity>>,
+    ) -> anyhow::Result<TaskExecutionContext> {
+        let group_key = cmd_args.as_ref();
+
+        let task_group = TASK_GROUP.get(group_key).unwrap();
+        task_group.tasks(cmd_args, config.clone(), success_task)
     }
 
     pub async fn run_tasks(
@@ -319,14 +345,8 @@ impl TaskMgr {
         config: DeploymentConfig,
         success_task: Option<Vec<TaskStatusEntity>>,
     ) -> anyhow::Result<Vec<TaskResultPair>> {
-        let group_key = cmd_args.as_ref();
-
-        let task_group = TASK_GROUP.get(group_key).unwrap();
-        let tasks_execution = task_group
-            .tasks(cmd_args, config.clone(), success_task)
-            .unwrap();
-
-        println!(
+        let tasks_execution = self.task_context(cmd_args, &config, success_task)?;
+        info!(
             "TaskMgr start current barrier={:?}",
             tasks_execution.barrier
         );
