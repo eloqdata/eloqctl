@@ -7,7 +7,6 @@ use tracing::error;
 
 pub mod cmd_base;
 mod cmd_printer;
-pub mod config;
 pub mod ssh;
 pub mod task;
 

@@ -1,4 +1,4 @@
-use crate::cli::config::DeploymentConfig;
+use crate::config::config_base::DeploymentConfig;
 use crate::cli::ssh::{SSHCommandOption, SSHSession};
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,

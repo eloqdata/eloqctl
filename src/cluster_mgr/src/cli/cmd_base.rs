@@ -1,4 +1,4 @@
-use crate::cli::config::DeploymentConfig;
+use crate::config::config_base::DeploymentConfig;
 use crate::cli::task::task_base::{CmdErr, TaskExecutionContext, TaskMgr};
 use crate::cli::CommandArgs;
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};

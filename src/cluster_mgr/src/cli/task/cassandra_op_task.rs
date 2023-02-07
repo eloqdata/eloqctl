@@ -1,8 +1,9 @@
-use crate::cli::config::{DeploymentConfig, DeploymentService};
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::config::config_base::DeploymentConfig;
+use crate::config::DeploymentService;
 use async_trait::async_trait;
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{Session, SessionBuilder, TcpSessionBuilder};

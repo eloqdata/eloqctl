@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
-use cluster_mgr::cli::config::DeploymentConfig;
+use cluster_mgr::config::config_base::DeploymentConfig;
 use cluster_mgr::cli::CommandArgs;
 use derive_more::Error;
 use error::ResponseError;

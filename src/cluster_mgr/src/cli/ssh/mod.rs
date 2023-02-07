@@ -1,7 +1,7 @@
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskHost};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
+use async_trait::async_trait;
 use futures::AsyncWriteExt;
-use russh::client::Session;
 use russh::*;
 use russh_keys::*;
 use std::collections::HashMap;
@@ -16,22 +16,15 @@ use tracing::{error, info};
 #[derive(Clone)]
 pub struct SSHClient {}
 
+#[async_trait]
 impl client::Handler for SSHClient {
     type Error = russh::Error;
-    type FutureBool = futures::future::Ready<Result<(Self, bool), Self::Error>>;
-    type FutureUnit = futures::future::Ready<Result<(Self, Session), Self::Error>>;
 
-    fn finished_bool(self, b: bool) -> Self::FutureBool {
-        futures::future::ready(Ok((self, b)))
-    }
-
-    fn finished(self, session: Session) -> Self::FutureUnit {
-        futures::future::ready(Ok((self, session)))
-    }
-
-    fn check_server_key(self, server_public_key: &key::PublicKey) -> Self::FutureBool {
-        info!("SSHClient check_server_key: {}", server_public_key.name());
-        self.finished_bool(true)
+    async fn check_server_key(
+        self,
+        _server_public_key: &key::PublicKey,
+    ) -> Result<(Self, bool), Self::Error> {
+        Ok((self, true))
     }
 }
 

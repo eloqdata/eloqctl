@@ -1,6 +1,6 @@
-use crate::cli::config::DeploymentConfig;
 use crate::cli::task::task_base::{TaskExecutionContext, FINISH_};
 use crate::cli::task::task_base::{TaskInstance, TaskResultEnum, TaskResultPair};
+use crate::config::config_base::DeploymentConfig;
 use crate::post_task_execute;
 use crate::state::task_status_operation::TaskStatusEntity;
 use chrono::DateTime;

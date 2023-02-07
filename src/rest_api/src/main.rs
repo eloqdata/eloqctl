@@ -1,6 +1,6 @@
 use clap::Parser;
 use cluster_mgr::cli::cmd_base::NOT_PRINT_TASK_RESULT;
-use cluster_mgr::cli::config::CONFIG_PATH_DIR;
+use cluster_mgr::config::CONFIG_PATH_DIR;
 use rest_api::server::CliMgrHttpServer;
 use rest_api::ServerCommandArgs;
 use tracing::{info, Level};

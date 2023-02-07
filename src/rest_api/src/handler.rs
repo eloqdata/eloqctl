@@ -2,9 +2,9 @@ use crate::global_handler::GlobalCommandHandler;
 use crate::{MonographConnInfo, RequestPayload, ResponseData, WebHandleError};
 use actix_web::{get, post, web, HttpResponse, Responder};
 use anyhow::anyhow;
-use cluster_mgr::cli::config::DeploymentConfig;
 use cluster_mgr::cli::task::task_base::TaskId;
 use cluster_mgr::cli::CommandArgs;
+use cluster_mgr::config::config_base::DeploymentConfig;
 use serde_json::{json, Value};
 // use tracing::info;
 

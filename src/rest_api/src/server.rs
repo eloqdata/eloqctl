@@ -6,7 +6,7 @@ use crate::listen_exit_signal;
 use actix_server::Server;
 use actix_web::{middleware, web, App, HttpServer};
 use cluster_mgr::cli::cmd_base::CommandExecutor;
-use cluster_mgr::cli::config::CONFIG_PATH_DIR;
+use cluster_mgr::config::CONFIG_PATH_DIR;
 use std::env;
 use tracing::info;
 

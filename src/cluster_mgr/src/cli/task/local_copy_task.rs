@@ -1,8 +1,9 @@
-use crate::cli::config::{DeploymentConfig, DownloadUrl};
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
 use crate::cli::{download_dir, CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::config::config_base::DeploymentConfig;
+use crate::config::DownloadUrl;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use indexmap::IndexMap;

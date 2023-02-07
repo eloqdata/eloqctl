@@ -1,4 +1,3 @@
-use crate::cli::config::{DeploymentConfig, StorageProvider};
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::ssh::SSHSession;
 use crate::cli::task::cassandra_op_task::{CassandraOpTask, CASS_CQL_STMT};
@@ -6,6 +5,8 @@ use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
 use crate::cli::{CMD_OUTPUT, MONOGRAPH_INSTALL_SCRIPT};
+use crate::config::config_base::DeploymentConfig;
+use crate::config::StorageProvider;
 use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;

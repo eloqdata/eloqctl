@@ -1,4 +1,3 @@
-use crate::cli::config::{DeploymentConfig, DeploymentService};
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::ssh::SSHSession;
 use crate::cli::task::cassandra_op_task::{CassandraOpTask, CASS_CQL_STMT};
@@ -8,6 +7,8 @@ use crate::cli::task::task_base::{
 };
 use crate::cli::task::task_utils::{check_process_pid, PROCESS_PID};
 use crate::cli::{CommandArgs, CMD_STATUS};
+use crate::config::config_base::DeploymentConfig;
+use crate::config::DeploymentService;
 use crate::get_ctl_cmd_string;
 use anyhow::anyhow;
 use async_trait::async_trait;

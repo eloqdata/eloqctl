@@ -1,8 +1,9 @@
 use crate::cli::cmd_printer::{CmdPrinter, Printable};
-use crate::cli::config::{load_remote_env, DeploymentConfig};
 use crate::cli::task::task_controller::TaskController;
 use crate::cli::task::task_group::TASK_GROUP;
 use crate::cli::{CommandArgs, CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::config::config_base::DeploymentConfig;
+use crate::config::load_remote_env;
 use crate::enum_into_trait;
 use crate::state::task_status_operation::TaskStatusEntity;
 use async_trait::async_trait;

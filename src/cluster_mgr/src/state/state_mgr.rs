@@ -1,4 +1,5 @@
-use crate::cli::config::{DeploymentConfig, CONFIG_PATH_DIR};
+use crate::config::config_base::DeploymentConfig;
+use crate::config::CONFIG_PATH_DIR;
 use crate::state::deployment_operation::DeploymentOperation;
 use crate::state::service_status_operation::{ServiceInstanceEntity, ServiceInstanceOperation};
 use crate::state::state_base::{QueryCondition, StateOperation, StateOperationAny};

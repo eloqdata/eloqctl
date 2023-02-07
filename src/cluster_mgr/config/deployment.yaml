@@ -21,6 +21,17 @@ deployment:
       storage_cluster: "mono-cass-cluster"
       host:
         - localhost
+  monitor:
+    prometheus:
+      download_url: "https://github.com/prometheus/prometheus/releases/download/v2.42.0/prometheus-2.42.0.linux-amd64.tar.gz"
+      port: 9090
+      host: "localhost"
+    grafana:
+      download_url: "https://dl.grafana.com/oss/release/grafana-9.3.6.linux-amd64.tar.gz"
+      port: 3300
+      host: "localhost"
+    node_exporter: "https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz",
+    mysql_exporter: "https://github.com/prometheus/mysqld_exporter/releases/download/v0.14.0/mysqld_exporter-0.14.0.freebsd-amd64.tar.gz",
 #    dynamodb:
 #      access_key_id: "",
 #      secret_key: ""

@@ -1,4 +1,3 @@
-use crate::cli::config::DeploymentConfig;
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
@@ -9,6 +8,7 @@ use async_trait::async_trait;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use std::collections::HashMap;
+use crate::config::config_base::DeploymentConfig;
 
 #[derive(Clone, Debug)]
 pub struct ExecCustomCommand {

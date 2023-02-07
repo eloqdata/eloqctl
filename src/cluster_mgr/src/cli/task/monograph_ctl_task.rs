@@ -1,4 +1,3 @@
-use crate::cli::config::{DeploymentConfig, DeploymentService};
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::ssh::SSHSession;
 use crate::cli::task::task_base::{
@@ -17,6 +16,8 @@ use sqlx::{Connection, Executor, Row};
 use std::collections::HashMap;
 use strum_macros::AsRefStr;
 use tracing::{error, info};
+use crate::config::config_base::DeploymentConfig;
+use crate::config::DeploymentService;
 
 #[derive(Clone, Debug, Eq, PartialEq, AsRefStr)]
 pub enum MonographCtlCmd {

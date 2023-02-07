@@ -1,9 +1,10 @@
-use crate::cli::config::{DeploymentConfig, DownloadUrl};
 use crate::cli::task::task_base::CmdErr::DownloadErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
 use crate::cli::{download_dir, file_process_progress, CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::config::config_base::DeploymentConfig;
+use crate::config::DownloadUrl;
 use anyhow::anyhow;
 use futures::stream::StreamExt;
 use indexmap::IndexMap;
