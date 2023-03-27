@@ -25,6 +25,7 @@ impl client::Handler for SSHClient {
         self,
         _server_public_key: &key::PublicKey,
     ) -> Result<(Self, bool), Self::Error> {
+        // println!("ssh client check_server_key = {server_public_key:?}");
         Ok((self, true))
     }
 }
@@ -95,7 +96,7 @@ impl SSHSession {
         command: &str,
         cmd_option: SSHCommandOption,
     ) -> anyhow::Result<ExecutionValue> {
-        let mut session = self.session.lock().await;
+        let session = self.session.lock().await;
         let mut channel = session.channel_open_session().await?;
         channel.exec(true, command).await?;
         let mut output = Vec::new();
@@ -117,6 +118,7 @@ impl SSHSession {
             }
         }
         let output_str = String::from_utf8_lossy(&output).into_owned();
+        // println!("SSHSession output = {output_str}");
         let cmd_res = HashMap::from([
             (CMD.to_string(), TaskArgValue::Str(command.to_string())),
             (

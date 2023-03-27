@@ -22,7 +22,7 @@ impl RuntimeDepsInstallation {
     ) -> anyhow::Result<IndexMap<TaskId, TaskInstance>> {
         let os_and_deps_pair = DeploymentConfig::load_runtime_deps_by_os(None)?;
         let os_name = os_and_deps_pair.0;
-        println!("RuntimeDep from_config = {os_name}");
+        // println!("RuntimeDep from_config = {os_name}");
         let dep_cmd_partial = match os_name.as_str() {
             "ubuntu" => {
                "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends"
@@ -98,7 +98,6 @@ impl TaskExecutor for RuntimeDepsInstallation {
             .command(self.install_dep_cmd.clone().as_str(), CollectOutput)
             .await?;
 
-        println!("RuntimeDep command ={}", self.install_dep_cmd.clone());
 
         ssh_session.close().await?;
         task_return_value!(

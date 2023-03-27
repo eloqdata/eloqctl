@@ -103,13 +103,17 @@ task_value_into_impl! {
 #[macro_export]
 macro_rules! task_return_value {
     ($task_result:expr, $task_err_closure:expr, $task_name:expr $(,$return_value:expr)? ) => {{
+        use tracing::info;
         use $crate::cli::CMD_STATUS;
         let task_rs = $task_result.clone();
         let task_status = task_rs.get(CMD_STATUS).unwrap();
         let status_code = TaskArgValue::into_inner_value::<usize>(task_status.clone());
         if status_code != 0 {
             let cmd_err = $task_err_closure(status_code);
-            println!("{:?} {:?}", $task_name, cmd_err);
+            info!(
+                "task_return_value current status_code != 0, task_name={:?},cmd_err={:?}",
+                $task_name, cmd_err
+            );
             return Err(anyhow::anyhow!(cmd_err));
         } else {
             return Ok(Some(task_rs));
