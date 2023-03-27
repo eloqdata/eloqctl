@@ -3,12 +3,12 @@ use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use futures::AsyncWriteExt;
+use itertools::Itertools;
 use russh::*;
 use russh_keys::*;
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::path::Path;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -25,6 +25,7 @@ impl client::Handler for SSHClient {
         self,
         _server_public_key: &key::PublicKey,
     ) -> Result<(Self, bool), Self::Error> {
+        // println!("ssh client check_server_key = {server_public_key:?}");
         Ok((self, true))
     }
 }
@@ -67,7 +68,17 @@ impl SSHSession {
             ..Default::default()
         });
         let ssh_client = SSHClient {};
-        let ssh_addr = SocketAddr::from_str(format!("{host}:{port}").as_str())?;
+        let ssh_socket_addr_rs = format!("{host}:{port}").to_socket_addrs();
+        if ssh_socket_addr_rs.is_err() {
+            panic!("SSHSession build SocketAddr error from [{host}:{port}]. Please check deployment.yaml");
+        }
+        let ssh_socket_add_ref = ssh_socket_addr_rs.unwrap();
+        let ssh_addr_vec = ssh_socket_add_ref
+            .as_slice()
+            .iter()
+            .filter(|add| add.is_ipv4() && !add.to_string().contains("0.0.0.0"))
+            .collect_vec();
+        let ssh_addr = ssh_addr_vec.as_slice().first().unwrap();
         let mut session = client::connect(ssh_config, ssh_addr, ssh_client).await?;
         let key_pair = load_secret_key(key_path, None)?;
         let auth_rs = session
@@ -95,7 +106,7 @@ impl SSHSession {
         command: &str,
         cmd_option: SSHCommandOption,
     ) -> anyhow::Result<ExecutionValue> {
-        let mut session = self.session.lock().await;
+        let session = self.session.lock().await;
         let mut channel = session.channel_open_session().await?;
         channel.exec(true, command).await?;
         let mut output = Vec::new();
@@ -117,6 +128,7 @@ impl SSHSession {
             }
         }
         let output_str = String::from_utf8_lossy(&output).into_owned();
+        // println!("SSHSession output = {output_str}");
         let cmd_res = HashMap::from([
             (CMD.to_string(), TaskArgValue::Str(command.to_string())),
             (
