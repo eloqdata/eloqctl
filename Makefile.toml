@@ -1,4 +1,3 @@
-[tasks.rest_api_pkg]
 [tasks.rustc-version-nightly]
 toolchain = "nightly-2022-12-12"
 command = "rustc"
