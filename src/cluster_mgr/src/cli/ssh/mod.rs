@@ -3,12 +3,12 @@ use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use futures::AsyncWriteExt;
+use itertools::Itertools;
 use russh::*;
 use russh_keys::*;
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::path::Path;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -68,7 +68,17 @@ impl SSHSession {
             ..Default::default()
         });
         let ssh_client = SSHClient {};
-        let ssh_addr = SocketAddr::from_str(format!("{host}:{port}").as_str())?;
+        let ssh_socket_addr_rs = format!("{host}:{port}").to_socket_addrs();
+        if ssh_socket_addr_rs.is_err() {
+            panic!("SSHSession build SocketAddr error from [{host}:{port}]. Please check deployment.yaml");
+        }
+        let ssh_socket_add_ref = ssh_socket_addr_rs.unwrap();
+        let ssh_addr_vec = ssh_socket_add_ref
+            .as_slice()
+            .iter()
+            .filter(|add| add.is_ipv4() && !add.to_string().contains("0.0.0.0"))
+            .collect_vec();
+        let ssh_addr = ssh_addr_vec.as_slice().first().unwrap();
         let mut session = client::connect(ssh_config, ssh_addr, ssh_client).await?;
         let key_pair = load_secret_key(key_path, None)?;
         let auth_rs = session
