@@ -3,7 +3,7 @@ use crate::cli::ssh::SSHSession;
 use crate::cli::task::cassandra_op_task::{CassandraOpTask, CASS_CQL_STMT};
 use crate::cli::task::task_base::{
     CmdErr::CassandraCtlErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId,
-    TaskInstance,
+    TaskInstance, REMOTE_ENV_PROPS,
 };
 use crate::cli::task::task_utils::{check_process_pid, PROCESS_PID};
 use crate::cli::{CommandArgs, CMD_STATUS};
@@ -40,10 +40,10 @@ macro_rules! cassandra_cmd {
             },
             "CassandraCmd::ProcessInfo" => {
                 let cmd_user = $cmd_arg;
-                let echo_cmd=format!(" echo `ps uxwe -u {} | grep {} | grep -v grep", cmd_user, $cassandra_home);
-                let print_pid = r#"| awk '{print $2}'`"#;
+                let echo_cmd=format!("ps uxwe -u {} | grep {} | grep -v grep", cmd_user, $cassandra_home);
+                let print_pid = r#"| awk '{print $2,$11}'"#;
                 let pid_cmd = format!("{} {}", echo_cmd, print_pid);
-                let pid_cwd = r#"{ read pid; cmd="readlink /proc/$pid/cwd"; output=`eval $cmd`; echo "$pid:$output";}"#;
+                let pid_cwd = r#" awk '{printf "%s", sep $0; sep = "+"}; END {if (NR) print ""}'"#;
                 let final_cmd = format!("{} | {}", pid_cmd, pid_cwd);
                 CassandraCmd::ProcessInfo(final_cmd)
             },)*
@@ -204,26 +204,32 @@ impl CassandraCtlTask {
     ) -> anyhow::Result<ExecutionValue> {
         let conn_user = task_host.ssh_conn_tuple().0;
         let cassandra_home = self.cassandra_home();
+        let remote_env_props = REMOTE_ENV_PROPS.as_ref().unwrap();
+        let java_home = remote_env_props.get("JAVA_HOME").unwrap();
         let cassandra_process =
             cassandra_cmd!(CassandraCmd::ProcessInfo, cassandra_home, conn_user);
 
         let process_info = cassandra_process.cmd_value();
-
         check_process_pid(process_info, ssh_conn, |output| -> Option<i32> {
             let mut pid = None;
             for line in output.lines() {
-                let splits = line.split(':').collect_vec();
-                if splits.is_empty() || splits.len() == 1 {
+                let p_info_pair = line.split('+').collect_vec();
+                println!("CassandraCtlTask check_process_info={p_info_pair:#?}");
+                if p_info_pair.is_empty() || p_info_pair.len() == 1 {
                     continue;
                 }
-                assert_eq!(splits.len(), 2);
-                let process_cmd = splits[1];
-                if cassandra_home.as_str() == process_cmd {
-                    let pid_num = splits[0].parse::<i32>().unwrap();
-                    pid = Some(pid_num);
-                    info!(
-                        "CassandraCtlTask found cassandra process is already running PID={}",
-                        pid_num
+                let collect_pid = p_info_pair
+                    .into_iter()
+                    .filter(|split| {
+                        let p_info = split.split_whitespace().collect_vec();
+                        p_info[1].contains(java_home)
+                    })
+                    .map(|p_info| p_info.split_whitespace().collect_vec()[0])
+                    .collect_vec();
+                if !collect_pid.is_empty() {
+                    pid = Some(collect_pid[0].parse::<i32>().unwrap());
+                    println!(
+                        "CassandraCtlTask found cassandra process is already running PID={pid:#?}"
                     );
                     break;
                 }

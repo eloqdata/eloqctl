@@ -266,7 +266,9 @@ impl MonographCtlTask {
     async fn monograph_pid(&self, ssh_conn: SSHSession) -> anyhow::Result<ExecutionValue> {
         let remote_install_dir = self.config.install_dir();
         let check_status = monograph_cmd!(MonographCtlCmd::Status, remote_install_dir);
-        check_process_pid(check_status.cmd_value(), ssh_conn, parse_process_pid).await
+        let cmd_val = check_status.cmd_value();
+        println!("MonographDB process_info pid = {cmd_val}");
+        check_process_pid(cmd_val, ssh_conn, parse_process_pid).await
     }
 }
 
