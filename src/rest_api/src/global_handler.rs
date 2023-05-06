@@ -60,7 +60,7 @@ impl GlobalCommandHandler {
             let cmd = cmd_opt.unwrap();
             info!("Global handler process command={}", cmd.as_ref());
             match cmd.as_ref() {
-                "deploy" => {
+                "deploy" | "run-deps" => {
                     let config = payload.config.unwrap();
                     cmd_executor.run(cmd, Some(config)).await?
                 }

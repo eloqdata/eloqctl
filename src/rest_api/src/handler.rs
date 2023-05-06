@@ -49,8 +49,23 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> CommandArgs
             user: None,
             password: None,
         },
+        "run-deps" => CommandArgs::RunDeps {
+            topology_file: "_NONE".to_string(),
+        },
         _ => unreachable!(),
     }
+}
+
+pub fn ctrl_cluster(
+    cmd: &str,
+    global_handler: web::Data<GlobalCommandHandler>,
+    post_deployment: web::Json<DeploymentConfig>,
+) {
+    let deploy_without_topology_file = build_command_from_str(cmd, None);
+    global_handler.submit(RequestPayload {
+        command: Some(deploy_without_topology_file),
+        config: Some(post_deployment.0),
+    });
 }
 
 #[post("/deploy")]
@@ -58,11 +73,16 @@ pub async fn deploy_cluster(
     global_handler: web::Data<GlobalCommandHandler>,
     post_deployment: web::Json<DeploymentConfig>,
 ) -> impl Responder {
-    let deploy_without_topology_file = build_command_from_str("deploy", None);
-    global_handler.submit(RequestPayload {
-        command: Some(deploy_without_topology_file),
-        config: Some(post_deployment.0),
-    });
+    ctrl_cluster("deploy", global_handler, post_deployment);
+    HttpResponse::Ok().finish()
+}
+
+#[post("/install_run_deps")]
+pub async fn install_run_deps(
+    global_handler: web::Data<GlobalCommandHandler>,
+    post_deployment: web::Json<DeploymentConfig>,
+) -> impl Responder {
+    ctrl_cluster("run-deps", global_handler, post_deployment);
     HttpResponse::Ok().finish()
 }
 
@@ -89,7 +109,7 @@ pub async fn check_cmd_status(
     let (cluster, command) = param.into_inner();
     validate_command(
         command.as_str(),
-        &["start", "stop", "install", "status", "deploy"],
+        &["start", "stop", "install", "status", "deploy", "run-deps"],
     )?;
 
     let cmd_executor = global_handler.get_command_executor();

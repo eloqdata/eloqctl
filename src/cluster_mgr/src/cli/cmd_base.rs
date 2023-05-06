@@ -1,13 +1,12 @@
-use crate::cli::task::task_base::{CmdErr, TaskMgr};
+use crate::cli::task::task_base::TaskMgr;
 use crate::cli::CommandArgs;
 use crate::config::config_base::DeploymentConfig;
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
 use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, STATE_MGR};
 use crate::StateValue;
-use anyhow::anyhow;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{info, warn};
 
 pub static NOT_PRINT_TASK_RESULT: &str = "NOT_PRINT_TASK_RESULT";
 
@@ -55,10 +54,11 @@ impl CommandExecutor {
             })
             .await?;
         if !deployment_entity.is_empty() {
-            error!("current cluster {} already exists.", curr_cluster);
-            return Err(anyhow!(CmdErr::ClusterAlreadyExists(
-                curr_cluster.to_string()
-            )));
+            warn!(
+                "current cluster {} already exists. do nothing",
+                curr_cluster
+            );
+            return Ok(());
         }
         let all_hosts = config.get_unique_host_list().join(";");
         let config_string = config.config_to_string();
