@@ -29,6 +29,7 @@ pub const GRAFANA_FILE_KEY: &str = "grafana";
 pub const NODE_EXPORTER_FILE_KEY: &str = "node_exporter";
 pub const MYSQL_EXPORTER_FILE_KEY: &str = "mysqld_exporter";
 pub const CASSANDRA_COLLECTOR_AGENT_FILE_KEY: &str = "datastax-mcac-agent";
+pub const DEPLOYMENT_CHECK_SUCCESS_TASK: &str = "deploy_check_success_task";
 
 macro_rules! extract_monitor_host {
     ($deployment_ref:expr, $monitor_components:ident) => {{
@@ -62,6 +63,7 @@ macro_rules! monitor_components_unpack_file {
 pub struct DeploymentConfig {
     pub connection: Connection,
     pub deployment: Deployment,
+    pub conf_opts: Option<HashMap<String, bool>>,
 }
 
 impl DeploymentConfig {

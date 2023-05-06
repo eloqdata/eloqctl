@@ -98,7 +98,6 @@ impl TaskExecutor for RuntimeDepsInstallation {
             .command(self.install_dep_cmd.clone().as_str(), CollectOutput)
             .await?;
 
-
         ssh_session.close().await?;
         task_return_value!(
             install_dep_cmd_rs,

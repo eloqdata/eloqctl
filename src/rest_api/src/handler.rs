@@ -4,8 +4,9 @@ use actix_web::{get, post, web, HttpResponse, Responder};
 use anyhow::anyhow;
 use cluster_mgr::cli::task::task_base::TaskId;
 use cluster_mgr::cli::CommandArgs;
-use cluster_mgr::config::config_base::DeploymentConfig;
+use cluster_mgr::config::config_base::{DeploymentConfig, DEPLOYMENT_CHECK_SUCCESS_TASK};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 // use tracing::info;
 
 #[get("/check_health")]
@@ -97,21 +98,27 @@ pub async fn check_cmd_status(
         .load_deployment_from_state(cluster.as_str())
         .await?;
     // cmd_executor.load_deployment_from_state(cluster_str).await?;
-    if let Some(deployment_config) = deployment_config_opt {
+    if let Some(mut deployment_config) = deployment_config_opt {
+        deployment_config.conf_opts = Some(HashMap::from([(
+            DEPLOYMENT_CHECK_SUCCESS_TASK.to_string(),
+            false,
+        )]));
         let cmd_args = build_command_from_str(command.as_str(), Some(cluster.clone()));
         let task_context = cmd_executor
             .task_mgr()
             .task_context(cmd_args, &deployment_config)
             .await?;
+
         let task_ids = task_context.list_task_ids();
         let cmd_vec = vec![task_context.task_group];
-        let task_status_vec = cmd_executor
+        println!("#### task_group={cmd_vec:#?}");
+        let completed_task_vec = cmd_executor
             .state_mgr()
             .load_task_status_from_state(cluster, None, Some(cmd_vec))
             .await?;
         let mut success = Vec::new();
         let mut failure = Vec::new();
-        task_status_vec.iter().for_each(|task_status| {
+        completed_task_vec.iter().for_each(|task_status| {
             let task_id = TaskId::from_json_string(task_status.clone().task);
             let update_timestamp = task_status
                 .update_timestamp
@@ -129,12 +136,16 @@ pub async fn check_cmd_status(
                 failure.push(task_id_with_time);
             }
         });
+
+        let tmp_task_id_len = task_ids.len();
+        let complete_task_len = completed_task_vec.len();
+        println!("#### complete_task_len={complete_task_len:?},task_id.len={tmp_task_id_len:?}");
         // info!("/status/cluster/command all_task_id = {:#?}", task_ids);
         let status = if !failure.is_empty() {
             "failure"
-        } else if task_status_vec.len() == task_ids.len() {
+        } else if completed_task_vec.len() == task_ids.len() || task_ids.is_empty() {
             "success"
-        } else if task_status_vec.is_empty() {
+        } else if completed_task_vec.is_empty() {
             "none"
         } else {
             "progress"

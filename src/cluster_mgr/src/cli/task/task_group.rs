@@ -10,10 +10,9 @@ use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskIn
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload_task::UploadTask;
 use crate::cli::CommandArgs;
-use crate::config::config_base::DeploymentConfig;
+use crate::config::config_base::{DeploymentConfig, DEPLOYMENT_CHECK_SUCCESS_TASK};
 use crate::config::{DeploymentService, StorageProvider};
 use crate::state::state_mgr::STATE_MGR;
-use crate::state::task_status_operation::TaskStatusEntity;
 use dyn_clone::DynClone;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -76,24 +75,15 @@ pub static TASK_GROUP: LazyLock<HashMap<String, Box<dyn TaskGroup>>> = LazyLock:
 impl DeploymentTaskGroup {
     fn skip_success_task_execution(
         task_instances: &IndexMap<TaskId, TaskInstance>,
-        success_task_entity: &[TaskStatusEntity],
+        success_task_ids: &[TaskId],
     ) -> IndexMap<TaskId, TaskInstance> {
-        if success_task_entity.is_empty() {
+        if success_task_ids.is_empty() {
             task_instances.clone()
         } else {
-            success_task_entity
+            task_instances
                 .iter()
-                .map(|task_status| {
-                    let task_id_string = &task_status.task;
-                    TaskId::from_json_string(task_id_string.clone())
-                })
-                .filter(|task_id| !task_instances.contains_key(task_id))
-                .map(|task_id| {
-                    (
-                        task_id.clone(),
-                        task_instances.get(&task_id).unwrap().clone(),
-                    )
-                })
+                .filter(|(task_id, _)| !success_task_ids.contains(task_id))
+                .map(|(task_id, task_instance)| (task_id.clone(), task_instance.clone()))
                 .collect::<IndexMap<TaskId, TaskInstance>>()
         }
     }
@@ -113,19 +103,44 @@ impl TaskGroup for DeploymentTaskGroup {
             .load_task_status_from_state(cluster.to_string(), Some(0), Some(vec![cmd_ref.clone()]))
             .await?;
 
+        let success_task_vec = success_task_entity
+            .iter()
+            .map(|task_status_entity| {
+                let task_id_string = &task_status_entity.task;
+                TaskId::from_json_string(task_id_string.clone())
+            })
+            .collect_vec();
+
         let download_task = DownloadFromRemoteTask::from_config(&config)?;
         let mut copy_or_download_task_instances = LocalCopyTask::form_config(&config)?;
         copy_or_download_task_instances.extend(download_task.into_iter());
 
-        let upload_task = DeploymentTaskGroup::skip_success_task_execution(
-            &UploadTask::from_config(&config)?,
-            &success_task_entity,
-        );
-
-        let unpack_task = DeploymentTaskGroup::skip_success_task_execution(
-            &UnpackFileTask::from_config(&config)?,
-            &success_task_entity,
-        );
+        let need_skip_success_task = if let Some(ref opts) = config.conf_opts {
+            if let Some(check) = opts.get(DEPLOYMENT_CHECK_SUCCESS_TASK) {
+                *check
+            } else {
+                true
+            }
+        } else {
+            true
+        };
+        let (upload_task, unpack_task) = if need_skip_success_task {
+            (
+                DeploymentTaskGroup::skip_success_task_execution(
+                    &UploadTask::from_config(&config)?,
+                    &success_task_vec,
+                ),
+                DeploymentTaskGroup::skip_success_task_execution(
+                    &UnpackFileTask::from_config(&config)?,
+                    &success_task_vec,
+                ),
+            )
+        } else {
+            (
+                UploadTask::from_config(&config)?,
+                UnpackFileTask::from_config(&config)?,
+            )
+        };
 
         let mut upload_monitor_tasks = UploadTask::build_upload_monitor_config_tasks(&config)?;
         let upload_mysql_exporter_tasks = UploadTask::build_upload_mysql_exporter_tasks(&config)?;
@@ -240,8 +255,11 @@ impl TaskGroup for InstallDBTaskGroup {
                 "InstallDBTaskGroup MonographDB multiple installation hosts are configured {:?}",
                 dest_hosts
             );
-            let upload_task =
-                UploadTask::build_upload_datafarm_tasks(&config, install_db_host_string.clone(), dest_hosts);
+            let upload_task = UploadTask::build_upload_datafarm_tasks(
+                &config,
+                install_db_host_string.clone(),
+                dest_hosts,
+            );
 
             barrier.push(upload_task.len());
             executable.extend(upload_task.into_iter());
