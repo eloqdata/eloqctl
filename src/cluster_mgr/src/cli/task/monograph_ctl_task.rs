@@ -117,7 +117,10 @@ impl MonographDetector {
                 mysql_conn_url, mono_conn_err
             );
             return Ok(HashMap::from([
-                (CMD.to_string(), TaskArgValue::Str(mysql_conn_url)),
+                (
+                    CMD.to_string(),
+                    TaskArgValue::Str(format!("Dial MonographDB={mysql_conn_url}")),
+                ),
                 (CMD_STATUS.to_string(), TaskArgValue::Number(usize::MAX)),
                 (
                     CMD_OUTPUT.to_string(),
@@ -334,10 +337,15 @@ impl TaskExecutor for MonographCtlTask {
 
         ssh_session.close().await?;
         let ctl_rtn_value = mono_ctl_rs?;
+        let exec_cmd = if let Some(cmd) = ctl_rtn_value.get(CMD) {
+            cmd.clone().into_inner_value()
+        } else {
+            self.ctl_cmd.cmd_value()
+        };
         task_return_value!(
             ctl_rtn_value,
             |status_code: usize| -> CmdErr {
-                CmdErr::MonographCtlErr(self.ctl_cmd.cmd_value(), status_code.to_string())
+                CmdErr::MonographCtlErr(exec_cmd, status_code.to_string())
             },
             "MonographCtlTask"
         )

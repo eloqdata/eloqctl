@@ -3,7 +3,7 @@ use crate::cli::ssh::SSHSession;
 use std::future::Future;
 
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue};
-use crate::cli::{CMD_OUTPUT, CMD_STATUS};
+use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::state::state_base::StateOperation;
 use crate::state::state_mgr::{STATE_MGR, TASK_STATUS_STATE};
 use crate::state::task_status_operation::{TaskStatusEntity, TaskStatusOperation};
@@ -95,7 +95,7 @@ where
     F2: Fn(String, SSHSession) -> Fut2,
     Fut2: Future<Output = anyhow::Result<ExecutionValue>> + 'static,
 {
-    let mut ctl_action_rs = ctl_fn(ctl_cmd, ssh_conn.clone()).await?;
+    let mut ctl_action_rs = ctl_fn(ctl_cmd.clone(), ssh_conn.clone()).await?;
     let process_ready =
         wait_process_complete(check_cmd, ssh_conn, Duration::from_secs(5 * 60), check_fn).await?;
     if let Some(output) = ctl_action_rs.get(CMD_OUTPUT) {
@@ -104,8 +104,10 @@ where
             TaskArgValue::into_inner_value::<String>(output.clone()),
             process_ready
         );
+        ctl_action_rs.insert(CMD.to_string(), TaskArgValue::Str(ctl_cmd));
         ctl_action_rs.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(final_output));
     } else {
+        ctl_action_rs.insert(CMD.to_string(), TaskArgValue::Str(ctl_cmd));
         ctl_action_rs.insert(
             CMD_OUTPUT.to_string(),
             TaskArgValue::Str(format!("check control func return={process_ready}")),

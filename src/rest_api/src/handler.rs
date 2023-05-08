@@ -9,6 +9,17 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 // use tracing::info;
 
+const SUPPORT_CTL_CMD: &[&str; 4] = &["start", "stop", "install", "start_monitor"];
+const SUPPORT_CTL_STATUS_CMD: &[&str; 7] = &[
+    "start",
+    "stop",
+    "install",
+    "status",
+    "deploy",
+    "run-deps",
+    "start_monitor",
+];
+
 #[get("/check_health")]
 pub async fn check_health() -> impl Responder {
     HttpResponse::Ok().content_type("text/plain").body("ok")
@@ -52,6 +63,10 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> CommandArgs
         "run-deps" => CommandArgs::RunDeps {
             topology_file: "_NONE".to_string(),
         },
+        "start_monitor" => CommandArgs::Monitor {
+            cluster: cluster.unwrap(),
+            command: "start".to_string(),
+        },
         _ => unreachable!(),
     }
 }
@@ -92,7 +107,7 @@ pub async fn ctl_cluster(
     param: web::Path<(String, String)>,
 ) -> Result<impl Responder, WebHandleError> {
     let (cluster, command) = param.into_inner();
-    validate_command(command.as_str(), &["start", "stop", "install"])?;
+    validate_command(command.as_str(), SUPPORT_CTL_CMD)?;
     let ctl_command = build_command_from_str(command.as_str(), Some(cluster));
     global_handler.submit(RequestPayload {
         command: Some(ctl_command),
@@ -107,10 +122,7 @@ pub async fn check_cmd_status(
     param: web::Path<(String, String)>,
 ) -> Result<impl Responder, WebHandleError> {
     let (cluster, command) = param.into_inner();
-    validate_command(
-        command.as_str(),
-        &["start", "stop", "install", "status", "deploy", "run-deps"],
-    )?;
+    validate_command(command.as_str(), SUPPORT_CTL_STATUS_CMD)?;
 
     let cmd_executor = global_handler.get_command_executor();
     let deployment_config_opt = cmd_executor
@@ -138,6 +150,7 @@ pub async fn check_cmd_status(
             .await?;
         let mut success = Vec::new();
         let mut failure = Vec::new();
+
         completed_task_vec.iter().for_each(|task_status| {
             let task_id = TaskId::from_json_string(task_status.clone().task);
             let update_timestamp = task_status
