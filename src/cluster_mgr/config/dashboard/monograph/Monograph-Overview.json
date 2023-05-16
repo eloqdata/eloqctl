@@ -2168,8 +2168,8 @@
     "type": "timepicker"
   },
   "timezone": "browser",
-  "title": "Overview",
+  "title": "Monograph Overview",
   "uid": "overview-new",
-  "version": 17,
+  "version": 19,
   "weekStart": ""
 }
