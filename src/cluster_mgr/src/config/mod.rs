@@ -14,6 +14,7 @@ use url::Url;
 pub mod config_base;
 pub mod connection;
 pub mod deployment;
+pub mod log_service;
 pub mod monitor;
 pub mod storage_service_config;
 
@@ -23,7 +24,7 @@ pub const MONOGRAPH_CONF_DYNAMO_TEMPLATE: &str = "my_template_dynamo.cnf";
 pub const START_MONOGRAPH_SCRIPT: &str = "start_monographdb.bash";
 pub const START_MONOGRAPH_TEMPLATE: &str = "start_monographdb.template";
 
-pub const START_LOG_TEMPLATE: &str = "start_log.template";
+pub const START_LOG_TEMPLATE: &str = "start_tx_log.template";
 
 pub const MONOGRAPH_INSTALL_TEMPLATE: &str = "monograph_install_db.template";
 pub const MONOGRAPH_INSTALL_SCRIPT: &str = "monograph_install_db.bash";
@@ -31,8 +32,16 @@ pub const CASSANDRA_CONF_TEMPLATE: &str = "cassandra_template.yaml";
 pub const CASSANDRA_ENV_TEMPLATE: &str = "cassandra-env-template";
 pub const CASSANDRA_JVM_SERVER_CONF: &str = "jvm11-server.options";
 pub const PROMETHEUS_CONFIG_TEMPLATE: &str = "mono_prometheus.yaml";
+
+pub const PROMETHEUS_CONFIG_FILE: &str = "prometheus.yml";
+pub const CASS_MCAC_CONF_FILE: &str = "tg_mcac.json";
+pub const GRAFANA_PROMETHEUS_DS_FILE: &str = "prometheus-datasource.yml";
+
 pub const MCAC_PROMETHEUS_CONFIG_TEMPLATE: &str = "mcac_prometheus.yaml";
+
 pub const GRAFANA_CONFIG_TEMPLATE: &str = "grafana_config.ini";
+pub const GRAFANA_CONFIG_FILE: &str = "defaults.ini";
+
 pub const CREATE_MONITOR_USER_SQL_FILE: &str = "create_monitor_user.sql";
 pub const MYSQL_EXPORTER_CLIENT_CONFIG: &str = "mysql_exporter.cnf";
 

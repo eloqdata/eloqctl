@@ -2,7 +2,9 @@ use crate::cli::ssh::{SSHCommandOption, SSHSession};
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::config::config_base::{DeploymentConfig, MONOGRAPH_TX_SERVICE_DIR};
+use crate::config::config_base::{
+    DeploymentConfig, MONOGRAPH_LOG_SERVICE_DIR, MONOGRAPH_TX_SERVICE_DIR,
+};
 use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -49,14 +51,15 @@ impl UnpackFileTask {
         let unpack_task_instance = all_hosts
             .into_iter()
             .map(|entry| {
-                let packed_file = entry.0;
+                let packed_file = entry.0.to_lowercase();
                 let hosts = entry.1;
-                let unpacked_file =
-                    if packed_file.contains("monograph") || packed_file.contains("txservice") {
-                        MONOGRAPH_TX_SERVICE_DIR.to_string()
-                    } else {
-                        extract_unpacked_name(packed_file.as_str())
-                    };
+                let unpacked_file = if packed_file.contains("monograph-tx") {
+                    MONOGRAPH_TX_SERVICE_DIR.to_string()
+                } else if packed_file.contains("monograph-log") {
+                    MONOGRAPH_LOG_SERVICE_DIR.to_string()
+                } else {
+                    extract_unpacked_name(packed_file.as_str())
+                };
                 hosts
                     .into_iter()
                     .map(|remote_host| {
@@ -120,9 +123,8 @@ impl TaskExecutor for UnpackFileTask {
         let unpacked_name = TaskArgValue::into_inner_value::<String>(
             task_input.get(UNPACKED_NAME).unwrap().clone(),
         );
-
         let install_dir = self.config.install_dir();
-        let unpack_pair = if unpacked_name.contains("monograph") {
+        let unpack_pair = if unpacked_name.contains(MONOGRAPH_TX_SERVICE_DIR) {
             let target_dir = format!("{install_dir}/{unpacked_name}");
             (
                 format!(r#"mkdir -p {target_dir} && tar -zxvf {remote_tar} -C {target_dir}"#,),
@@ -138,9 +140,10 @@ impl TaskExecutor for UnpackFileTask {
             )
         };
         let unpack_cmd = unpack_pair.0;
-        info!("UnpackFileTask cmd={}", unpack_cmd.as_str());
+        let unpack_and_remove_raw_file = format!("{unpack_cmd};rm -rf {remote_tar}");
+        info!("UnpackFileTask cmd={}", unpack_and_remove_raw_file);
         let task_rs = ssh_session
-            .command(unpack_cmd.clone().as_str(), SSHCommandOption::None)
+            .command(unpack_and_remove_raw_file.as_str(), SSHCommandOption::None)
             .await?;
 
         ssh_session.close().await?;

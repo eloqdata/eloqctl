@@ -36,10 +36,8 @@ impl TaskGroup for InstallDBTaskGroup {
 
         let mut execution_context_tuple = match storage_provider {
             StorageProvider::Cassandra => {
-                // build_upload_tasks!();
                 let upload_cass_config_task =
-                    upload_tasks(UploadTaskBuilderType::CassConf, &config); //build_upload_tasks!(CassConfUploadBuilder, &config);
-                                                                            // let upload_cass_config_task = UploadTask::build_upload_cass_conf_task(&config)?;
+                    upload_tasks(UploadTaskBuilderType::CassConf, &config);
                 let mut barrier = vec![upload_cass_config_task.len()];
                 let mut executable = IndexMap::new();
                 executable.extend(upload_cass_config_task.into_iter());

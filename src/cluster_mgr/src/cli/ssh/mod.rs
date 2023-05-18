@@ -150,6 +150,7 @@ impl SSHSession {
             error!("SSHSession close error cause by {}", close_err.to_string());
             Err(anyhow!(close_err.to_string()))
         } else {
+            println!("SSHSession close by monograph waiter cluster_mgr");
             Ok(())
         }
     }

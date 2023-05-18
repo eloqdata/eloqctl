@@ -657,6 +657,7 @@ dependencies = [
  "local-ip-address",
  "num-bigint-dig",
  "owo-colors",
+ "rand 0.8.5",
  "reqwest",
  "russh",
  "russh-config",

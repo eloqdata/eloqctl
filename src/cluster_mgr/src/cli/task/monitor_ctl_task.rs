@@ -204,7 +204,8 @@ impl MonitorCtlTask {
                 let mysql_exporter_cmd = MonitorComponentCommand::MySqlExporter {
                     home: format!("{install_dir}/{MYSQL_EXPORTER_FILE_KEY}"),
                     mysql_conf: format!(
-                        "{install_dir}/mysqld_exporter/mysql_exporter_{monograph_host}.cnf"
+                        //"{install_dir}/mysqld_exporter/mysql_exporter_{monograph_host}.cnf"
+                        "{install_dir}/mysql_exporter_{monograph_host}.cnf"
                     ),
                 };
                 let task_remote_host_cloned = task_remote_host.clone();

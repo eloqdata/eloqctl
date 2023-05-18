@@ -3,7 +3,6 @@ use crate::cli::task::task_base::{
 };
 use crate::cli::{download_dir, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::DeploymentConfig;
-use crate::config::DownloadUrl;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -46,48 +45,20 @@ impl LocalCopyTask {
     pub fn form_config(
         config: &DeploymentConfig,
     ) -> anyhow::Result<IndexMap<TaskId, TaskInstance>> {
-        let mono_install_image = &config.deployment.tx_image;
-        let mono_download_url = DownloadUrl::from_url_str(mono_install_image.as_str())?;
         let mut local_copy_task_instance = IndexMap::new();
-
-        if mono_download_url.is_local() {
-            build_copy_task_instances!(
-                local_copy_task_instance,
-                mono_download_url.get_url(),
-                mono_download_url.file_name(),
-                "copy_monograph".to_string()
-            );
-        }
-        let cassandra = &config.deployment.storage_service.cassandra;
-        if cassandra.is_some() {
-            let cassandra_download_string = cassandra.as_ref().unwrap().clone().download_url;
-            let cassandra_download = DownloadUrl::from_url_str(cassandra_download_string.as_str())?;
-            if cassandra_download.is_local() {
+        let download_links = config.deployment.all_download_links()?;
+        download_links
+            .iter()
+            .filter(|(_, download_url)| download_url.is_local())
+            .for_each(|(key, download_url)| {
+                let copy_task_id = format!("copy_{key}");
                 build_copy_task_instances!(
                     local_copy_task_instance,
-                    cassandra_download.get_url(),
-                    cassandra_download.file_name(),
-                    "copy_cassandra".to_string()
+                    download_url.get_url(),
+                    download_url.file_name(),
+                    copy_task_id
                 );
-            }
-        }
-        let monitor_opt = &config.deployment.monitor;
-        if monitor_opt.is_some() {
-            let monitor = monitor_opt.as_ref().unwrap();
-            let monitor_download_urls = monitor.monitor_download_links()?;
-            monitor_download_urls
-                .iter()
-                .filter(|monitor_download_url| monitor_download_url.is_local())
-                .for_each(|monitor_download_url| {
-                    let file_name = monitor_download_url.file_name();
-                    build_copy_task_instances!(
-                        local_copy_task_instance,
-                        monitor_download_url.get_url(),
-                        file_name,
-                        format!("copy_monitor_{file_name}")
-                    );
-                });
-        }
+            });
         Ok(local_copy_task_instance)
     }
 

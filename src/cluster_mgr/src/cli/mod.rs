@@ -28,54 +28,70 @@ pub struct ClusterMgrCommandArgs {
 #[command(next_line_help = true)]
 pub enum CommandArgs {
     #[strum(serialize = "deploy")]
-    /// Deploy the MonographDB cluster by specifying the cluster_topology.yaml file.
-    /// For example: ./cluster_mgr deploy --topology-file  ${PWD}/config/$DEPLOYMENT.YML
+    #[command(
+        long_about = "Deploy the MonographDB cluster by specifying the cluster_topology.yaml file\n./cluster_mgr deploy --topology-file  ${PWD}/config/deployment.yaml
+    "
+    )]
     Deploy {
         #[arg(short, long, value_name = "CLUSTER TOPOLOGY FILE")]
         topology_file: String,
     },
-    /// Install MonographDB to generate catalog. You need to specify the cluster name.
-    /// For example: ./cluster_mgr install --cluster $CLUSTER_NAME
     #[strum(serialize = "install")]
+    #[command(
+        long_about = "bootstrap MonographDB to generate catalog. You need to specify the cluster name.\n./cluster_mgr install --cluster $CLUSTER_NAME
+    "
+    )]
     Install {
         #[arg(short = 'c', long, value_name = "CLUSTER NAME")]
         cluster: String,
     },
     #[strum(serialize = "start")]
-    /// Start the MonographDB cluster(TxService LogService Storage). with the specified cluster name
-    /// For example: ./cluster_mgr start  --cluster $CLUSTER_NAME
+    #[command(
+        long_about = "Start the MonographDB cluster(TxService LogService Storage). with the specified cluster name\n./cluster_mgr start  --cluster $CLUSTER_NAME
+    "
+    )]
     Start {
         #[arg(short = 'l', long, value_name = "CLUSTER NAME")]
         cluster: String,
     },
+    #[command(
+        long_about = "Stop the MonographDB cluster(TxService LogService Storage). with the specified cluster name.\n./cluster_mgr stop --cluster $CLUSTER_NAME --force true | false
+    "
+    )]
     #[strum(serialize = "stop")]
-    /// Stop the MonographDB cluster(TxService LogService Storage). with the specified cluster name.
-    /// For example: ./cluster_mgr stop --cluster $CLUSTER_NAME --force true/false
     Stop {
         #[arg(long, value_name = "CLUSTER NAME")]
         cluster: String,
         #[arg(short, long, value_name = "FORCE STOP")]
         force: Option<String>,
     },
+    #[command(
+        long_about = "Restart the MonographDB cluster with the specified cluster name.\n./cluster_mgr restart --cluster $CLUSTER_NAME
+    "
+    )]
     #[strum(serialize = "restart")]
-    /// Restart the MonographDB cluster with the specified cluster name.
-    /// For example: ./cluster_mgr restart --cluster $CLUSTER_NAME
     Restart {
         #[arg(short, long, value_name = "CLUSTER NAME")]
         cluster: String,
     },
+
+    #[command(
+        long_about = "Execute custom shell commands.\n./cluster_mgr exec --command 'ls -la /data1/' --cluster $CLUSTER_NAME "
+    )]
     #[strum(serialize = "exec_cmd")]
-    /// Execute custom shell commands.
-    /// For example: ./cluster_mgr exec --command "ls -la /data1/" --cluster $CLUSTER_NAME
     Exec {
         #[arg(long, value_name = "SHELL COMMAND/SCRIPT")]
         command: String,
         #[arg(long, value_name = "CLUSTER NAME")]
         cluster: String,
     },
+
+    #[command(
+        long_about = "Check MonographDB cluster status. If the username password is given,\n the connection to the target database is established, otherwise, the ps command is executed.
+./cluster_mgr status --cluster $CLUSTER_NAME --user $DB_USER --password $DB_PASSWORD
+    "
+    )]
     #[strum(serialize = "status")]
-    /// Check MonographDB cluster status.
-    /// For example: ./cluster_mgr status --cluster $CLUSTER_NAME --user $DB_USER --password $DB_PASSWORD
     Status {
         #[arg(short, long, value_name = "CLUSTER NAME")]
         cluster: String,
@@ -84,25 +100,31 @@ pub enum CommandArgs {
         #[arg(short, long, value_name = "MonographDB password")]
         password: Option<String>,
     },
+    #[command(
+        long_about = "Install MonographDB runtime dependencies.\n./cluster_mgr run-deps --topology-file ${PWD}/config/deployment.yaml
+    "
+    )]
     #[strum(serialize = "run-deps")]
-    /// Install MonographDB runtime dependencies.
-    /// For example: ./cluster_mgr run-deps --topology-file $DEPLOYMENT.YAML
     RunDeps {
         #[arg(short, long, value_name = "CLUSTER TOPOLOGY FILE")]
         topology_file: String,
     },
+    #[command(
+        long_about = "Start or stop monitoring components,including prometheus, grafana,node_exporter,mysql_exporter.\n./cluster_mgr monitor --cluster $CLUSTER_NAME --command start | stop
+    "
+    )]
     #[strum(serialize = "monitor")]
-    /// Start or stop monitoring components,including prometheus,grafana,node_exporter,mysql_exporter
-    /// For example: ./cluster_mgr monitor --cluster $CLUSTER_NAME --command start | stop
     Monitor {
         #[arg(short, long, value_name = "CLUSTER NAME")]
         cluster: String,
         #[arg(long, value_name = "MONITOR START/STOP COMMAND")]
         command: String,
     },
+    #[command(
+        long_about = "Start or stop LogService This command is only available if LogService is deployed standalone\n ./cluster_mgr log-service --cluster $CLUSTER_NAME --command start | stop
+    "
+    )]
     #[strum(serialize = "log-srv")]
-    /// Start or stop LogService This command is only available if LogService is deployed standalone
-    /// For example: ./cluster_mgr log-srv --cluster $CLUSTER_NAME --command start | stop
     LogService {
         #[arg(short, long, value_name = "CLUSTER NAME")]
         cluster: String,
@@ -120,8 +142,9 @@ pub fn download_dir() -> PathBuf {
             .join("mono-cluster-cli");
         let download_path_create_rs = std::fs::create_dir_all(download_path_buf.as_path());
         if let Err(create_err) = download_path_create_rs {
-            error!("Create download path  {:?} error", download_path_buf);
-            panic!("Create download path Error cause by {create_err:?} ");
+            let err_msg = create_err.to_string();
+            error!("Create download path  {download_path_buf:#?} error {err_msg}");
+            panic!("Create download path Error cause by {err_msg:?} ");
         }
         download_path_buf
     } else {

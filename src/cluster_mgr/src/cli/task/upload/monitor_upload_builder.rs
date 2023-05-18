@@ -1,157 +1,150 @@
-use crate::cli::task::task_base::{TaskArgValue, TaskHost, TaskId, TaskInstance};
-use crate::cli::task::upload::upload_task::UploadTask;
-use crate::cli::task::upload::upload_task_builder::UploadTaskBuilder;
-use crate::cli::task::upload::*;
-use crate::config::config_base::DeploymentConfig;
+use crate::cli::task::task_base::{TaskId, TaskInstance};
+use crate::cli::task::upload::upload_task_builder::{
+    build_task_instance, create_temp_dir, UploadTaskBuilder,
+};
+use crate::config::config_base::{DeploymentConfig, UploadFile};
+use crate::config::monitor::{
+    Monitor, GRAFANA_CONFIG_DIR, GRAFANA_DATASOURCE_CONFIG_DIR, PROMETHEUS_CONFIG_DIR,
+};
 use crate::config::DeploymentPackage;
-use crate::monitor_component_config_dir;
 use indexmap::IndexMap;
+use itertools::Itertools;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
-macro_rules! monitor_config_upload_task_execution {
-    ($config:expr,$component:ident, $monitor_component_host:expr,
-     $monitor:expr,$dest_host:expr, $gen_conf_func:expr,$task_name:expr,
-     $task_instance_map:expr) => {
-
-        let config_path = $gen_conf_func($dest_host).unwrap();
-        if !config_path.is_empty() {
-            // let remote_config_path = monitor_remote_config_path!(remote_install_dir, component_name);
-            let monitor_host = $monitor_component_host;//&$monitor.$component.host;
-            let upload_task_id = TaskId {
-                cmd: "deploy".to_string(),
-                task: $task_name,
-                host: monitor_host.clone(),
-            };
-            let connection = &$config.connection;
-            let remote_host = TaskHost::Remote {
-                user: connection.username.to_string(),
-                port: connection.ssh_port() as usize,
-                hosts: monitor_host.to_string(),
-            };
-            let component_name = stringify!($component).to_string();
-            let dest_file_name = monitor_component_config_dir!(component_name);
-
-            $task_instance_map.insert(
-                upload_task_id.clone(),
-                TaskInstance {
-                    task_input: HashMap::from([
-                        (SOURCE_PATH.to_string(), TaskArgValue::Str(config_path)),
-                        (DEST_PATH.to_string(), TaskArgValue::Str(dest_file_name)),
-                    ]),
-                    task: Box::new(UploadTask::new($config.clone(), upload_task_id)),
-                    task_host: remote_host,
-                },
-            );
-        }
-    };
+#[derive(Clone)]
+struct ConfigAndHostPair {
+    path: Vec<PathBuf>,
+    hosts: Vec<String>,
 }
 
-pub struct MySQLExporterUploadBuilder;
 pub struct MonitorInfraConfUploadBuilder;
 
-impl UploadTaskBuilder for MySQLExporterUploadBuilder {
-    fn build(&self, config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
-        let tasks = if let Some(monitor) = config.deployment.monitor.as_ref() {
-            let monograph_hosts = config.get_host_list(DeploymentPackage::MonographTx);
-            let mut task_instances = IndexMap::new();
-            let mysql_port = config.deployment.port.mysql_port;
-            monograph_hosts.iter().enumerate().for_each(|(idx, host)| {
-                if idx == 0 {
-                    monitor_config_upload_task_execution!(
-                        config,
-                        mysql_exporter,
-                        host.clone(),
-                        monitor,
-                        Vec::default(),
-                        move |_: Vec<String>| -> anyhow::Result<String> {
-                            let create_mysql_user_script = monitor.gen_monitor_user_sql_file()?;
-                            Ok(create_mysql_user_script.to_str().unwrap().to_string())
-                        },
-                        "upload_create_monitor_user_task".to_string(),
-                        task_instances
-                    );
-                }
-                monitor_config_upload_task_execution!(
-                    config,
-                    mysql_exporter,
-                    host.clone(),
-                    monitor,
-                    Vec::default(),
-                    move |_: Vec<String>| -> anyhow::Result<String> {
-                        let mysql_exporter_config =
-                            monitor.gen_mysql_exporter_connect_config(host.clone(), mysql_port)?;
-                        Ok(mysql_exporter_config.to_str().unwrap().to_string())
-                    },
-                    "upload_mysql_exporter_config".to_string(),
-                    task_instances
-                );
-            });
-            task_instances
+impl MonitorInfraConfUploadBuilder {
+    fn monitor_upload_files(
+        &self,
+        all_monitor_config: HashMap<String, ConfigAndHostPair>,
+    ) -> Vec<UploadFile> {
+        all_monitor_config
+            .iter()
+            .flat_map(|(dest_dir, path_and_hosts)| {
+                let tmp_prefix = if dest_dir.ends_with(PROMETHEUS_CONFIG_DIR) {
+                    "monograph_prometheus"
+                } else if dest_dir.ends_with(GRAFANA_CONFIG_DIR) {
+                    "monograph_grafana"
+                } else if dest_dir.ends_with(GRAFANA_DATASOURCE_CONFIG_DIR) {
+                    "monograph_grafana_ds"
+                } else {
+                    "monograph_monitor_files"
+                };
+                println!("tmp_fs={tmp_prefix},dest_dir={dest_dir}");
+                let monitor_conf_tmp_dir = create_temp_dir(tmp_prefix, "/tmp").unwrap();
+                let path_vec = &path_and_hosts.path;
+                let hosts = &path_and_hosts.hosts;
+
+                path_vec.iter().for_each(|path| {
+                    let source_file = path.file_name().unwrap().to_str().unwrap();
+                    let dest_file = monitor_conf_tmp_dir.join(source_file);
+                    std::fs::copy(path, dest_file.as_path()).unwrap();
+                });
+                let source_file = monitor_conf_tmp_dir.to_str().unwrap();
+                hosts
+                    .iter()
+                    .map(|host| UploadFile {
+                        source: format!("{source_file}/*.*"),
+                        dest: dest_dir.clone(),
+                        extension: tmp_prefix.to_string(),
+                        host: host.to_string(),
+                        copy_dir: false,
+                    })
+                    .collect_vec()
+            })
+            .collect_vec()
+    }
+
+    fn gen_monitor_config(
+        &self,
+        monitor: &Monitor,
+        config: &DeploymentConfig,
+    ) -> HashMap<String, ConfigAndHostPair> {
+        let all_host = config.get_host_as_map();
+        let install_dir = config.install_dir();
+        let monograph_tx_hosts_ref = all_host.get(&DeploymentPackage::MonographTx).unwrap();
+        let cass_config_host_ref = all_host.get(&DeploymentPackage::Storage).unwrap();
+        let monograph_tx_hosts = monograph_tx_hosts_ref.clone();
+
+        let create_user_script = monitor.gen_monitor_user_sql_file().unwrap(); //install_dir
+        let grafana_ds_conf_path = monitor.gen_grafana_datasource_config().unwrap(); //grafana datasource
+        let grafana_conf_path = monitor.gen_grafana_config().unwrap(); //grafana
+        let mcac_config = monitor
+            .gen_mcac_file_sd_config(cass_config_host_ref.clone())
+            .unwrap(); // prometheus
+        let prometheus_conf = monitor.gen_prometheus_config(monograph_tx_hosts).unwrap(); //prometheus config
+        let prometheus_files = if let Some(mcac) = mcac_config {
+            vec![prometheus_conf, mcac]
         } else {
-            IndexMap::default()
+            vec![prometheus_conf]
         };
-        tasks
+        // key is dest dir, value is source path
+        HashMap::from([
+            (
+                format!("{install_dir}/{PROMETHEUS_CONFIG_DIR}"),
+                ConfigAndHostPair {
+                    path: prometheus_files,
+                    hosts: all_host
+                        .get(&DeploymentPackage::Prometheus)
+                        .unwrap()
+                        .clone(),
+                },
+            ),
+            (
+                format!("{install_dir}/{GRAFANA_CONFIG_DIR}"),
+                ConfigAndHostPair {
+                    path: vec![grafana_conf_path],
+                    hosts: all_host.get(&DeploymentPackage::Grafana).unwrap().clone(),
+                },
+            ),
+            (
+                format!("{install_dir}/{GRAFANA_DATASOURCE_CONFIG_DIR}"),
+                ConfigAndHostPair {
+                    path: vec![grafana_ds_conf_path],
+                    hosts: all_host.get(&DeploymentPackage::Grafana).unwrap().clone(),
+                },
+            ),
+            (
+                install_dir,
+                ConfigAndHostPair {
+                    path: vec![create_user_script],
+                    hosts: all_host
+                        .get(&DeploymentPackage::MonographTx)
+                        .unwrap()
+                        .clone(),
+                },
+            ),
+        ])
     }
 }
 
 impl UploadTaskBuilder for MonitorInfraConfUploadBuilder {
     fn build(&self, config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
-        let task_instances = if let Some(monitor) = config.deployment.monitor.as_ref() {
-            let monograph_hosts = config.get_host_list(DeploymentPackage::MonographTx);
-            let mut task_instances = IndexMap::new();
-            let prometheus_host = monitor.prometheus.host.to_string();
-            monitor_config_upload_task_execution!(
-                config,
-                prometheus,
-                prometheus_host.clone(),
-                monitor,
-                monograph_hosts,
-                |dest_host: Vec<String>| -> anyhow::Result<String> {
-                    let config_path = monitor.gen_prometheus_config(dest_host)?;
-                    Ok(config_path.to_str().unwrap().to_string())
-                },
-                "upload_prometheus_config".to_string(),
-                task_instances
-            );
+        let monitor_opt = config.deployment.monitor.as_ref();
 
-            let cassandra_hosts = config.get_host_list(DeploymentPackage::Storage);
-            monitor_config_upload_task_execution!(
-                config,
-                prometheus,
-                prometheus_host,
-                monitor,
-                cassandra_hosts,
-                |dest_host: Vec<String>| -> anyhow::Result<String> {
-                    let mcac_config = monitor.gen_mcac_file_sd_config(dest_host)?;
-                    if let Some(config_path) = mcac_config {
-                        Ok(config_path.to_str().unwrap().to_string())
-                    } else {
-                        Ok("".to_string())
-                    }
-                },
-                "upload_mcac_targets_config".to_string(),
-                task_instances
-            );
-
-            let grafana = &monitor.grafana;
-            let grafana_host = &grafana.host;
-            monitor_config_upload_task_execution!(
-                config,
-                grafana,
-                grafana_host.to_string(),
-                monitor,
-                Vec::default(),
-                |_: Vec<String>| -> anyhow::Result<String> {
-                    let path = monitor.gen_grafana_datasource_config()?;
-                    Ok(path.to_str().unwrap().to_string())
-                },
-                "upload_prometheus_datasource_config".to_string(),
-                task_instances
-            );
-            task_instances
+        if let Some(monitor) = monitor_opt {
+            let all_monitor_config = self.gen_monitor_config(monitor, config);
+            let all_upload_files = self.monitor_upload_files(all_monitor_config);
+            all_upload_files
+                .iter()
+                .map(|upload_file| {
+                    build_task_instance(
+                        upload_file.clone(),
+                        config,
+                        "deploy",
+                        upload_file.extension.as_str(),
+                    )
+                })
+                .collect::<IndexMap<TaskId, TaskInstance>>()
         } else {
-            IndexMap::default()
-        };
-        task_instances
+            IndexMap::new()
+        }
     }
 }

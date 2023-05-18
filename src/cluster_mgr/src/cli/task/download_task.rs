@@ -20,11 +20,11 @@ pub(crate) const DOWNLOAD_FILE_NAME: &str = "download_file_name";
 pub(crate) const DOWNLOAD_PATH: &str = "download_path";
 
 #[derive(Debug, Clone)]
-pub struct DownloadFromRemoteTask {
+pub struct DownloadTask {
     task_id: TaskId,
 }
 
-impl DownloadFromRemoteTask {
+impl DownloadTask {
     pub fn from_config(
         config: &DeploymentConfig,
     ) -> anyhow::Result<IndexMap<TaskId, TaskInstance>> {
@@ -53,7 +53,7 @@ impl DownloadFromRemoteTask {
         }
 
         if let Some(monitor) = &config.deployment.monitor {
-            let monitor_download_url_vec = monitor.monitor_download_links()?;
+            let monitor_download_url_vec = monitor.download_links()?;
             let monitor_download_string_vec = monitor_download_url_vec
                 .iter()
                 .filter(|url| !url.is_local())
@@ -89,7 +89,7 @@ impl DownloadFromRemoteTask {
                                 TaskArgValue::Str(download_dir.to_str().unwrap().to_string()),
                             ),
                         ]),
-                        task: Box::new(DownloadFromRemoteTask::new(task_id)),
+                        task: Box::new(DownloadTask::new(task_id)),
                         task_host: TaskHost::Local,
                     },
                 )
@@ -104,7 +104,7 @@ impl DownloadFromRemoteTask {
 }
 
 #[async_trait::async_trait]
-impl TaskExecutor for DownloadFromRemoteTask {
+impl TaskExecutor for DownloadTask {
     fn identifier(&self) -> TaskId {
         self.task_id.clone()
     }

@@ -2,10 +2,11 @@
 LOG_INSTALL_DIR=_MY_LOG_INSTALL_DIR
 NOW=$(date +"%Y-%m-%d-%H:%M:%S:%6N")
 function log_start() {
-  mkdir -p _STORAGE_DIR && mkdir -p ${LOG_INSTALL_DIR}/logserver/logs
-  log_start_cmd="${LOG_INSTALL_DIR}/logserver/bin/launch_sv -conf=_GROUP_MEMBERS -raft_max_parallel_append_entries_rpc_num=64 \
+  log_dir=_MY_LOG_INSTALL_DIR/logs/lg_GROUP_ID/ln_NODE_ID
+  mkdir -p _STORAGE_DIR && mkdir -p ${log_dir}
+  log_start_cmd="${LOG_INSTALL_DIR}/bin/launch_sv -conf=_GROUP_MEMBERS -raft_max_parallel_append_entries_rpc_num=64 \
     -raft_enable_append_entries_cache=true -raft_max_append_entries_cache_size=256 \
-    -start_log_group_id=_GROUP_ID -node_id=_NODE_ID -storage_path=_STORAGE_DIR > ${LOG_INSTALL_DIR}/logserver/logs/log_start_${NOW}.log 2>&1 &"
+    -start_log_group_id=_GROUP_ID -node_id=_NODE_ID -storage_path=_STORAGE_DIR > ${log_dir}/log_start_${NOW}.log 2>&1 &"
   echo "$log_start_cmd"
   eval "$log_start_cmd"
 }

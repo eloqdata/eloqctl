@@ -4,10 +4,12 @@ use crate::config::config_base::{
     MYSQL_EXPORTER_FILE_KEY, NODE_EXPORTER_FILE_KEY, PROMETHEUS_FILE_KEY,
 };
 use crate::config::{
-    config_template, load_yaml_config_template, DownloadUrl, CREATE_MONITOR_USER_SQL_FILE,
-    GRAFANA_CONFIG_TEMPLATE, MCAC_PROMETHEUS_CONFIG_TEMPLATE, MYSQL_EXPORTER_CLIENT_CONFIG,
-    PROMETHEUS_CONFIG_TEMPLATE,
+    config_template, load_yaml_config_template, DownloadUrl, CASS_MCAC_CONF_FILE,
+    CREATE_MONITOR_USER_SQL_FILE, GRAFANA_CONFIG_FILE, GRAFANA_CONFIG_TEMPLATE,
+    GRAFANA_PROMETHEUS_DS_FILE, MCAC_PROMETHEUS_CONFIG_TEMPLATE, MYSQL_EXPORTER_CLIENT_CONFIG,
+    PROMETHEUS_CONFIG_FILE, PROMETHEUS_CONFIG_TEMPLATE,
 };
+use crate::download_urls;
 use configparser::ini::Ini;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -18,6 +20,10 @@ use std::fs::File;
 use std::path::PathBuf;
 
 pub const MONO_MONITOR_USER: &str = "mono_monitor";
+
+pub const GRAFANA_CONFIG_DIR: &str = "grafana/conf";
+pub const GRAFANA_DATASOURCE_CONFIG_DIR: &str = "grafana/conf/provisioning/datasources";
+pub const PROMETHEUS_CONFIG_DIR: &str = "prometheus";
 
 #[macro_export]
 macro_rules! monitor_component_config_dir {
@@ -81,38 +87,23 @@ pub struct Monitor {
 }
 
 impl Monitor {
-    pub fn monitor_download_links(&self) -> anyhow::Result<Vec<DownloadUrl>> {
-        let download_links = self.monitor_download_links_as_amp()?;
+    pub fn download_links(&self) -> anyhow::Result<Vec<DownloadUrl>> {
+        let download_links = self.download_links_as_amp()?;
         Ok(download_links.into_values().collect_vec())
     }
 
-    pub fn monitor_download_links_as_amp(&self) -> anyhow::Result<HashMap<String, DownloadUrl>> {
-        let mut download_link = HashMap::from([
-            (
-                PROMETHEUS_FILE_KEY.to_string(),
-                DownloadUrl::from_url_str(self.prometheus.download_url.as_str())?,
-            ),
-            (
-                GRAFANA_FILE_KEY.to_string(),
-                DownloadUrl::from_url_str(self.grafana.download_url.as_str())?,
-            ),
-            (
-                NODE_EXPORTER_FILE_KEY.to_string(),
-                DownloadUrl::from_url_str(self.node_exporter.as_str())?,
-            ),
-            (
-                MYSQL_EXPORTER_FILE_KEY.to_string(),
-                DownloadUrl::from_url_str(self.mysql_exporter.as_str())?,
-            ),
-        ]);
-
+    pub fn download_links_as_amp(&self) -> anyhow::Result<HashMap<String, DownloadUrl>> {
+        let mut links = HashMap::new();
+        download_urls!(links,
+            {PROMETHEUS_FILE_KEY, self.prometheus.download_url},
+            {GRAFANA_FILE_KEY, self.grafana.download_url},
+            {NODE_EXPORTER_FILE_KEY, self.node_exporter},
+            {MYSQL_EXPORTER_FILE_KEY, self.mysql_exporter}
+        );
         if let Some(mcac) = &self.cassandra_collector {
-            download_link.insert(
-                CASSANDRA_COLLECTOR_AGENT_FILE_KEY.to_string(),
-                DownloadUrl::from_url_str(mcac.mcac_agent.as_str())?,
-            );
+            download_urls!(links, {CASSANDRA_COLLECTOR_AGENT_FILE_KEY, mcac.mcac_agent});
         }
-        Ok(download_link)
+        Ok(links)
     }
 
     pub fn flush_privileges_for_create_user(&self, install_dir: String, mysql_port: u16) -> String {
@@ -146,7 +137,7 @@ impl Monitor {
             .load(grafana_config_path)
             .expect("local grafana config template");
         grafana_ini.set("server", "http_port", Some(grafana_http_port.to_string()));
-        let grafana_default_ini = download_dir().join("defaults.ini");
+        let grafana_default_ini = download_dir().join(GRAFANA_CONFIG_FILE);
         grafana_ini.write(grafana_default_ini.as_path())?;
         Ok(grafana_default_ini)
     }
@@ -295,7 +286,7 @@ impl Monitor {
             "scrape_configs".to_string(),
             Value::Sequence(scrape_configs),
         );
-        let prometheus_config_path = download_dir().join("prometheus.yml");
+        let prometheus_config_path = download_dir().join(PROMETHEUS_CONFIG_FILE);
         let prometheus_config_file = File::create(prometheus_config_path.as_path()).unwrap();
         serde_yaml::to_writer(prometheus_config_file, &prometheus_config_map)?;
         Ok(prometheus_config_path)
@@ -317,7 +308,7 @@ impl Monitor {
                     "targets": [cassandra_target],"labels": {}
                 }
             ]);
-            let mcac_json_path = download_dir().join("tg_mcac.json");
+            let mcac_json_path = download_dir().join(CASS_MCAC_CONF_FILE);
             let mcac_json_file = File::create(mcac_json_path.as_path()).unwrap();
             serde_json::to_writer(mcac_json_file, &mcac_json)?;
             Ok(Some(mcac_json_path))
@@ -341,7 +332,7 @@ impl Monitor {
         );
         let prometheus_datasource: Value =
             serde_yaml::from_str(datasource_config_yaml.as_str()).unwrap();
-        let prometheus_datasource_path = download_dir().join("prometheus-datasource.yml");
+        let prometheus_datasource_path = download_dir().join(GRAFANA_PROMETHEUS_DS_FILE);
         let prometheus_datasource_file =
             File::create(prometheus_datasource_path.as_path()).unwrap();
         serde_yaml::to_writer(prometheus_datasource_file, &prometheus_datasource)?;

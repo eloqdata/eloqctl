@@ -8,7 +8,7 @@ use crate::cli::task::task_utils::{check_pid, parse_process_pid, PROCESS_PID};
 use crate::cli::CommandArgs;
 use crate::cli::CMD_STATUS;
 use crate::config::config_base::DeploymentConfig;
-use crate::config::deployment::LogProcessKey;
+use crate::config::log_service::LogProcessKey;
 use crate::{get_ctl_cmd_string, task_return_value};
 use futures::future;
 use indexmap::IndexMap;
@@ -55,6 +55,8 @@ impl LogCtlCmd {
     {
         let log_home_dir_binding = config.log_home_dir();
         let log_home = log_home_dir_binding.as_str();
+
+        let home_dir = config.install_dir();
         let user = &config.connection.username;
         let log_srv = config.deployment.log_service.as_ref().unwrap();
         let log_cmd_binding = log_srv.log_start_cmd();
@@ -80,11 +82,10 @@ impl LogCtlCmd {
                     .replace("_MEMBER_CONF", cmd_items.group_members_config.as_str())
                     .replace("_LOG_BIN_CMD", format!("{log_home}/bin/launch_sv").as_str())
                     .replace("_COLUMN", "$2");
+                let log_start_cmd =
+                    format!("export LD_LIBRARY_PATH={log_home}/lib:$LD_LIBRARY_PATH; /bin/bash {home_dir}/start_tx_log_{host}_{log_port}.bash");
                 let log_cmd = match &cmd_arg {
-                    CommandArgs::Start { cluster: _ } => LogCtlCmd::Start(format!(
-                        "{log_home}/start_log_{}.bash",
-                        format_args!("{host}_{log_port}")
-                    )),
+                    CommandArgs::Start { cluster: _ } => LogCtlCmd::Start(log_start_cmd),
                     CommandArgs::Status {
                         cluster: _,
                         user: _,
@@ -99,6 +100,21 @@ impl LogCtlCmd {
                             format!("{ps_log_info} | xargs kill")
                         };
                         LogCtlCmd::Stop(stop_cmd_string)
+                    }
+                    CommandArgs::LogService {
+                        cluster: _,
+                        command: log_cmd,
+                    } => {
+                        let log_cmd_str = log_cmd.as_str();
+                        println!("log_cmd={log_cmd_str}");
+                        if log_cmd_str.is_empty() {
+                            panic!("LogService command only support start | stop");
+                        }
+                        match log_cmd_str.to_lowercase().as_str() {
+                            "start" => LogCtlCmd::Start(log_start_cmd),
+                            "stop" => LogCtlCmd::Stop(format!("{ps_cmd_part} | xargs kill")),
+                            _ => unreachable!(),
+                        }
                     }
                     _ => unreachable!(),
                 };
@@ -132,6 +148,21 @@ impl MonographLogCtlTask {
         }
     }
 
+    fn cluster_cmd_string(cmd_arg: CommandArgs) -> String {
+        let cmd_ref = cmd_arg.as_ref();
+        match cmd_ref {
+            "start" | "stop" | "status" => cmd_ref.to_string(),
+            "log-srv" => match cmd_arg {
+                CommandArgs::LogService {
+                    cluster: _,
+                    command: log_cmd,
+                } => log_cmd,
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
+    }
+
     pub fn from_config(
         cmd_arg: CommandArgs,
         config: &DeploymentConfig,
@@ -140,7 +171,7 @@ impl MonographLogCtlTask {
         let user = &config.connection.username;
         let port = config.connection.ssh_port() as usize;
 
-        let cluster_arg_ref = cmd_arg.as_ref();
+        let cluster_arg_ref = MonographLogCtlTask::cluster_cmd_string(cmd_arg.clone());
         log_cmd_by_key
             .iter()
             .into_group_map_by(|(process_key, _cmd)| process_key.host.clone())
@@ -287,10 +318,15 @@ impl TaskExecutor for MonographLogCtlTask {
         let cluster_mgr_cmd = task_arg.get(CLUSTER_COMMAND_STR).unwrap();
         let cluster_cmd_string = cluster_mgr_cmd.clone().into_inner_value::<String>();
         println!("{} execute.\n", self.task_id.pretty_string());
+
         let ssh_session =
             SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
                 .await?;
         let pid_cmd_value = self.log_pid(&ssh_session).await?;
+        println!(
+            "MonographLogCtlTask curr log_ctl_cmd = {:#?} log_pid={pid_cmd_value:#?}",
+            self.log_cmd
+        );
         let cmd_execution_result = if cluster_cmd_string.eq("status") {
             self.merge_execution_value(pid_cmd_value)
         } else {
@@ -330,7 +366,6 @@ impl TaskExecutor for MonographLogCtlTask {
             println!("MonographLogCtlTask command execution complete. {all_cmd_result:#?}");
             self.merge_execution_value(all_cmd_result)
         };
-
         ssh_session.close().await?;
         task_return_value!(
             cmd_execution_result,

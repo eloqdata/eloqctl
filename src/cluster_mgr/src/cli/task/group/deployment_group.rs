@@ -1,14 +1,14 @@
-use indexmap::IndexMap;
-use itertools::Itertools;
-use crate::cli::CommandArgs;
-use crate::cli::task::download_task::DownloadFromRemoteTask;
+use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::group::{DeploymentTaskGroup, TaskGroup};
 use crate::cli::task::local_copy_task::LocalCopyTask;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskId, TaskInstance};
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
-use crate::config::config_base::{DEPLOYMENT_CHECK_SUCCESS_TASK, DeploymentConfig};
+use crate::cli::CommandArgs;
+use crate::config::config_base::{DeploymentConfig, DEPLOYMENT_CHECK_SUCCESS_TASK};
 use crate::state::state_mgr::STATE_MGR;
+use indexmap::IndexMap;
+use itertools::Itertools;
 
 impl DeploymentTaskGroup {
     fn skip_success_task_execution(
@@ -49,7 +49,7 @@ impl TaskGroup for DeploymentTaskGroup {
             })
             .collect_vec();
 
-        let download_task = DownloadFromRemoteTask::from_config(&config)?;
+        let download_task = DownloadTask::from_config(&config)?;
         let mut copy_or_download_task_instances = LocalCopyTask::form_config(&config)?;
         copy_or_download_task_instances.extend(download_task.into_iter());
 
@@ -62,7 +62,7 @@ impl TaskGroup for DeploymentTaskGroup {
         } else {
             true
         };
-        let (upload_task, unpack_task) = if need_skip_success_task {
+        let (db_upload_task, unpack_task) = if need_skip_success_task {
             (
                 DeploymentTaskGroup::skip_success_task_execution(
                     &upload_tasks(UploadTaskBuilderType::InstallTar, &config),
@@ -79,22 +79,19 @@ impl TaskGroup for DeploymentTaskGroup {
                 UnpackFileTask::from_config(&config)?,
             )
         };
+        let upload_monitor_conf_tasks = upload_tasks(UploadTaskBuilderType::MonitorConf, &config);
 
-        let mut upload_monitor_tasks = upload_tasks(UploadTaskBuilderType::MonitorConf, &config);
-        let upload_mysql_exporter_tasks =
-            upload_tasks(UploadTaskBuilderType::MySQLExporter, &config);
-        upload_monitor_tasks.extend(upload_mysql_exporter_tasks.into_iter());
         let barrier = Some(vec![
             copy_or_download_task_instances.len(),
-            upload_task.len(),
+            db_upload_task.len(),
             unpack_task.len(),
-            upload_monitor_tasks.len(),
+            upload_monitor_conf_tasks.len(),
         ]);
         let mut executable = IndexMap::new();
         executable.extend(copy_or_download_task_instances.into_iter());
-        executable.extend(upload_task.into_iter());
+        executable.extend(db_upload_task.into_iter());
         executable.extend(unpack_task.into_iter());
-        executable.extend(upload_monitor_tasks.into_iter());
+        executable.extend(upload_monitor_conf_tasks.into_iter());
         Ok(TaskExecutionContext {
             task_group: cmd_ref,
             barrier,

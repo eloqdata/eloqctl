@@ -1,7 +1,8 @@
 use crate::cli::download_dir;
 
 use crate::config::connection::Connection;
-use crate::config::deployment::{Deployment, LogProcessKey};
+use crate::config::deployment::Deployment;
+use crate::config::log_service::LogProcessKey;
 use crate::config::monitor::Monitor;
 use crate::config::{
     config_path_string, config_template, DeploymentPackage, StorageProvider,
@@ -61,6 +62,16 @@ macro_rules! monitor_components_unpack_file {
             }
         }
     };
+}
+
+#[derive(Debug, Clone)]
+pub struct UploadFile {
+    pub source: String,
+    pub dest: String,
+    pub extension: String,
+    pub host: String,
+    pub copy_dir: bool,
+    //pub tmpdir: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -153,6 +164,25 @@ impl DeploymentConfig {
         unpack_files
     }
 
+    pub fn gen_all_mysql_exporter_config(&self) -> anyhow::Result<Option<Vec<PathBuf>>> {
+        let deployment_ref = &self.deployment;
+        if let Some(monitor) = deployment_ref.monitor.as_ref() {
+            let mysql_port = deployment_ref.port.mysql_port;
+            let db_hosts = &deployment_ref.tx_service.host;
+            let config_path = db_hosts
+                .iter()
+                .map(|host| {
+                    monitor
+                        .gen_mysql_exporter_connect_config(host.to_string(), mysql_port)
+                        .unwrap()
+                })
+                .collect_vec();
+            Ok(Some(config_path))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn gen_bootstrap_db_script(&self) -> anyhow::Result<PathBuf> {
         gen_db_misc_files!(
             self,
@@ -163,7 +193,7 @@ impl DeploymentConfig {
 
     pub fn log_home_dir(&self) -> String {
         let cluster_install_dir = self.install_dir();
-        format!("{cluster_install_dir}/logserver")
+        format!("{cluster_install_dir}/monograph-log-service-release")
     }
 
     pub fn gen_log_start_script(&self) -> anyhow::Result<Option<Vec<PathBuf>>> {
@@ -174,7 +204,8 @@ impl DeploymentConfig {
                 .map(|(key, cmd)| {
                     let host = &key.host;
                     let port = key.port;
-                    let cmd_file_name = format!("start_log_{}.bash", format_args!("{host}_{port}"));
+                    let cmd_file_name =
+                        format!("start_tx_log_{}.bash", format_args!("{host}_{port}"));
                     let script_location = download_dir().join(cmd_file_name);
                     if let Err(write_err) = fs::write(script_location.clone(), cmd) {
                         error!("Failed gen Log start command. cause by {write_err:#?}");
@@ -198,7 +229,7 @@ impl DeploymentConfig {
         let my_local = download_dir.join("my_local.cnf");
         if !my_local.exists() {
             self.deployment
-                .gen_monograph_config(None, self.install_dir())?;
+                .gen_monograph_config_by_host(None, self.install_dir())?;
         }
         let mut my_ini_local = Ini::new();
         let _config_map_rs = my_ini_local.load(my_local).unwrap();
@@ -238,7 +269,7 @@ impl DeploymentConfig {
         }
 
         if let Some(monitor) = deployment.monitor.as_ref() {
-            let monitor_download_links = monitor.monitor_download_links_as_amp()?;
+            let monitor_download_links = monitor.download_links_as_amp()?;
             monitor_download_links.iter().for_each(|entry| {
                 files.insert(entry.0.clone(), entry.1.file_name());
             });
@@ -273,6 +304,7 @@ impl DeploymentConfig {
             let log_start_template_path = config_template(START_LOG_TEMPLATE)?;
             let log_start_template = fs::read_to_string(log_start_template_path.as_path())?;
             let all_start_cmd_by_hosts = log_srv.log_start_cmd();
+            let log_home_dir = self.log_home_dir();
             let cmd_scripts = all_start_cmd_by_hosts
                 .iter()
                 .flat_map(|(host, cmd_items)| {
@@ -281,6 +313,7 @@ impl DeploymentConfig {
                         .map(|cmd_items| {
                             let curr_member = &cmd_items.log_member;
                             let cmd_script = log_start_template
+                                .replace("_MY_LOG_INSTALL_DIR", log_home_dir.as_str())
                                 .replace("_GROUP_MEMBERS", &cmd_items.group_members_config)
                                 .replace("_GROUP_ID", curr_member.group_id.to_string().as_str())
                                 .replace("_NODE_ID", curr_member.node_id.to_string().as_str())

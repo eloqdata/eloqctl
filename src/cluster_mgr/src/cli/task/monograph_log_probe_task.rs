@@ -107,6 +107,10 @@ impl MonographLogProbeTask {
             return http_client_init_err;
         }
         let expect_leader_count = self.check_health_url.len();
+        println!(
+            "MonographLogProbeTask current check_heal_url={:#?}",
+            self.check_health_url
+        );
         let http_client = client_rs.unwrap();
         let mut interval = tokio::time::interval(Duration::from_millis(200));
         loop {
@@ -128,6 +132,7 @@ impl MonographLogProbeTask {
             let leader_count_fut = probe_rs
                 .into_iter()
                 .map(|(group_id, response_rs)| async move {
+                    println!("MonographLogProbeTask retrieve response={response_rs:#?}");
                     let my_leader = if let Ok(response) = response_rs {
                         let status_code = response.status();
                         if !status_code.is_success() {
@@ -187,6 +192,7 @@ impl TaskExecutor for MonographLogProbeTask {
         _task_host: TaskHost,
         _task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        println!("{} execute.\n", self.task_id.pretty_string());
         let timeout_duration = Duration::from_secs(TIMEOUT);
         let action_result = timeout(timeout_duration, self.action()).await;
         let probe_result = if let Ok(exec_rs) = action_result {
