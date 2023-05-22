@@ -76,14 +76,14 @@ pub enum CommandArgs {
     },
 
     #[command(
-        long_about = "Execute custom shell commands.\n./cluster_mgr exec --command 'ls -la /data1/' --cluster $CLUSTER_NAME "
+        long_about = "Execute custom shell commands.\n./cluster_mgr exec --command 'ls -la /data1/' --topology-file  ${PWD}/config/deployment.yaml"
     )]
     #[strum(serialize = "exec_cmd")]
     Exec {
         #[arg(long, value_name = "SHELL COMMAND/SCRIPT")]
         command: String,
-        #[arg(long, value_name = "CLUSTER NAME")]
-        cluster: String,
+        #[arg(long, value_name = "CLUSTER TOPOLOGY FILE")]
+        topology_file: String,
     },
 
     #[command(
@@ -130,6 +130,15 @@ pub enum CommandArgs {
         cluster: String,
         #[arg(long, value_name = "LogService START/STOP COMMAND")]
         command: String,
+    },
+    #[command(
+        long_about = "According to the deployment.yaml, update the related monograph_db cluster by stopping the cluster, replacing the package, and starting the cluster. \n./cluster_mgr upgrade --topology_file ${PWD}/config/deployment.yaml
+    "
+    )]
+    #[strum(serialize = "upgrade")]
+    Upgrade {
+        #[arg(short, long, value_name = "CLUSTER TOPOLOGY FILE")]
+        topology_file: String,
     },
 }
 

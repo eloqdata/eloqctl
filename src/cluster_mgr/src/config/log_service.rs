@@ -46,6 +46,24 @@ pub struct LogServiceNode {
 pub struct LogService {
     pub nodes: Vec<LogServiceNode>,
     pub replica: Option<u32>,
+    pub readiness: Option<LogReadiness>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct LogReadiness {
+    pub timeout_sec: u64,
+    pub delay_ms: Option<usize>,
+    pub success_threshold: Option<usize>,
+}
+
+impl Default for LogReadiness {
+    fn default() -> Self {
+        Self {
+            timeout_sec: 300,
+            delay_ms: None,
+            success_threshold: Some(3),
+        }
+    }
 }
 
 impl LogService {
@@ -55,6 +73,14 @@ impl LogService {
             .map(|log_node| log_node.host.clone())
             .unique()
             .collect_vec()
+    }
+
+    pub fn readiness_opts(&self) -> LogReadiness {
+        if let Some(readiness_ref) = self.readiness.as_ref() {
+            readiness_ref.clone()
+        } else {
+            LogReadiness::default()
+        }
     }
 
     fn group(&self) -> usize {
@@ -207,7 +233,7 @@ impl LogService {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::log_service::{LogService, LogServiceNode};
+    use crate::config::log_service::{LogReadiness, LogService, LogServiceNode};
     use itertools::Itertools;
 
     fn mock_log_service(host_num: usize, replica: usize) -> LogService {
@@ -222,6 +248,7 @@ mod tests {
         LogService {
             nodes,
             replica: Some(replica as u32),
+            readiness: Some(LogReadiness::default()),
         }
     }
 

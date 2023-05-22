@@ -8,8 +8,16 @@ use cluster_mgr::config::config_base::{DeploymentConfig, DEPLOYMENT_CHECK_SUCCES
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-const SUPPORT_CTL_CMD: &[&str; 5] = &["start", "stop", "install", "start_monitor", "stop_monitor"];
-const SUPPORT_CTL_STATUS_CMD: &[&str; 8] = &[
+const SUPPORT_CTL_CMD: &[&str; 7] = &[
+    "start",
+    "stop",
+    "install",
+    "start_log",
+    "stop_log",
+    "start_monitor",
+    "stop_monitor",
+];
+const SUPPORT_CTL_STATUS_CMD: &[&str; 10] = &[
     "start",
     "stop",
     "install",
@@ -18,6 +26,8 @@ const SUPPORT_CTL_STATUS_CMD: &[&str; 8] = &[
     "run-deps",
     "start_monitor",
     "stop_monitor",
+    "start_log",
+    "stop_log",
 ];
 
 #[get("/check_health")]
@@ -68,6 +78,14 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> CommandArgs
             command: "start".to_string(),
         },
         "stop_monitor" => CommandArgs::Monitor {
+            cluster: cluster.unwrap(),
+            command: "stop".to_string(),
+        },
+        "start_log" => CommandArgs::LogService {
+            cluster: cluster.unwrap(),
+            command: "start".to_string(),
+        },
+        "stop_log" => CommandArgs::LogService {
             cluster: cluster.unwrap(),
             command: "stop".to_string(),
         },

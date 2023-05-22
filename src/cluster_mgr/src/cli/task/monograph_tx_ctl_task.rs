@@ -34,31 +34,42 @@ pub enum TxCtlCmd {
 get_ctl_cmd_string!(TxCtlCmd, Start, Stop, ForceStop, Status);
 
 macro_rules! monograph_cmd {
-    ($ctl_cmd:ty,$remote_install_home:expr $(, $cmd_arg:expr)? $(,)?) => {{
+    ($ctl_cmd:ty,$remote_install_home:expr, $user:expr, $host:expr) => {{
         let ctl_cmd = stringify!($ctl_cmd);
-        let mysqld_pid = format!(r#"ps uxwe | grep {}/{}/install/bin/mysqld | grep -v grep | "#, $remote_install_home, MONOGRAPH_TX_SERVICE_DIR);
+        let mysqld_pid = format!(
+            r#"ps uxwe -u {} | grep {}/{}/install/bin/mysqld | grep -v grep | "#,
+            $user, $remote_install_home, MONOGRAPH_TX_SERVICE_DIR
+        );
         let output_pid = r#"awk '{print $2}'"#;
         match ctl_cmd {
-            $(
-            "TxCtlCmd::Start" => TxCtlCmd::Start(format!(r#"mkdir -p {}/{}/logs && cd {}/{}/install && \
+            "TxCtlCmd::Start" => TxCtlCmd::Start(format!(
+                r#"mkdir -p {}/{}/logs && cd {}/{}/install && \
 export LD_LIBRARY_PATH={}/{}/install/lib:$LD_LIBRARY_PATH; \
 {}/{}/install/bin/mysqld --defaults-file={}/my_{}.cnf > {}/{}/logs/mysqld_start.log 2>&1 &"#,
-               $remote_install_home,MONOGRAPH_TX_SERVICE_DIR,
-               $remote_install_home,MONOGRAPH_TX_SERVICE_DIR,
-               $remote_install_home,MONOGRAPH_TX_SERVICE_DIR,
-               $remote_install_home,MONOGRAPH_TX_SERVICE_DIR,
-               $remote_install_home, $cmd_arg,
-               $remote_install_home, MONOGRAPH_TX_SERVICE_DIR)),
-            )*
-            "TxCtlCmd::ForceStop" => TxCtlCmd::ForceStop(format!("{} {} | xargs kill -9", mysqld_pid, output_pid)),
+                $remote_install_home,
+                MONOGRAPH_TX_SERVICE_DIR,
+                $remote_install_home,
+                MONOGRAPH_TX_SERVICE_DIR,
+                $remote_install_home,
+                MONOGRAPH_TX_SERVICE_DIR,
+                $remote_install_home,
+                MONOGRAPH_TX_SERVICE_DIR,
+                $remote_install_home,
+                $host,
+                $remote_install_home,
+                MONOGRAPH_TX_SERVICE_DIR
+            )),
+            "TxCtlCmd::ForceStop" => {
+                TxCtlCmd::ForceStop(format!("{} {} | xargs kill -9", mysqld_pid, output_pid))
+            }
             "TxCtlCmd::Stop" => {
-               TxCtlCmd::Stop(format!("{} {} | xargs kill", mysqld_pid, output_pid))
-            },
+                TxCtlCmd::Stop(format!("{} {} | xargs kill", mysqld_pid, output_pid))
+            }
             "TxCtlCmd::Status" => {
-               let ps_cmd = format!(r#"{} {} "#, mysqld_pid, output_pid);
-               TxCtlCmd::Status(ps_cmd)
-            },
-            _=> {
+                let ps_cmd = format!(r#"{} {} "#, mysqld_pid, output_pid);
+                TxCtlCmd::Status(ps_cmd)
+            }
+            _ => {
                 unreachable!()
             }
         }
@@ -220,11 +231,21 @@ impl MonographTxCtlTask {
                 };
                 let cmd_task_input_tuple = match cmd_str_ref {
                     "start" => (
-                        monograph_cmd!(TxCtlCmd::Start, remote_install_dir, host.clone()),
+                        monograph_cmd!(
+                            TxCtlCmd::Start,
+                            remote_install_dir,
+                            conn_user.clone(),
+                            host.to_string()
+                        ),
                         HashMap::default(),
                     ),
                     "status" => (
-                        monograph_cmd!(TxCtlCmd::Status, remote_install_dir),
+                        monograph_cmd!(
+                            TxCtlCmd::Status,
+                            remote_install_dir,
+                            conn_user.clone(),
+                            host.to_string()
+                        ),
                         HashMap::from([
                             (MONO_DB_USER.to_string(), TaskArgValue::Str(db_user.clone())),
                             (MONO_DB_PWD.to_string(), TaskArgValue::Str(db_pwd.clone())),
@@ -233,12 +254,22 @@ impl MonographTxCtlTask {
                     "stop" => {
                         if is_force_stop {
                             (
-                                monograph_cmd!(TxCtlCmd::ForceStop, remote_install_dir),
+                                monograph_cmd!(
+                                    TxCtlCmd::ForceStop,
+                                    remote_install_dir,
+                                    conn_user.clone(),
+                                    host.to_string()
+                                ),
                                 HashMap::default(),
                             )
                         } else {
                             (
-                                monograph_cmd!(TxCtlCmd::Stop, remote_install_dir),
+                                monograph_cmd!(
+                                    TxCtlCmd::Stop,
+                                    remote_install_dir,
+                                    conn_user.clone(),
+                                    host.to_string()
+                                ),
                                 HashMap::default(),
                             )
                         }
@@ -273,9 +304,19 @@ impl MonographTxCtlTask {
         }
     }
 
-    async fn monograph_pid(&self, ssh_conn: SSHSession) -> anyhow::Result<ExecutionValue> {
+    async fn monograph_pid(
+        &self,
+        ssh_conn: SSHSession,
+        user: &str,
+        host: &str,
+    ) -> anyhow::Result<ExecutionValue> {
         let remote_install_dir = self.config.install_dir();
-        let check_status = monograph_cmd!(TxCtlCmd::Status, remote_install_dir);
+        let check_status = monograph_cmd!(
+            TxCtlCmd::Status,
+            remote_install_dir,
+            user.to_string(),
+            host.to_string()
+        );
         let cmd_val = check_status.cmd_value();
         check_pid(cmd_val, ssh_conn, parse_process_pid).await
         // check_process_pid(cmd_val, ssh_conn, parse_process_pid).await
@@ -298,10 +339,18 @@ impl TaskExecutor for MonographTxCtlTask {
             SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
                 .await?;
         let remote_install_dir = self.config.install_dir();
-        let (host_value, _) = ssh_session.ssh_conn_info();
+        let (host_value, user) = ssh_session.ssh_conn_info();
 
-        let check_status_cmd = monograph_cmd!(TxCtlCmd::Status, remote_install_dir).cmd_value();
-        let check_process_status = self.monograph_pid(ssh_session.clone()).await;
+        let check_status_cmd = monograph_cmd!(
+            TxCtlCmd::Status,
+            remote_install_dir,
+            host_value.clone(),
+            user
+        )
+        .cmd_value();
+        let check_process_status = self
+            .monograph_pid(ssh_session.clone(), user.as_str(), host_value.as_str())
+            .await;
         let ctl_cmd_ref = self.ctl_cmd.as_ref();
         let mono_ctl_rs = match ctl_cmd_ref {
             "status" => {
@@ -325,14 +374,14 @@ impl TaskExecutor for MonographTxCtlTask {
             }
             "stop" | "force_stop" => {
                 let stop_cmd = self.ctl_cmd.cmd_value();
-                println!("MonographCtlTask send stop_cmd={stop_cmd}");
+                //println!("MonographCtlTask send stop_cmd={stop_cmd}");
                 tx_ctl!(self, check_process_status, {!=, "NONE"}, async || -> anyhow::Result<ExecutionValue> {
                      wait_command_complete!(stop_cmd, check_status_cmd, ssh_session.clone(), is_none)
                 })
             }
             "start" => {
                 let start_cmd = self.ctl_cmd.cmd_value();
-                println!("MonographCtlTask send start_cmd={start_cmd}");
+                //println!("MonographCtlTask send start_cmd={start_cmd}");
                 tx_ctl!(self, check_process_status, {==, "NONE"}, async || -> anyhow::Result<ExecutionValue> {
                     wait_command_complete!(start_cmd, check_status_cmd, ssh_session.clone(), is_some)
                 })

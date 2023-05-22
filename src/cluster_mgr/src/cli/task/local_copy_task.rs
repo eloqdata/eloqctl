@@ -91,8 +91,6 @@ impl TaskExecutor for LocalCopyTask {
             let dest_file =
                 TaskArgValue::into_inner_value::<String>(task_arg.get(DEST_DIR).unwrap().clone());
             let to = download_dir.join(dest_file.clone());
-            let from = PathBuf::from(source_dir_string.clone());
-            let copy_rs = std::fs::copy(from, to);
             let mut copy_task_rs = HashMap::from([
                 (
                     CMD.to_string(),
@@ -101,15 +99,22 @@ impl TaskExecutor for LocalCopyTask {
                     )),
                 ),
                 (CMD_OUTPUT.to_string(), TaskArgValue::Str("".to_string())),
+                (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
             ]);
+
+            if to.exists() {
+                println!("Success: The target file already exists {to:?}");
+                return Ok(Some(copy_task_rs.clone()));
+            }
+            let from = PathBuf::from(source_dir_string);
+            let copy_rs = std::fs::copy(from, to);
+
             if let Err(copy_err) = copy_rs {
                 copy_task_rs.insert(
                     CMD_OUTPUT.to_string(),
                     TaskArgValue::Str(copy_err.to_string()),
                 );
                 copy_task_rs.insert(CMD_STATUS.to_string(), TaskArgValue::Number(100));
-            } else {
-                copy_task_rs.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
             }
             Ok(Some(copy_task_rs))
         }

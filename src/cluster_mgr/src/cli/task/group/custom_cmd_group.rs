@@ -15,7 +15,7 @@ impl TaskGroup for CustomCmdTaskGroup {
         let user_command = match cmd_arg {
             CommandArgs::Exec {
                 command,
-                cluster: _,
+                topology_file: _,
             } => command,
             _ => {
                 unreachable!()

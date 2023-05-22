@@ -1,5 +1,0 @@
-#!/bin/bash
-DB_INSTALL_DIR=_MY_INSTALL_DIR
-NOW=$(date +"%Y-%m-%d")
-$DB_INSTALL_DIR/bin/mysqld --defaults-file="$DB_INSTALL_DIR"/my.cnf >mysqld_"$NOW".log 2>&1 &
-echo $! >mysqld_pid.file

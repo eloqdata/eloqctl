@@ -130,13 +130,15 @@ impl Monitor {
     pub fn gen_grafana_config(&self) -> anyhow::Result<PathBuf> {
         let grafana_http_port = self.grafana.port;
         let grafana_config_path = config_template(GRAFANA_CONFIG_TEMPLATE)?;
-        let mut grafana_ini = Ini::new();
-        grafana_ini
-            .load(grafana_config_path)
-            .expect("local grafana config template");
-        grafana_ini.set("server", "http_port", Some(grafana_http_port.to_string()));
+        let mut grafana_ini = ini::Ini::load_from_file(grafana_config_path)
+            .expect("can not local grafana config template");
+        grafana_ini.set_to(
+            Some("server"),
+            "http_port".to_string(),
+            grafana_http_port.to_string(),
+        );
         let grafana_default_ini = download_dir().join(GRAFANA_CONFIG_FILE);
-        grafana_ini.write(grafana_default_ini.as_path())?;
+        grafana_ini.write_to_file(grafana_default_ini.as_path())?;
         Ok(grafana_default_ini)
     }
 
@@ -335,5 +337,29 @@ impl Monitor {
             File::create(prometheus_datasource_path.as_path()).unwrap();
         serde_yaml::to_writer(prometheus_datasource_file, &prometheus_datasource)?;
         Ok(prometheus_datasource_path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ini::Ini;
+    use std::path::PathBuf;
+
+    #[test]
+    pub fn test_ini_raw_string_field() {
+        let curr_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let grafana_config_path = curr_dir.join("config/grafana_config.ini");
+
+        let def_ini = Ini::load_from_file(grafana_config_path).unwrap();
+        let raw_str = def_ini
+            .get_from(Some("security"), "content_security_policy_template")
+            .unwrap();
+        // let mut def_ini = Ini::new_cs();
+        // def_ini
+        //     .load(grafana_config_path)
+        //     .expect("local grafana config template");
+        //
+        // let raw_str = def_ini.get("security", "content_security_policy_template").unwrap();
+        println!("{raw_str}");
     }
 }

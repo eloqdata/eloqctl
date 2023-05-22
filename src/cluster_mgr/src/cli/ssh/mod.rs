@@ -136,7 +136,7 @@ impl SSHSession {
         ]);
         if status_code != 0 {
             let conn_info = (self.host.clone(), self.port);
-            error!("SSHSession failed to execute remote cmd [{command:?}], ssh_info={conn_info:?}");
+            error!("SSHSession Failed execute command. ssh_info={conn_info:?}, {cmd_res:#?}] ");
         }
         channel.close().await?;
         Ok(cmd_res)

@@ -36,9 +36,6 @@ impl TaskExecutor for UploadTask {
         let scp_command_value = scp_command_opt.unwrap();
 
         let scp = scp_command_value.clone().into_inner_value::<String>();
-        let remote_install_dir = self.config.install_dir();
-        let mkdir = format!("mkdir -p {remote_install_dir}");
-
         let conn_ref = &self.config.connection;
         let user = &conn_ref.username;
         let port = conn_ref.ssh_port() as usize;
@@ -56,15 +53,11 @@ impl TaskExecutor for UploadTask {
             self.config.connection.ssh_auth_key().unwrap(),
         )
         .await?;
-        let remote_cmd = format!("{mkdir};{scp}");
-        println!("UploadTask command={remote_cmd}");
-        let upload_task_result = ssh_session
-            .command(remote_cmd.as_str(), CollectOutput)
-            .await?;
+        let upload_task_result = ssh_session.command(scp.as_str(), CollectOutput).await?;
         ssh_session.close().await?;
         task_return_value!(
             upload_task_result,
-            |status_code: i32| -> CmdErr { CmdErr::UploadErr(remote_cmd, status_code.to_string()) },
+            |status_code: i32| -> CmdErr { CmdErr::UploadErr(scp, status_code.to_string()) },
             "UploadTask"
         )
     }

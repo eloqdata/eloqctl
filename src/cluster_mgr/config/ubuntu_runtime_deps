@@ -10,3 +10,4 @@ libleveldb-dev
 wget
 curl
 unzip
+libboost-context-dev

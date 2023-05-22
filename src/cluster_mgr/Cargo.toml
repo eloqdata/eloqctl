@@ -41,3 +41,5 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["alloc", "ansi", "env-filter", "fmt", "matchers", "once_cell", "parking_lot", "regex", "registry", "sharded-slab", "smallvec", "std", "thread_local", "time", "tracing", "tracing-log"] }
 url = { version = "2", features = ["serde"] }
 walkdir = "2"
+rust-ini = "0.19"
+

@@ -4,6 +4,7 @@ use crate::cli::task::task_base::{
 };
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::DeploymentConfig;
+use crate::config::log_service::LogReadiness;
 use crate::task_return_value;
 use futures::future;
 use indexmap::IndexMap;
@@ -48,10 +49,18 @@ struct CheckHealthResponse {
 pub struct MonographLogProbeTask {
     task_id: TaskId,
     check_health_url: HashMap<usize, Vec<String>>,
+    readiness: LogReadiness,
 }
 
 impl MonographLogProbeTask {
     pub fn from_config(config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
+        let deployment_ref = &config.deployment;
+        let has_log_srv = deployment_ref.log_service.is_some();
+        if !has_log_srv {
+            return IndexMap::new();
+        }
+        let log_srv = deployment_ref.log_service.as_ref().unwrap();
+        let log_readiness = log_srv.readiness_opts();
         if let Some(log_srv) = &config.deployment.log_service {
             let log_members = log_srv.group_members();
             // key is group id, value is member check health
@@ -71,7 +80,8 @@ impl MonographLogProbeTask {
                 task: "readiness".to_string(),
                 host: "_NONE".to_string(),
             };
-            let probe_task = MonographLogProbeTask::new(task_id.clone(), check_health_url);
+            let probe_task =
+                MonographLogProbeTask::new(task_id.clone(), log_readiness, check_health_url);
             IndexMap::from([(
                 task_id,
                 TaskInstance {
@@ -96,9 +106,14 @@ impl MonographLogProbeTask {
         ])
     }
 
-    pub fn new(task_id: TaskId, check_health_url: HashMap<usize, Vec<String>>) -> Self {
+    pub fn new(
+        task_id: TaskId,
+        log_readiness: LogReadiness,
+        check_health_url: HashMap<usize, Vec<String>>,
+    ) -> Self {
         Self {
             task_id,
+            readiness: log_readiness,
             check_health_url,
         }
     }
@@ -125,6 +140,8 @@ impl MonographLogProbeTask {
         let expect_leader_count = self.check_health_url.len();
         let http_client = client_rs.unwrap();
         let mut interval = tokio::time::interval(Duration::from_millis(300));
+        let success = self.readiness.success_threshold.unwrap_or(3);
+        let mut success_counter = 0_usize;
         loop {
             let probe_result_fut = self
                 .check_health_url
@@ -193,6 +210,12 @@ impl MonographLogProbeTask {
                 }
             }
             if total_leader == expect_leader_count {
+                if success_counter < success {
+                    println!("MonographLogProbeTask success_counter={success_counter} < success_threshold={success}");
+                    interval.tick().await;
+                    success_counter += 1;
+                    continue;
+                }
                 let execution_success = self.build_command_result(
                     0,
                     all_group_leaders
@@ -225,7 +248,8 @@ impl TaskExecutor for MonographLogProbeTask {
         _task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         println!("{} execute.\n", self.task_id.pretty_string());
-        let timeout_duration = Duration::from_secs(TIMEOUT);
+        let time_out = self.readiness.timeout_sec;
+        let timeout_duration = Duration::from_secs(time_out);
         let action_result = timeout(timeout_duration, self.action()).await;
         let probe_result = if let Ok(exec_rs) = action_result {
             exec_rs

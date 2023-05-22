@@ -1,4 +1,5 @@
 use crate::cli::task::download_task::DownloadTask;
+use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{DeploymentTaskGroup, TaskGroup};
 use crate::cli::task::local_copy_task::LocalCopyTask;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskId, TaskInstance};
@@ -36,7 +37,6 @@ impl TaskGroup for DeploymentTaskGroup {
     ) -> anyhow::Result<TaskExecutionContext> {
         let cmd_ref = cmd_args.as_ref().to_string();
         let cluster = &config.deployment.cluster_name;
-
         let success_task_entity = STATE_MGR
             .load_task_status_from_state(cluster.to_string(), Some(0), Some(vec![cmd_ref.clone()]))
             .await?;
@@ -79,15 +79,21 @@ impl TaskGroup for DeploymentTaskGroup {
                 UnpackFileTask::from_config(&config)?,
             )
         };
+
+        let mkdir_cmd = config.install_dir();
+        let mkdir_remote_dir =
+            ExecCustomCommand::from_config(format!("mkdir -p {mkdir_cmd}"), &config);
         let upload_monitor_conf_tasks = upload_tasks(UploadTaskBuilderType::MonitorConf, &config);
 
         let barrier = Some(vec![
+            mkdir_remote_dir.len(),
             copy_or_download_task_instances.len(),
             db_upload_task.len(),
             unpack_task.len(),
             upload_monitor_conf_tasks.len(),
         ]);
         let mut executable = IndexMap::new();
+        executable.extend(mkdir_remote_dir.into_iter());
         executable.extend(copy_or_download_task_instances.into_iter());
         executable.extend(db_upload_task.into_iter());
         executable.extend(unpack_task.into_iter());

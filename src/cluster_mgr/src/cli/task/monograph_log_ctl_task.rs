@@ -168,6 +168,11 @@ impl MonographLogCtlTask {
         cmd_arg: CommandArgs,
         config: &DeploymentConfig,
     ) -> IndexMap<TaskId, TaskInstance> {
+        let deployment_ref = &config.deployment;
+        let has_log_srv = deployment_ref.log_service.is_some();
+        if !has_log_srv {
+            return IndexMap::new();
+        }
         let log_cmd_by_key = LogCtlCmd::build_cmd(config, cmd_arg.clone());
         let user = &config.connection.username;
         let port = config.connection.ssh_port() as usize;

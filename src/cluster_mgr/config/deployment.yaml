@@ -2,7 +2,7 @@ connection:
   username: "ubuntu"
   auth_type: "keypair"
   auth:
-    keypair: "/home/ubuntu/.ssh/ed25519"
+    keypair: "/home/ubuntu/.ssh/ed25519_mono"
 deployment:
   tx_image: "file:///home/ubuntu/monograph-tx-ubuntu20-release-bin.tar.gz"
   log_image: "file:///home/ubuntu/monograph-log-ubuntu20-release-bin.tar.gz"
@@ -11,12 +11,12 @@ deployment:
   port:
     mysql_port: 3300
     monograph_port:
-      start: 8100
-      end: 8200
+      start: 8000
+      end: 8009
   log_service:
     nodes:
       - host: localhost
-        port: 9400
+        port: 9000
         data_dir:
           - "/data1/opt/log_data"
     replica: 3

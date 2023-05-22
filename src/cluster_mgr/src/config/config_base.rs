@@ -36,6 +36,19 @@ pub const MYSQL_EXPORTER_FILE_KEY: &str = "mysqld_exporter";
 pub const CASSANDRA_COLLECTOR_AGENT_FILE_KEY: &str = "datastax-mcac-agent";
 pub const DEPLOYMENT_CHECK_SUCCESS_TASK: &str = "deploy_check_success_task";
 
+macro_rules! all_hosts_merge {
+    ($config_ref:expr, $($pkg_name:ident $(,)?)*) => {{
+        let mut all_hosts = vec![];
+        $(
+           let host_vec = $config_ref.get_host_list(DeploymentPackage::$pkg_name);
+           if !host_vec.is_empty(){
+               all_hosts.extend(host_vec.into_iter());
+           }
+        )*
+        all_hosts
+    }};
+}
+
 macro_rules! extract_monitor_host {
     ($deployment_ref:expr, $monitor_components:ident) => {{
         if let Some(monitor) = $deployment_ref.monitor.as_ref() {
@@ -89,7 +102,6 @@ impl DeploymentConfig {
         let monitor_opt = self.deployment.monitor.as_ref();
         let tx_image = &self.deployment.tx_image;
         let log_image = &self.deployment.log_image;
-        // let log_srv_opt = self.deployment.log_service.as_ref();
         let mut unpack_files = HashMap::new();
         all_hosts.iter().for_each(|entry| {
             let hosts = entry.1;
@@ -396,10 +408,15 @@ impl DeploymentConfig {
     }
 
     pub fn get_unique_host_list(&self) -> Vec<String> {
-        let mut hosts_vec = self.get_host_list(DeploymentPackage::MonographTx);
-        let storage_hosts = self.get_host_list(DeploymentPackage::Storage);
-        hosts_vec.extend(storage_hosts.into_iter());
-        hosts_vec.into_iter().unique().collect_vec()
+        let all_hosts = all_hosts_merge!(
+            self,
+            MonographTx,
+            MonographLog,
+            Storage,
+            Grafana,
+            Prometheus
+        );
+        all_hosts.iter().unique().cloned().collect_vec()
     }
 
     pub fn get_host_list(&self, service: DeploymentPackage) -> Vec<String> {

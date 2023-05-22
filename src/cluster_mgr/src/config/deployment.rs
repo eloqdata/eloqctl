@@ -222,9 +222,11 @@ impl Deployment {
 
     pub fn monograph_download_links(&self) -> anyhow::Result<HashMap<String, DownloadUrl>> {
         let mut links = HashMap::new();
+        download_urls!(links,
+                {MONOGRAPH_FILE_KEY, self.tx_image}
+        );
         if let Some(log_image_url) = self.log_image.as_ref() {
             download_urls!(links,
-                {MONOGRAPH_FILE_KEY, self.tx_image},
                 {MONOGRAPH_LOG_FILE_KEY, log_image_url.to_string()}
             );
         }

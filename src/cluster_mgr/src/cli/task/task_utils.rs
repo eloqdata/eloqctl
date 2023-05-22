@@ -180,7 +180,7 @@ where
         let rs = ssh_conn
             .command(check_status_cmd.as_str(), CollectOutput)
             .await;
-        println!("check_status_cmd = {rs:?}");
+        println!("check_status_cmd = {rs:#?}");
         if rs.as_ref().is_err() {
             let err_msg = rs.err().unwrap().to_string();
             error!(
