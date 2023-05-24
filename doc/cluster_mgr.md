@@ -45,7 +45,8 @@ Commands:
 
   stop
           Stop the MonographDB cluster(TxService LogService Storage). with the specified cluster name.
-          ./cluster_mgr stop --cluster $CLUSTER_NAME --force true | false
+
+          ./cluster_mgr stop --cluster $CLUSTER_NAME --force true|false  --all true|false
 
   restart
           Restart the MonographDB cluster with the specified cluster name.
@@ -53,10 +54,10 @@ Commands:
 
   exec
           Execute custom shell commands.
-          ./cluster_mgr exec --command 'ls -la /data1/' --cluster $CLUSTER_NAME
+          ./cluster_mgr exec --command 'ls -la /data1/' --topology-file  ${PWD}/config/deployment.yaml
   status
           Check MonographDB cluster status. If the username password is given,
-          the connection to the target database is established, otherwise, the ps command is executed.
+           the connection to the target database is established, otherwise, the ps command is executed.
           ./cluster_mgr status --cluster $CLUSTER_NAME --user $DB_USER --password $DB_PASSWORD
 
   run-deps
@@ -69,8 +70,15 @@ Commands:
 
   log-service
           Start or stop LogService This command is only available if LogService is deployed standalone
-          ./cluster_mgr log-service --cluster $CLUSTER_NAME --command start | stop
+           ./cluster_mgr log-service --cluster $CLUSTER_NAME --command start | stop
 
+  upgrade
+          According to the deployment.yaml, update the related monograph_db cluster by stopping the cluster, replacing the package, and starting the cluster.
+          ./cluster_mgr upgrade --topology_file ${PWD}/config/deployment.yaml
+
+  update-conf
+          Update the configuration file and restart the tx service (the default value of restart is true). Note: Please edit conf/my_template.cnf first
+           ./cluster_mgr update-conf --cluster $CLUSTER_NAME --restart true | false
   help
           Print this message or the help of the given subcommand(s)
 ```
