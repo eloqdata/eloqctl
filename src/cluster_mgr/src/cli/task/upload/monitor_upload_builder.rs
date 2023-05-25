@@ -13,45 +13,9 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-#[derive(Clone)]
-struct ConfigAndHostPair {
-    path: Vec<PathBuf>,
-    hosts: Vec<String>,
-}
-
 pub struct MonitorInfraConfUploadBuilder;
 
 impl MonitorInfraConfUploadBuilder {
-    fn monitor_upload_files(
-        &self,
-        all_monitor_config: HashMap<String, ConfigAndHostPair>,
-    ) -> Vec<UploadFile> {
-        all_monitor_config
-            .iter()
-            .flat_map(|(dest_dir, path_and_hosts)| {
-                //let monitor_conf_tmp_dir = create_temp_dir(tmp_prefix, "/tmp").unwrap();
-                let path_vec = &path_and_hosts.path;
-                let path_files = path_vec
-                    .iter()
-                    .map(|path| path.to_str().unwrap())
-                    .map(|path_str| path_str.to_string())
-                    .join(" ");
-
-                let hosts = &path_and_hosts.hosts;
-                hosts
-                    .iter()
-                    .map(|host| UploadFile {
-                        source: path_files.clone(),
-                        dest: dest_dir.clone(),
-                        extension: "".to_string(),
-                        host: host.to_string(),
-                        copy_dir: false,
-                    })
-                    .collect_vec()
-            })
-            .collect_vec()
-    }
-
     fn dashboard_upload_files(&self, config: &DeploymentConfig) -> Option<UploadFile> {
         let files = config.load_monitor_dashboard(None);
         if files.is_empty() {
@@ -72,11 +36,26 @@ impl MonitorInfraConfUploadBuilder {
         }
     }
 
-    fn gen_monitor_config(
+    fn path_string(path: PathBuf) -> String {
+        let path_str = path.to_str().unwrap();
+        path_str.to_string()
+    }
+
+    fn monitor_host(
+        host_list: &HashMap<DeploymentPackage, Vec<String>>,
+        pkg: DeploymentPackage,
+    ) -> String {
+        let curr_host = host_list.get(&pkg);
+        assert!(curr_host.is_some());
+        let monitor_host = curr_host.unwrap();
+        monitor_host.first().unwrap().to_string()
+    }
+
+    fn monitor_config_upload_files(
         &self,
         monitor: &Monitor,
         config: &DeploymentConfig,
-    ) -> HashMap<String, ConfigAndHostPair> {
+    ) -> Vec<UploadFile> {
         let all_host = config.get_host_as_map();
         let install_dir = config.install_dir();
         let monograph_tx_hosts_ref = all_host.get(&DeploymentPackage::MonographTx).unwrap();
@@ -89,49 +68,66 @@ impl MonitorInfraConfUploadBuilder {
         let mcac_config = monitor
             .gen_mcac_file_sd_config(cass_config_host_ref.clone())
             .unwrap(); // prometheus
-        let prometheus_conf = monitor.gen_prometheus_config(monograph_tx_hosts).unwrap(); //prometheus config
-        let prometheus_files = if let Some(mcac) = mcac_config {
+        let prometheus_conf = monitor
+            .gen_prometheus_config(monograph_tx_hosts.clone())
+            .unwrap(); //prometheus config
+        let prometheus_conf_files = if let Some(mcac) = mcac_config {
             vec![prometheus_conf, mcac]
         } else {
             vec![prometheus_conf]
         };
-        // key is dest dir, value is source path
-        HashMap::from([
-            (
-                format!("{install_dir}/{PROMETHEUS_CONFIG_DIR}"),
-                ConfigAndHostPair {
-                    path: prometheus_files,
-                    hosts: all_host
-                        .get(&DeploymentPackage::Prometheus)
-                        .unwrap()
-                        .clone(),
-                },
-            ),
-            (
-                format!("{install_dir}/{GRAFANA_CONFIG_DIR}"),
-                ConfigAndHostPair {
-                    path: vec![grafana_conf_path],
-                    hosts: all_host.get(&DeploymentPackage::Grafana).unwrap().clone(),
-                },
-            ),
-            (
-                format!("{install_dir}/{GRAFANA_DATASOURCE_CONFIG_DIR}"),
-                ConfigAndHostPair {
-                    path: vec![grafana_ds_conf_path],
-                    hosts: all_host.get(&DeploymentPackage::Grafana).unwrap().clone(),
-                },
-            ),
-            (
-                install_dir,
-                ConfigAndHostPair {
-                    path: vec![create_user_script],
-                    hosts: all_host
-                        .get(&DeploymentPackage::MonographTx)
-                        .unwrap()
-                        .clone(),
-                },
-            ),
-        ])
+
+        let prometheus_conf_source_files = prometheus_conf_files
+            .iter()
+            .map(|prome_conf| MonitorInfraConfUploadBuilder::path_string(prome_conf.clone()))
+            .join(" ");
+
+        let mut prometheus_grafana_conf = vec![
+            UploadFile {
+                source: MonitorInfraConfUploadBuilder::path_string(grafana_conf_path),
+                dest: format!("{install_dir}/{GRAFANA_CONFIG_DIR}"),
+                extension: "grafana.cnf".to_string(),
+                host: MonitorInfraConfUploadBuilder::monitor_host(
+                    &all_host,
+                    DeploymentPackage::Grafana,
+                ),
+                copy_dir: false,
+            },
+            UploadFile {
+                source: MonitorInfraConfUploadBuilder::path_string(grafana_ds_conf_path),
+                dest: format!("{install_dir}/{GRAFANA_DATASOURCE_CONFIG_DIR}"),
+                extension: "grafana_ds".to_string(),
+                host: MonitorInfraConfUploadBuilder::monitor_host(
+                    &all_host,
+                    DeploymentPackage::Grafana,
+                ),
+                copy_dir: false,
+            },
+            UploadFile {
+                source: prometheus_conf_source_files,
+                dest: format!("{install_dir}/{PROMETHEUS_CONFIG_DIR}"),
+                extension: "prometheus,mcac".to_string(),
+                host: MonitorInfraConfUploadBuilder::monitor_host(
+                    &all_host,
+                    DeploymentPackage::Prometheus,
+                ),
+                copy_dir: false,
+            },
+        ];
+
+        let upload_create_user_files = monograph_tx_hosts
+            .iter()
+            .map(|host| UploadFile {
+                source: MonitorInfraConfUploadBuilder::path_string(create_user_script.clone()),
+                dest: install_dir.clone(),
+                extension: "sql".to_string(),
+                host: host.to_string(),
+                copy_dir: false,
+            })
+            .collect_vec();
+
+        prometheus_grafana_conf.extend(upload_create_user_files.into_iter());
+        prometheus_grafana_conf
     }
 }
 
@@ -140,20 +136,21 @@ impl UploadTaskBuilder for MonitorInfraConfUploadBuilder {
         let monitor_opt = config.deployment.monitor.as_ref();
         let source_host = get_source_host(None);
         if let Some(monitor) = monitor_opt {
-            let all_monitor_config = self.gen_monitor_config(monitor, config);
-            let mut all_upload_files = self.monitor_upload_files(all_monitor_config);
+            let mut all_upload_files = self.monitor_config_upload_files(monitor, config);
             if let Some(upload_dashboard_file) = self.dashboard_upload_files(config) {
                 all_upload_files.push(upload_dashboard_file);
             }
+            // println!("MonitorInfraConfUploadBuilder all configs={all_upload_files:#?}");
             all_upload_files
                 .iter()
                 .map(|upload_file| {
+                    let extension = upload_file.extension.clone();
                     build_task_instance(
                         source_host.clone(),
                         upload_file.clone(),
                         config,
                         "deploy",
-                        "upload_monitor_cnf",
+                        format!("upload_monitor_cnf_{extension}").as_str(),
                     )
                 })
                 .collect::<IndexMap<TaskId, TaskInstance>>()
