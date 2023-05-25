@@ -29,6 +29,8 @@ pub const CASSANDRA_ENV_TEMPLATE: &str = "cassandra-env-template";
 pub const CASSANDRA_JVM_SERVER_CONF: &str = "jvm11-server.options";
 pub const PROMETHEUS_CONFIG_TEMPLATE: &str = "mono_prometheus.yaml";
 
+pub const GRAFANA_DASHBOARDS_CONFIG_TEMPLATE: &str = "grafana_dashboards.yaml";
+
 pub const PROMETHEUS_CONFIG_FILE: &str = "prometheus.yml";
 pub const CASS_MCAC_CONF_FILE: &str = "tg_mcac.json";
 pub const GRAFANA_PROMETHEUS_DS_FILE: &str = "prometheus-datasource.yml";
@@ -202,7 +204,6 @@ pub fn config_template(file_name: &str) -> anyhow::Result<PathBuf> {
 pub fn load_yaml_config_template(template_name: &str) -> anyhow::Result<HashMap<String, Value>> {
     let cass_template_path_buf = config_template(template_name)?;
     let cass_opened_file = File::open(cass_template_path_buf.as_path())?;
-    // cassandra.yaml config object
-    let cass_conf_map = serde_yaml::from_reader::<File, HashMap<String, Value>>(cass_opened_file)?;
-    Ok(cass_conf_map)
+    let yaml_map = serde_yaml::from_reader::<File, HashMap<String, Value>>(cass_opened_file)?;
+    Ok(yaml_map)
 }

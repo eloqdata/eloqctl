@@ -18,13 +18,25 @@ pub struct MonitorInfraConfUploadBuilder;
 impl MonitorInfraConfUploadBuilder {
     fn dashboard_upload_files(&self, config: &DeploymentConfig) -> Option<UploadFile> {
         let files = config.load_monitor_dashboard(None);
+        let install_dir = config.install_dir();
+        let dashboard_conf_path_string = format!("{install_dir}/{GRAFANA_DASHBOARD_CONFIG_DIR}");
+        let monitor_opt = config.deployment.monitor.as_ref();
+        assert!(monitor_opt.is_some());
+        let monitor = monitor_opt.unwrap();
+        let dashboard_path = monitor.gen_grafana_dashboard_config(dashboard_conf_path_string);
+        assert!(dashboard_path.is_ok());
+        let path_binding = dashboard_path.unwrap();
+        let local_config_path_string = path_binding.to_str().unwrap().to_string();
+
         if files.is_empty() {
             None
         } else {
             let host = config.get_host_list(DeploymentPackage::Grafana);
             assert_eq!(1, host.len());
             let dest_host = host.first().unwrap();
-            let dashboard_files = files.iter().join(" ");
+            let mut dashboard_files = files.iter().join(" ");
+            dashboard_files.push(' ');
+            dashboard_files.push_str(local_config_path_string.as_str());
             let install_dir = config.install_dir();
             Some(UploadFile {
                 source: dashboard_files,

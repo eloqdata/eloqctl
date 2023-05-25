@@ -6,8 +6,9 @@ use crate::config::config_base::{
 use crate::config::{
     config_template, load_yaml_config_template, DownloadUrl, CASS_MCAC_CONF_FILE,
     CREATE_MONITOR_USER_SQL_FILE, GRAFANA_CONFIG_FILE, GRAFANA_CONFIG_TEMPLATE,
-    GRAFANA_PROMETHEUS_DS_FILE, MCAC_PROMETHEUS_CONFIG_TEMPLATE, MYSQL_EXPORTER_CLIENT_CONFIG,
-    PROMETHEUS_CONFIG_FILE, PROMETHEUS_CONFIG_TEMPLATE,
+    GRAFANA_DASHBOARDS_CONFIG_TEMPLATE, GRAFANA_PROMETHEUS_DS_FILE,
+    MCAC_PROMETHEUS_CONFIG_TEMPLATE, MYSQL_EXPORTER_CLIENT_CONFIG, PROMETHEUS_CONFIG_FILE,
+    PROMETHEUS_CONFIG_TEMPLATE,
 };
 use crate::download_urls;
 use configparser::ini::Ini;
@@ -126,6 +127,19 @@ impl Monitor {
         fs::write(script_path.clone(), create_sql_script)
             .expect("unable write create_monitor_user.sql");
         Ok(script_path)
+    }
+
+    pub fn gen_grafana_dashboard_config(&self, path: String) -> anyhow::Result<PathBuf> {
+        let dashboard_conf = load_yaml_config_template(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
+        assert!(dashboard_conf.is_ok());
+        let mut dashboard = dashboard_conf.unwrap();
+        let mut providers = dashboard.get("providers").unwrap().clone();
+        providers[0]["options"]["path"] = Value::String(path);
+        dashboard.insert("providers".to_string(), providers);
+        let dashboard_path = download_dir().join(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
+        let dashboard_rs = File::create(dashboard_path.as_path())?;
+        serde_yaml::to_writer(dashboard_rs, &dashboard)?;
+        Ok(dashboard_path)
     }
 
     pub fn gen_grafana_config(&self) -> anyhow::Result<PathBuf> {
@@ -338,29 +352,5 @@ impl Monitor {
             File::create(prometheus_datasource_path.as_path()).unwrap();
         serde_yaml::to_writer(prometheus_datasource_file, &prometheus_datasource)?;
         Ok(prometheus_datasource_path)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use ini::Ini;
-    use std::path::PathBuf;
-
-    #[test]
-    pub fn test_ini_raw_string_field() {
-        let curr_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let grafana_config_path = curr_dir.join("config/grafana_config.ini");
-
-        let def_ini = Ini::load_from_file(grafana_config_path).unwrap();
-        let raw_str = def_ini
-            .get_from(Some("security"), "content_security_policy_template")
-            .unwrap();
-        // let mut def_ini = Ini::new_cs();
-        // def_ini
-        //     .load(grafana_config_path)
-        //     .expect("local grafana config template");
-        //
-        // let raw_str = def_ini.get("security", "content_security_policy_template").unwrap();
-        println!("{raw_str}");
     }
 }
