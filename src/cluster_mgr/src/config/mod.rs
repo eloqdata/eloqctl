@@ -14,6 +14,7 @@ use url::Url;
 pub mod config_base;
 pub mod connection;
 pub mod deployment;
+#[allow(dead_code)]
 pub mod log_service;
 pub mod monitor;
 pub mod storage_service_config;
