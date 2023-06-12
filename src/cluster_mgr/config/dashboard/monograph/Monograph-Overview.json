@@ -143,7 +143,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(mysql_global_status_commands_total{command=~\"(commit|rollback)\", instance=~\"$mysql_exporter\"}[5m])) without (command)",
+          "expr": "sum(rate(mysql_global_status_handlers_total{handler=~\"commit|rollback\", instance=~\"$mysql_exporter\"}[5s]) or irate(mysql_global_status_handlers_total{handler=~\"commit|rollback\", instance=~\"$mysql_exporter\"}[5s]))",
           "legendFormat": "Current TPS",
           "range": true,
           "refId": "A"
@@ -618,7 +618,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(mysql_global_status_commands_total{command=~\"(commit|rollback)\", instance=~\"$mysql_exporter\"}[$__rate_interval])) without (command)",
+          "expr": "sum(rate(mysql_global_status_handlers_total{handler=~\"commit|rollback\", instance=~\"$mysql_exporter\"}[$__rate_interval]) or irate(mysql_global_status_handlers_total{handler=~\"commit|rollback\", instance=~\"$mysql_exporter\"}[$__rate_interval]))",
           "legendFormat": "total",
           "range": true,
           "refId": "A"
@@ -1318,7 +1318,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(1 + sum(delta(cache_hit_or_miss{type=\"hits\", instance=~\"$monograph_server\"}[$__rate_interval]))) / (1 + sum(delta(cache_hit_or_miss{type=\"hits\", instance=~\"$monograph_server\"}[$__rate_interval])) + sum(delta(cache_hit_or_miss{type=\"miss\",instance=~\"$monograph_server\"}[$__rate_interval])))",
+          "expr": "(1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$monograph_server\"}[$__rate_interval]))) / (1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$monograph_server\"}[$__rate_interval])) + sum(delta(cache_hit_or_miss_total{type=\"miss\",instance=~\"$monograph_server\"}[$__rate_interval])))",
           "legendFormat": "total",
           "range": true,
           "refId": "A"
@@ -1420,7 +1420,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(1 + sum by(instance)(delta(cache_hit_or_miss{type=\"hits\", instance=~\"$monograph_server\"}[$__rate_interval]))) / (1 + sum by(instance)(delta(cache_hit_or_miss{type=\"hits\",instance=~\"$monograph_server\"}[$__rate_interval])) + sum by(instance)(delta(cache_hit_or_miss{type=\"miss\", instance=~\"$monograph_server\"}[$__rate_interval])))",
+          "expr": "(1 + sum by(instance)(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$monograph_server\"}[$__rate_interval]))) / (1 + sum by(instance)(delta(cache_hit_or_miss_total{type=\"hits\",instance=~\"$monograph_server\"}[$__rate_interval])) + sum by(instance)(delta(cache_hit_or_miss_total{type=\"miss\", instance=~\"$monograph_server\"}[$__rate_interval])))",
           "legendFormat": "{{instance}}",
           "range": true,
           "refId": "A"
@@ -1437,9 +1437,9 @@
         "x": 0,
         "y": 68
       },
-      "id": 123129,
+      "id": 123207,
       "panels": [],
-      "title": "Run One Round",
+      "title": "Busy Round",
       "type": "row"
     },
     {
@@ -1507,7 +1507,7 @@
         "x": 0,
         "y": 69
       },
-      "id": 123184,
+      "id": 123214,
       "interval": "5s",
       "options": {
         "legend": {
@@ -1534,13 +1534,114 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg by (instance) (active_tx_count{instance=~\"$monograph_server\"})",
+          "expr": "avg by (instance) (rate(busy_round_active_tx_count{instance=~\"$monograph_server\"}[$__rate_interval]))",
           "legendFormat": "{{instance}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Active TXs Count",
+      "title": "Busy Round Active TXs Count",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 69
+      },
+      "id": 123213,
+      "interval": "5s",
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max",
+            "mean",
+            "stdDev"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "avg by (instance) (rate(busy_round_processed_cc_request_count{instance=~\"$monograph_server\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Busy Round Processed CC Requests Count",
       "type": "timeseries"
     },
     {
@@ -1607,10 +1708,10 @@
       "gridPos": {
         "h": 10,
         "w": 12,
-        "x": 12,
-        "y": 69
+        "x": 0,
+        "y": 79
       },
-      "id": 123140,
+      "id": 123212,
       "interval": "5s",
       "options": {
         "legend": {
@@ -1637,114 +1738,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, instance)(rate(run_one_round_duration_bucket{instance=~\"$monograph_server\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, instance)(rate(busy_round_duration_bucket{instance=~\"$monograph_server\"}[$__rate_interval])))",
           "legendFormat": "p99, node: {{instance}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Run One Round Latency",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 0,
-        "y": 79
-      },
-      "id": 123136,
-      "interval": "5s",
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "min",
-            "max",
-            "mean",
-            "stdDev"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "avg by (instance) (cc_request_count{instance=~\"$monograph_server\"})",
-          "legendFormat": "{{instance}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "CC Requests Count",
+      "title": "Busy Round Latency",
       "type": "timeseries"
     },
     {
@@ -2575,7 +2575,7 @@
       "type": "timeseries"
     },
     {
-      "collapsed": false,
+      "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -2583,214 +2583,215 @@
         "y": 131
       },
       "id": 123196,
-      "panels": [],
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "description": "",
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "µs"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 122
+          },
+          "id": 123194,
+          "interval": "5s",
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "min",
+                "max",
+                "mean",
+                "stdDev"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "repeat": "monograph_server",
+          "repeatDirection": "v",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.99, sum by (le, type, instance) (rate(remote_request_duration_bucket{instance=~\"$monograph_server\"}[$__rate_interval])))",
+              "legendFormat": "{{instance}} {{type}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Remote Requests Latency For Each Node",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 0,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "lineInterpolation": "smooth",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 122
+          },
+          "id": 123201,
+          "interval": "5s",
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "min",
+                "max",
+                "mean",
+                "stdDev"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "repeat": "monograph_server",
+          "repeatDirection": "v",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "${DS_PROMETHEUS}"
+              },
+              "editorMode": "code",
+              "expr": "sum by (type, instance)(remote_request_on_fly_count{instance=~\"$monograph_server\"})",
+              "legendFormat": "{{instance}} {{type}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "On Fly Requests Count For Each Node",
+          "type": "timeseries"
+        }
+      ],
       "title": "Remote Requests Metrics For Each Node",
       "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "description": "",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "µs"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 0,
-        "y": 132
-      },
-      "id": 123194,
-      "interval": "5s",
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "min",
-            "max",
-            "mean",
-            "stdDev"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "repeat": "monograph_server",
-      "repeatDirection": "v",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, type, instance) (rate(remote_request_duration_bucket{instance=~\"$monograph_server\"}[$__rate_interval])))",
-          "legendFormat": "{{instance}} {{type}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "Remote Requests Latency For Each Node",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 0,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "smooth",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "auto",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 12,
-        "x": 12,
-        "y": 132
-      },
-      "id": 123201,
-      "interval": "5s",
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "min",
-            "max",
-            "mean",
-            "stdDev"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "repeat": "monograph_server",
-      "repeatDirection": "v",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (type, instance)(remote_request_on_fly_count{instance=~\"$monograph_server\"})",
-          "legendFormat": "{{instance}} {{type}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "On Fly Requests Count For Each Node",
-      "type": "timeseries"
     }
   ],
   "refresh": "5s",
@@ -2823,7 +2824,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values({job=\"monograph-service\"},  instance)",
+        "definition": "label_values(memory_limit, instance)",
         "hide": 0,
         "includeAll": true,
         "label": "Monograph Server",
@@ -2831,7 +2832,7 @@
         "name": "monograph_server",
         "options": [],
         "query": {
-          "query": "label_values({job=\"monograph-service\"},  instance)",
+          "query": "label_values(memory_limit, instance)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -2856,28 +2857,6 @@
         "options": [],
         "query": {
           "query": "label_values(mysql_up, instance)",
-          "refId": "StandardVariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
-        "type": "query"
-      },
-      {
-        "current": {},
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
-        },
-        "definition": "label_values({node_id=~\".+\"}, node_id)",
-        "hide": 2,
-        "includeAll": true,
-        "multi": true,
-        "name": "node_id",
-        "options": [],
-        "query": {
-          "query": "label_values({node_id=~\".+\"}, node_id)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -2922,6 +2901,6 @@
   "timezone": "browser",
   "title": "Monograph Overview",
   "uid": "overview-new",
-  "version": 58,
+  "version": 73,
   "weekStart": ""
 }

@@ -21,7 +21,7 @@
       "type": "grafana",
       "id": "grafana",
       "name": "Grafana",
-      "version": "9.4.3"
+      "version": "9.3.6"
     },
     {
       "type": "panel",
@@ -77,7 +77,7 @@
       "collapsed": false,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -91,7 +91,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -165,7 +165,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -241,7 +241,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -337,7 +337,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -419,7 +419,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -502,7 +502,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -585,7 +585,7 @@
         "showThresholdLabels": false,
         "showThresholdMarkers": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -607,7 +607,7 @@
       "collapsed": false,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -621,7 +621,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -691,7 +691,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -770,7 +770,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -849,7 +849,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -931,7 +931,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -1012,7 +1012,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -1093,7 +1093,7 @@
         },
         "textMode": "auto"
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "targets": [
         {
           "datasource": {
@@ -1113,7 +1113,7 @@
       "collapsed": false,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -1127,7 +1127,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -1192,7 +1192,7 @@
         "alertThreshold": true
       },
       "percentage": true,
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "pointradius": 5,
       "points": false,
       "renderer": "flot",
@@ -1392,7 +1392,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "pointradius": 5,
       "points": false,
       "renderer": "flot",
@@ -1521,7 +1521,7 @@
       "collapsed": false,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -1535,7 +1535,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -1610,7 +1610,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "pointradius": 5,
       "points": false,
       "renderer": "flot",
@@ -1752,7 +1752,7 @@
         "alertThreshold": true
       },
       "percentage": false,
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "9.3.6",
       "pointradius": 5,
       "points": false,
       "renderer": "flot",
@@ -1810,7 +1810,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -2849,7 +2849,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -2861,7 +2861,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -4667,7 +4667,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -4679,7 +4679,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -8147,7 +8147,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -8159,7 +8159,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -10083,7 +10083,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -10095,7 +10095,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -11218,7 +11218,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -11230,7 +11230,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -12634,7 +12634,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -12646,7 +12646,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -13128,7 +13128,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -13140,7 +13140,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -14446,7 +14446,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -14458,7 +14458,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -15006,7 +15006,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -15018,7 +15018,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -16457,7 +16457,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -16469,7 +16469,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -16989,7 +16989,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -17001,7 +17001,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -20362,7 +20362,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -20374,7 +20374,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -20897,7 +20897,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -20909,7 +20909,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -21856,7 +21856,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -21868,7 +21868,7 @@
       "collapsed": true,
       "datasource": {
         "type": "prometheus",
-        "uid": "iD90nZ7Vz"
+        "uid": "my_prometheus"
       },
       "gridPos": {
         "h": 1,
@@ -22047,7 +22047,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "iD90nZ7Vz"
+            "uid": "my_prometheus"
           },
           "refId": "A"
         }
@@ -22056,9 +22056,8 @@
       "type": "row"
     }
   ],
-  "refresh": "",
-  "revision": 1,
-  "schemaVersion": 38,
+  "refresh": false,
+  "schemaVersion": 37,
   "style": "dark",
   "tags": [
     "Linux"
@@ -22097,7 +22096,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "",
+        "definition": "label_values(node_uname_info{job=~\"$job\"}, nodename)",
         "hide": 0,
         "includeAll": false,
         "label": "Host:",
@@ -22106,9 +22105,9 @@
         "options": [],
         "query": {
           "query": "label_values(node_uname_info{job=~\"$job\"}, nodename)",
-          "refId": "Prometheus-name-Variable-Query"
+          "refId": "StandardVariableQuery"
         },
-        "refresh": 1,
+        "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
         "sort": 1,
@@ -22134,7 +22133,7 @@
           "query": "label_values(node_uname_info{nodename=\"$name\"}, instance)",
           "refId": "Prometheus-node-Variable-Query"
         },
-        "refresh": 1,
+        "refresh": 2,
         "regex": "/([^:]+):.*/",
         "skipUrlSync": false,
         "sort": 1,
@@ -22168,23 +22167,6 @@
         "tagsQuery": "",
         "type": "query",
         "useTags": false
-      },
-      {
-        "current": {
-          "selected": false,
-          "text": "No data sources found",
-          "value": ""
-        },
-        "hide": 2,
-        "includeAll": false,
-        "multi": false,
-        "name": "DS_PROMETHEUS",
-        "options": [],
-        "query": "",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
       }
     ]
   },
@@ -22220,6 +22202,6 @@
   "timezone": "browser",
   "title": "Host Metrics",
   "uid": "a_zZIW7Vz",
-  "version": 3,
+  "version": 2,
   "weekStart": ""
 }
