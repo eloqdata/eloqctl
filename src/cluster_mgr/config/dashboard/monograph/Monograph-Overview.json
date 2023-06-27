@@ -1385,6 +1385,250 @@
         "x": 0,
         "y": 66
       },
+      "id": 123233,
+      "panels": [],
+      "title": "MySQL DML Overview",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "smooth",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 67
+      },
+      "id": 123235,
+      "interval": "5s",
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max",
+            "mean",
+            "stdDev"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "sortBy": "Last *",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "sum by (type)(rate(mysql_dml_count{instance=~\"$monograph_server\", type=~\"$dml_type\"}[$__rate_interval]))",
+          "format": "time_series",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "{{type}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "DML Count (total)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "smooth",
+            "lineStyle": {
+              "fill": "solid"
+            },
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 67
+      },
+      "id": 123234,
+      "interval": "5s",
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max",
+            "mean",
+            "stdDev"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "sortBy": "Last *",
+          "sortDesc": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "exemplar": true,
+          "expr": "histogram_quantile(0.99, sum by (le, type)(rate(mysql_dml_duration_bucket{instance=~\"$monograph_server\", type=~\"$dml_type\"}[$__rate_interval])))",
+          "format": "time_series",
+          "instant": false,
+          "interval": "",
+          "legendFormat": "p99, {{type}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "DML Latency (total)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 77
+      },
+      "id": 123237,
+      "panels": [],
+      "title": "MySQL DML Detail",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 78
+      },
       "id": 123150,
       "panels": [],
       "title": "Memory Usage",
@@ -1455,7 +1699,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 67
+        "y": 79
       },
       "id": 123151,
       "interval": "15s",
@@ -1556,7 +1800,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 67
+        "y": 79
       },
       "id": 123152,
       "interval": "15s",
@@ -1598,7 +1842,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 77
+        "y": 89
       },
       "id": 123172,
       "panels": [],
@@ -1695,7 +1939,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 78
+        "y": 90
       },
       "id": 123170,
       "options": {
@@ -1797,7 +2041,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 78
+        "y": 90
       },
       "id": 123173,
       "options": {
@@ -1840,7 +2084,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 88
+        "y": 100
       },
       "id": 123207,
       "panels": [],
@@ -1910,7 +2154,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 89
+        "y": 101
       },
       "id": 123214,
       "interval": "5s",
@@ -2011,7 +2255,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 89
+        "y": 101
       },
       "id": 123213,
       "interval": "5s",
@@ -2114,7 +2358,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 99
+        "y": 111
       },
       "id": 123212,
       "interval": "5s",
@@ -2196,6 +2440,8 @@
             }
           },
           "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -2209,7 +2455,7 @@
               }
             ]
           },
-          "unit": "percent"
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -2217,7 +2463,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 99
+        "y": 111
       },
       "id": 123231,
       "interval": "5s",
@@ -2261,7 +2507,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 109
+        "y": 121
       },
       "id": 123175,
       "panels": [],
@@ -2330,7 +2576,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 110
+        "y": 122
       },
       "id": 123177,
       "interval": "5s",
@@ -2430,7 +2676,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 110
+        "y": 122
       },
       "id": 123178,
       "interval": "5s",
@@ -2530,7 +2776,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 120
+        "y": 132
       },
       "id": 123179,
       "interval": "5s",
@@ -2630,7 +2876,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 120
+        "y": 132
       },
       "id": 123186,
       "interval": "5s",
@@ -2730,7 +2976,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 130
+        "y": 142
       },
       "id": 123188,
       "interval": "5s",
@@ -2830,7 +3076,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 130
+        "y": 142
       },
       "id": 123189,
       "interval": "5s",
@@ -2874,7 +3120,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 140
+        "y": 152
       },
       "id": 123191,
       "panels": [],
@@ -2944,7 +3190,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 141
+        "y": 153
       },
       "id": 123183,
       "interval": "5s",
@@ -3044,7 +3290,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 141
+        "y": 153
       },
       "id": 123193,
       "interval": "5s",
@@ -3088,7 +3334,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 151
+        "y": 163
       },
       "id": 123196,
       "panels": [
@@ -3138,8 +3384,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -3155,7 +3400,7 @@
             "h": 10,
             "w": 12,
             "x": 0,
-            "y": 160
+            "y": 176
           },
           "id": 123194,
           "interval": "5s",
@@ -3240,8 +3485,7 @@
                 "mode": "absolute",
                 "steps": [
                   {
-                    "color": "green",
-                    "value": null
+                    "color": "green"
                   },
                   {
                     "color": "red",
@@ -3257,7 +3501,7 @@
             "h": 10,
             "w": 12,
             "x": 12,
-            "y": 160
+            "y": 176
           },
           "id": 123201,
           "interval": "5s",
@@ -3372,6 +3616,29 @@
         "skipUrlSync": false,
         "sort": 0,
         "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(mysql_dml_count, type)",
+        "hide": 2,
+        "includeAll": true,
+        "label": "DML Type",
+        "multi": true,
+        "name": "dml_type",
+        "options": [],
+        "query": {
+          "query": "label_values(mysql_dml_count, type)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
       }
     ]
   },
@@ -3409,6 +3676,6 @@
   "timezone": "browser",
   "title": "Monograph Overview",
   "uid": "overview-new",
-  "version": 112,
+  "version": 124,
   "weekStart": ""
 }
