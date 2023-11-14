@@ -12,7 +12,7 @@ function monograph_install_db() {
   init_db_script="${MONOGRAPH_DB_INSTALL}/scripts/mysql_install_db \
     --defaults-file=_MY_CONF --basedir=${MONOGRAPH_DB_INSTALL} \
     --datadir=${data_dir} \
-    --plugin-dir=${MONOGRAPH_DB_INSTALL}/lib/plugin"
+    --plugin-dir=${MONOGRAPH_DB_INSTALL}/lib/plugin --skip-test-db"
   echo "$init_db_script"
   eval "$init_db_script"
 }
