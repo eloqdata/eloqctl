@@ -30,8 +30,8 @@ impl RuntimeDepsInstallation {
             }
             "centos" => {
                 match os_version.as_str() {
-                    "8" => r#"sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm -y &
-sudo /usr/bin/crb enable &
+                    "8" => r#"sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm -y &&
+sudo /usr/bin/crb enable &&
 sudo yum install -y epel-release && sudo yum update -y && sudo yum install -y"#,
                     "7"=> "sudo yum install -y epel-release && sudo yum update -y && sudo yum install -y",
                     _ => unreachable!()
