@@ -1,0 +1,40 @@
+[mariadb]
+plugin_maturity=experimental
+datadir=_INSTALL_DIR/datafarm
+lc_messages_dir=_INSTALL_DIR/share
+plugin_dir=_INSTALL_DIR/plugin
+max_connections=2000
+core_file
+skip-log-bin
+port=3300
+performance_schema=OFF
+socket=/tmp/mysqld3300.sock
+plugin_load_add=ha_monograph
+thread_handling=pool-of-threads
+thread_pool_max_threads=4
+thread_pool_dedicated_listener=1
+# thread_pool_size should be 3/4 of physical CPU core number.
+thread_pool_size=12
+# monograph engine specific parameter.
+monograph
+monograph_local_ip=127.0.0.1:5000
+monograph_ip_list=127.0.0.1:5000
+#monograph_metrics_port=18081
+monograph_enable_mvcc=off
+transaction_isolation=READ-COMMITTED
+monograph_cc_protocol=OCC
+# core_num should be 1/4 of physical CPU core number.
+monograph_core_num=4
+monograph_keyspace_name=mono
+# node_memory_limit_mb is the buffer pool of monographDB,
+# should be less than 60% physical memory.
+monograph_node_memory_limit_mb=4000
+
+monograph_kv_storage=dynamo
+monograph_dynamodb_region=_REGION
+monograph_dynamodb_endpoint=_ENDPOINT
+monograph_aws_access_key_id=_AK_ID
+monograph_aws_secret_key=_SK_ID
+
+
+
