@@ -42,7 +42,7 @@ impl TaskGroup for MonitorCtlTaskGroup {
                 Some("create_monitor_user".to_string()),
             );
             barrier.push(create_user_task.len());
-            executable.extend(create_user_task.into_iter());
+            executable.extend(create_user_task);
 
             let flush_privileges =
                 monitor.flush_privileges_for_create_user(install_dir, mysql_port);
@@ -53,7 +53,7 @@ impl TaskGroup for MonitorCtlTaskGroup {
                 Some("flush_privilege".to_string()),
             );
             barrier.push(flush_privilege_task.len());
-            executable.extend(flush_privilege_task.into_iter());
+            executable.extend(flush_privilege_task);
         }
 
         let exporter_task_instance = MonitorCtlTask::exporter_ctl_task(cmd_arg.clone(), &config);
@@ -65,9 +65,9 @@ impl TaskGroup for MonitorCtlTaskGroup {
         barrier.push(prometheus_task_instance.len());
         barrier.push(grafana_task_instance.len());
 
-        executable.extend(exporter_task_instance.into_iter());
-        executable.extend(prometheus_task_instance.into_iter());
-        executable.extend(grafana_task_instance.into_iter());
+        executable.extend(exporter_task_instance);
+        executable.extend(prometheus_task_instance);
+        executable.extend(grafana_task_instance);
 
         let cmd_ref = cmd_arg.as_ref();
         Ok(TaskExecutionContext {

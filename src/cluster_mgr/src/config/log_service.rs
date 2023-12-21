@@ -121,7 +121,6 @@ impl LogService {
         let node_len = self.nodes.len();
         let from = if start > node_len { 0 } else { start };
         (0..self.log_replica())
-            .into_iter()
             .map(|idx| {
                 if from + idx > node_len - 1 {
                     node_len - 1
@@ -294,7 +293,7 @@ impl LogService {
             let curr_group = curr_col_len / member_count;
             let curr_remain = curr_col_len % member_count;
             pre_remain_cell = curr_remain;
-            (0..curr_group).into_iter().for_each(|inner_group_id| {
+            (0..curr_group).for_each(|inner_group_id| {
                 let inner_from = inner_group_id + outer_from;
                 let to = inner_from + member_count;
                 group_id += 1;
@@ -383,11 +382,9 @@ mod tests {
         host_disk: HashMap<usize, usize>,
     ) -> LogService {
         let nodes = (0..host_num)
-            .into_iter()
             .map(|idx| {
                 let disks = host_disk.get(&idx).unwrap();
                 let disk_path = (0..*disks)
-                    .into_iter()
                     .map(|disk_idx| format!("/data/opt/disk_{disk_idx}"))
                     .collect_vec();
                 LogServiceNode {

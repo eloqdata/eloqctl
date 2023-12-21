@@ -3,7 +3,8 @@
 #![feature(proc_macro_hygiene)]
 #![feature(stmt_expr_attributes)]
 #![feature(generators)]
-#![feature(once_cell)]
+#![feature(lazy_cell)]
+// #![feature(lazy_cell)]
 // #![feature(associated_type_bounds)]
 // #![feature(type_alias_impl_trait)]
 

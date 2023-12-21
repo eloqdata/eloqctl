@@ -64,7 +64,7 @@ impl SSHSession {
         port: usize,
     ) -> anyhow::Result<Self> {
         let ssh_config = Arc::new(client::Config {
-            connection_timeout: Some(Duration::from_secs(5)),
+            keepalive_interval: Some(Duration::from_secs(3)),
             ..Default::default()
         });
         let ssh_client = SSHClient {};

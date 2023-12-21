@@ -1,5 +1,5 @@
 #![feature(async_closure)]
-#![feature(once_cell)]
+// #![feature(once_cell)]
 
 use actix_web::error;
 use anyhow::Error;

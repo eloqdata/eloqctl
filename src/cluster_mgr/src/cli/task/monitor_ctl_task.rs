@@ -245,7 +245,6 @@ impl MonitorCtlTask {
                     })
                     .collect_vec()
             })
-            .into_iter()
             .flatten()
             .collect::<IndexMap<TaskId, TaskInstance>>()
     }

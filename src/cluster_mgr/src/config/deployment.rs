@@ -248,7 +248,7 @@ impl Deployment {
     pub fn all_download_links(&self) -> anyhow::Result<HashMap<String, DownloadUrl>> {
         let mut db_image_download_links = self.monograph_download_links()?;
         if let Some(monitor_srv) = self.monitor.as_ref() {
-            db_image_download_links.extend(monitor_srv.download_links_as_amp()?.into_iter());
+            db_image_download_links.extend(monitor_srv.download_links_as_amp()?);
         }
         Ok(db_image_download_links)
     }

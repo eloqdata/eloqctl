@@ -29,7 +29,7 @@ impl TaskGroup for UpdateConfigTaskGroup {
         };
         let mut executable = IndexMap::new();
         let mut barrier = vec![];
-        executable.extend(upload_tasks(UploadTaskBuilderType::MonographConf, &config).into_iter());
+        executable.extend(upload_tasks(UploadTaskBuilderType::MonographConf, &config));
 
         if need_restart {
             barrier.push(executable.len());
@@ -50,8 +50,8 @@ impl TaskGroup for UpdateConfigTaskGroup {
             );
             barrier.push(stop_tx_task.len());
             barrier.push(start_tx_task.len());
-            executable.extend(stop_tx_task.into_iter());
-            executable.extend(start_tx_task.into_iter());
+            executable.extend(stop_tx_task);
+            executable.extend(start_tx_task);
         }
 
         Ok(TaskExecutionContext {

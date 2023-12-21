@@ -25,22 +25,19 @@ impl TaskGroup for UpgradeClusterTaskGroup {
         let mut stop_monograph = MonographTxCtlTask::from_config(stop_cmd.clone(), &config);
         let has_log_srv = deployment_ref.log_service.is_some();
         if has_log_srv {
-            stop_monograph.extend(MonographLogCtlTask::from_config(stop_cmd, &config).into_iter());
+            stop_monograph.extend(MonographLogCtlTask::from_config(stop_cmd, &config));
         }
         let mut upload_monograph_tasks = IndexMap::new();
-        upload_monograph_tasks
-            .extend(upload_tasks(UploadTaskBuilderType::MonographAll, &config).into_iter());
-        upload_monograph_tasks
-            .extend(upload_tasks(UploadTaskBuilderType::MonitorConf, &config).into_iter());
+        upload_monograph_tasks.extend(upload_tasks(UploadTaskBuilderType::MonographAll, &config));
+        upload_monograph_tasks.extend(upload_tasks(UploadTaskBuilderType::MonitorConf, &config));
 
         let start_cmd = CommandArgs::Start { cluster };
         let mut start_all_tasks = IndexMap::new();
         if has_log_srv {
-            start_all_tasks
-                .extend(MonographLogCtlTask::from_config(start_cmd.clone(), &config).into_iter());
-            start_all_tasks.extend(MonographLogProbeTask::from_config(&config).into_iter());
+            start_all_tasks.extend(MonographLogCtlTask::from_config(start_cmd.clone(), &config));
+            start_all_tasks.extend(MonographLogProbeTask::from_config(&config));
         }
-        start_all_tasks.extend(MonographTxCtlTask::from_config(start_cmd, &config).into_iter());
+        start_all_tasks.extend(MonographTxCtlTask::from_config(start_cmd, &config));
 
         let barrier = vec![
             stop_monograph.len(),
@@ -49,9 +46,9 @@ impl TaskGroup for UpgradeClusterTaskGroup {
         ];
         let mut executable = IndexMap::new();
 
-        executable.extend(stop_monograph.into_iter());
-        executable.extend(upload_monograph_tasks.into_iter());
-        executable.extend(start_all_tasks.into_iter());
+        executable.extend(stop_monograph);
+        executable.extend(upload_monograph_tasks);
+        executable.extend(start_all_tasks);
 
         let cmd_ref = cmd_arg.as_ref();
         Ok(TaskExecutionContext {

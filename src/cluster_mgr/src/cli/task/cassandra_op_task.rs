@@ -84,7 +84,7 @@ impl CassandraOpTask {
             TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
                 .with_reconnection_policy(Arc::new(ConstantReconnectionPolicy::default()))
                 .with_retry_policy(Box::<DefaultRetryPolicy>::default())
-                .build()?;
+                .build().await?;
         Ok(session)
     }
 }

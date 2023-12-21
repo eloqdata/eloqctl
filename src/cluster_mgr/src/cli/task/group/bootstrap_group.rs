@@ -40,7 +40,7 @@ impl TaskGroup for InstallDBTaskGroup {
                     upload_tasks(UploadTaskBuilderType::CassConf, &config);
                 let mut barrier = vec![upload_cass_config_task.len()];
                 let mut executable = IndexMap::new();
-                executable.extend(upload_cass_config_task.into_iter());
+                executable.extend(upload_cass_config_task);
                 if let Some(monitor) = config.deployment.monitor.as_ref() {
                     if let Some(mcac_collector) = &monitor.cassandra_collector {
                         let install_dir = config.install_dir();
@@ -53,7 +53,7 @@ impl TaskGroup for InstallDBTaskGroup {
                             None,
                         );
                         barrier.push(update_http_port_task.len());
-                        executable.extend(update_http_port_task.into_iter());
+                        executable.extend(update_http_port_task);
                     }
                 }
                 let cassandra_start = CassandraCtlTask::from_config(install_cmd, &config);
@@ -61,8 +61,8 @@ impl TaskGroup for InstallDBTaskGroup {
                 barrier.push(cassandra_start.len());
                 barrier.push(monograph_install.len());
 
-                executable.extend(cassandra_start.into_iter());
-                executable.extend(monograph_install.into_iter());
+                executable.extend(cassandra_start);
+                executable.extend(monograph_install);
 
                 TaskExecutionContext {
                     task_group: cmd_args.as_ref().to_string(),
@@ -91,7 +91,7 @@ impl TaskGroup for InstallDBTaskGroup {
         let upload_data_dir_task = upload_tasks(UploadTaskBuilderType::DataDir, &config);
         if !upload_data_dir_task.is_empty() {
             barrier.push(upload_data_dir_task.len());
-            executable.extend(upload_data_dir_task.into_iter());
+            executable.extend(upload_data_dir_task);
 
             execution_context_tuple.barrier = Some(barrier.clone());
             execution_context_tuple.executable = executable.clone();
@@ -104,7 +104,7 @@ impl TaskGroup for InstallDBTaskGroup {
 
         let rm_log_data_task_instance = ExecCustomCommand::from_config(rm_log_data_cmd, &config);
         barrier.push(rm_log_data_task_instance.len());
-        executable.extend(rm_log_data_task_instance.into_iter());
+        executable.extend(rm_log_data_task_instance);
         execution_context_tuple.barrier = Some(barrier);
         execution_context_tuple.executable = executable;
         Ok(execution_context_tuple)

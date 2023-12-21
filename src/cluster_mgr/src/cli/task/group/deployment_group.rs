@@ -51,7 +51,7 @@ impl TaskGroup for DeploymentTaskGroup {
 
         let download_task = DownloadTask::from_config(&config)?;
         let mut copy_or_download_task_instances = LocalCopyTask::form_config(&config)?;
-        copy_or_download_task_instances.extend(download_task.into_iter());
+        copy_or_download_task_instances.extend(download_task);
 
         let need_skip_success_task = if let Some(ref opts) = config.conf_opts {
             if let Some(check) = opts.get(DEPLOYMENT_CHECK_SUCCESS_TASK) {
@@ -93,11 +93,11 @@ impl TaskGroup for DeploymentTaskGroup {
             upload_monitor_conf_tasks.len(),
         ]);
         let mut executable = IndexMap::new();
-        executable.extend(mkdir_remote_dir.into_iter());
-        executable.extend(copy_or_download_task_instances.into_iter());
-        executable.extend(db_upload_task.into_iter());
-        executable.extend(unpack_task.into_iter());
-        executable.extend(upload_monitor_conf_tasks.into_iter());
+        executable.extend(mkdir_remote_dir);
+        executable.extend(copy_or_download_task_instances);
+        executable.extend(db_upload_task);
+        executable.extend(unpack_task);
+        executable.extend(upload_monitor_conf_tasks);
         Ok(TaskExecutionContext {
             task_group: cmd_ref,
             barrier,

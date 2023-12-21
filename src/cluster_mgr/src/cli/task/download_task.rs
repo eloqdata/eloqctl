@@ -59,7 +59,7 @@ impl DownloadTask {
                 .filter(|url| !url.is_local())
                 .map(|download_url| download_url.get_url())
                 .collect_vec();
-            download_url_vec.extend(monitor_download_string_vec.into_iter());
+            download_url_vec.extend(monitor_download_string_vec);
         }
 
         let download_dir = download_dir();
@@ -138,7 +138,6 @@ impl TaskExecutor for DownloadTask {
                 download_url.clone(),
                 rsp_err.to_string()
             )));
-        } else {
         }
 
         let http_response = rsp_rs.unwrap();

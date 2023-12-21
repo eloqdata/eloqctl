@@ -19,7 +19,6 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use sysinfo::SystemExt;
 use tracing::{error, info};
 
 pub const MONOGRAPH_TX_SERVICE_DIR: &str = "monograph-tx-service-release";
@@ -189,7 +188,7 @@ impl DeploymentConfig {
                     .unwrap()
             })
             .collect_vec();
-        path_vec.extend(all_config_path.into_iter());
+        path_vec.extend(all_config_path);
         Ok(path_vec)
     }
 
@@ -451,9 +450,8 @@ impl DeploymentConfig {
             let os_version_input = os_version.unwrap();
             (short_os_name.to_lowercase(), os_version_input)
         } else {
-            let system = sysinfo::System::new();
-            let curr_os_name = system.name();
-            let os_version = system.os_version();
+            let curr_os_name = sysinfo::System::name();
+            let os_version = sysinfo::System::os_version();
             assert!(curr_os_name.is_some());
             assert!(os_version.is_some());
             let os_name = curr_os_name.unwrap().to_lowercase();

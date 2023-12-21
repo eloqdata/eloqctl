@@ -30,7 +30,7 @@ impl MonographUploadBuilder {
             .map(|(file_key, download_url)| {
                 let dest_hosts = match file_key.as_str() {
                     MONOGRAPH_FILE_KEY | MYSQL_EXPORTER_FILE_KEY => tx_hosts.clone(),
-                    NODE_EXPORTER_FILE_KEY => vec![
+                    NODE_EXPORTER_FILE_KEY => [
                         &tx_hosts.clone()[..],
                         &log_hosts.clone()[..],
                         &storage_hosts.clone()[..],
@@ -71,15 +71,15 @@ impl MonographUploadBuilder {
             // config.gen_tx_start_script().unwrap(),
             config.gen_bootstrap_db_script().unwrap(),
         ];
-        all_files_path.extend(config.gen_all_monograph_configs().unwrap().into_iter());
+        all_files_path.extend(config.gen_all_monograph_configs().unwrap());
         let log_start_path_opt = config.gen_log_start_script().unwrap();
         if let Some(log_start_path) = log_start_path_opt {
-            all_files_path.extend(log_start_path.into_iter());
+            all_files_path.extend(log_start_path);
         }
 
         let all_mysql_exporter_conf = config.gen_all_mysql_exporter_config().unwrap();
         if let Some(mysql_exporter_conf) = all_mysql_exporter_conf {
-            all_files_path.extend(mysql_exporter_conf.into_iter());
+            all_files_path.extend(mysql_exporter_conf);
         }
 
         let all_db_host = config.get_host_as_map();
@@ -87,7 +87,7 @@ impl MonographUploadBuilder {
 
         let mut tx_hosts_cloned = tx_hosts.clone();
         if let Some(log_host) = all_db_host.get(&DeploymentPackage::MonographLog) {
-            tx_hosts_cloned.extend(log_host.clone().into_iter());
+            tx_hosts_cloned.extend(log_host.clone());
         }
         let dest_file = config.install_dir();
         tx_hosts_cloned
@@ -139,7 +139,7 @@ impl UploadTaskBuilder for MonographUploadBuilder {
         let mut upload_files = self.build_monograph_misc_upload_file(config);
         let upload_tar_files = self.monograph_tar_upload_file(config);
 
-        upload_files.extend(upload_tar_files.into_iter());
+        upload_files.extend(upload_tar_files);
 
         let dest = config.install_dir();
         let final_files = self.upload_files_grouping_by_host(upload_files, dest);

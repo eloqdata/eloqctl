@@ -24,12 +24,12 @@ impl TaskGroup for LogServiceCtlTaskGroup {
             || log_ctl_cmd_name.to_lowercase().eq("status");
         let mut log_ctl_executable = IndexMap::new();
         let mut barrier = vec![];
-        log_ctl_executable.extend(MonographLogCtlTask::from_config(cmd_arg, &config).into_iter());
+        log_ctl_executable.extend(MonographLogCtlTask::from_config(cmd_arg, &config));
         barrier.push(log_ctl_executable.len());
         if is_start_cmd {
             let probe_task = MonographLogProbeTask::from_config(&config);
             barrier.push(probe_task.len());
-            log_ctl_executable.extend(probe_task.into_iter());
+            log_ctl_executable.extend(probe_task);
         }
         let barrier = if is_start_cmd { Some(barrier) } else { None };
         Ok(TaskExecutionContext {

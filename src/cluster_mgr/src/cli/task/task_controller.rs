@@ -1,4 +1,4 @@
-use crate::cli::task::task_base::{TaskExecutionContext, FINISH_};
+use crate::cli::task::task_base::{init_finish_signal, TaskExecutionContext};
 use crate::cli::task::task_base::{TaskInstance, TaskResultEnum, TaskResultPair};
 use crate::config::config_base::DeploymentConfig;
 use crate::post_task_execute;
@@ -167,7 +167,7 @@ impl TaskController {
         }
         self.tx.send(TaskResultPair {
             task_id: "".to_string(),
-            result: TaskResultEnum::Success(Some(FINISH_.clone())),
+            result: TaskResultEnum::Success(Some(init_finish_signal().clone())),
         })?;
         let rtn = task_result_vec.into_iter().flatten().collect_vec();
         Ok(rtn)

@@ -93,7 +93,7 @@ impl MonitorInfraConfUploadBuilder {
                 ),
                 (
                     NODE_EXPORTER_JOB_NAME.to_string(),
-                    vec![
+                    [
                         &monograph_tx_hosts[..],
                         &log_hosts.clone()[..],
                         &cass_config_host_ref[..],
@@ -157,7 +157,7 @@ impl MonitorInfraConfUploadBuilder {
             })
             .collect_vec();
 
-        prometheus_grafana_conf.extend(upload_create_user_files.into_iter());
+        prometheus_grafana_conf.extend(upload_create_user_files);
         prometheus_grafana_conf
     }
 }

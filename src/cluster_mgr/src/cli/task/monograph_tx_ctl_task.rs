@@ -84,8 +84,9 @@ macro_rules! tx_ctl {
             let pid = TaskArgValue::into_inner_value::<String>(
                 process_info.get(PROCESS_PID).unwrap().clone(),
             );
+            let ctl_f = $ctl_func;
             if pid $op $pid_check_expr {
-                $ctl_func().await
+                ctl_f().await
             } else {
                Ok($mono_process_status?)
             }

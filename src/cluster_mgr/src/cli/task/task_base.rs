@@ -1,5 +1,5 @@
 use crate::cli::cmd_printer::{CmdPrinter, Printable};
-use crate::cli::task::group::TASK_GROUP;
+use crate::cli::task::group::init_task_group;
 use crate::cli::task::task_controller::TaskController;
 use crate::cli::{CommandArgs, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::DeploymentConfig;
@@ -10,21 +10,21 @@ use dyn_clone::DynClone;
 use futures::StreamExt;
 use indexmap::IndexMap;
 use itertools::Itertools;
+use once_cell::sync::{Lazy, OnceCell};
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::string::ToString;
-use std::sync::LazyLock;
-// use tabled::display::ExpandedDisplay;
 use tabled::{display::ExpandedDisplay, Tabled};
 use thiserror::Error;
 use tracing::{error, info};
 use ExecutionValue as LastResult;
 
 pub type EnvProps = HashMap<String, String>;
-pub(crate) static REMOTE_ENV_PROPS: LazyLock<anyhow::Result<EnvProps>> =
-    LazyLock::new(|| load_remote_env(None));
+
+pub(crate) static REMOTE_ENV_PROPS: Lazy<anyhow::Result<EnvProps>> =
+    Lazy::new(|| load_remote_env(None));
 
 #[derive(Clone)]
 pub struct TaskExecutionContext {
@@ -109,7 +109,8 @@ macro_rules! task_return_value {
         let task_status = task_rs.get(CMD_STATUS).unwrap();
         let status_code = TaskArgValue::into_inner_value::<i32>(task_status.clone());
         if status_code != 0 {
-            let cmd_err = $task_err_closure(status_code);
+            let invoke_closure = $task_err_closure;
+            let cmd_err = invoke_closure(status_code);
             info!(
                 "task_return_value current status_code != 0, task_name={:?},cmd_err={:?}",
                 $task_name, cmd_err
@@ -195,13 +196,22 @@ impl TaskHost {
 
 pub type ExecutionValue = HashMap<String, TaskArgValue>;
 pub type TaskStatusRecord = Vec<HashMap<String, TaskArgValue>>;
+// ::new(|| {
+//     HashMap::from([(
+//         "_FINISH_SIGNAL".to_string(),
+//         TaskArgValue::Str("".to_string()),
+//     )])
+// });
+pub(crate) static FINISH_: OnceCell<LastResult> = OnceCell::new();
 
-pub(crate) static FINISH_: LazyLock<LastResult> = LazyLock::new(|| {
-    HashMap::from([(
-        "_FINISH_SIGNAL".to_string(),
-        TaskArgValue::Str("".to_string()),
-    )])
-});
+pub(crate) fn init_finish_signal() -> &'static LastResult {
+    FINISH_.get_or_init(|| {
+        HashMap::from([(
+            "_FINISH_SIGNAL".to_string(),
+            TaskArgValue::Str("".to_string()),
+        )])
+    })
+}
 
 #[derive(Clone, Debug, Tabled, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TaskId {
@@ -362,8 +372,9 @@ impl TaskMgr {
     ) -> anyhow::Result<TaskExecutionContext> {
         let group_key = cmd_args.as_ref();
 
-        let task_group = TASK_GROUP.get(group_key).unwrap();
-        task_group.tasks(cmd_args, config.clone()).await
+        let task_groups = init_task_group();
+        let run_group = task_groups.get(group_key).unwrap();
+        run_group.tasks(cmd_args, config.clone()).await
     }
 
     pub async fn run_tasks(
