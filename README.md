@@ -33,7 +33,7 @@ cargo install --force cargo-make
 ```shell
 cargo build --release
 # Compile the packages separately with cargo make.
-cargo make --no-workspace  --makefile Makefile.toml  cluster_mgr_pkg | devtools_pkg | rest_api_pkg
+cargo make --no-workspace  --makefile Makefile.toml  cluster_mgr_pkg | rest_api_pkg
 ```
 
 ## Features
