@@ -60,6 +60,8 @@ impl CassandraOpTask {
                 .with_retry_policy(Box::<DefaultRetryPolicy>::default())
                 .build()
                 .await?;
+
+        println!("CassandraOpTask create session success!");
         Ok(session)
     }
 }

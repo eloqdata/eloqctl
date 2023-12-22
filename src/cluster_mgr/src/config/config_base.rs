@@ -274,7 +274,7 @@ impl DeploymentConfig {
     }
 
     pub fn product(&self) -> &str {
-        self.deployment.product.as_str()
+        self.deployment.product.as_ref()
     }
 
     pub fn build_install_monograph_script(&self) -> anyhow::Result<String> {

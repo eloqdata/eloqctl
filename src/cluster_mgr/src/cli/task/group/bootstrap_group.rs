@@ -83,7 +83,7 @@ impl TaskGroup for InstallDBTaskGroup {
         let mut barrier = execution_context_tuple.clone().barrier.unwrap();
         let mut executable = execution_context_tuple.executable;
 
-        if config.deployment.product == "Monograph" {
+        if config.product() == "Monograph" {
             // Bootstrap
             let monograph_install = MonographInstall::from_config(&config, install_db_host);
             barrier.push(monograph_install.len());
