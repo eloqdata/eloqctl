@@ -1,17 +1,13 @@
-use crate::cli::task::task_base::{
-    ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
-};
+use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
-use crate::config::config_base::DeploymentConfig;
-use crate::config::{load_yaml_config_template, DeploymentPackage, CASSANDRA_CONF_TEMPLATE};
+use crate::config::{load_yaml_config_template, CASSANDRA_CONF_TEMPLATE};
 use async_trait::async_trait;
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{Session, SessionBuilder, TcpSessionBuilder};
 use cdrs_tokio::cluster::{NodeAddress, NodeTcpConfigBuilder, TcpConnectionManager};
 use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
-use cdrs_tokio::retry::{ConstantReconnectionPolicy, DefaultRetryPolicy};
+use cdrs_tokio::retry::{DefaultRetryPolicy, NeverReconnectionPolicy};
 use cdrs_tokio::transport::TransportTcp;
-use indexmap::IndexMap;
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -21,35 +17,13 @@ pub(crate) const CASS_CQL_STMT: &str = "_CASS_CQL_STMT_";
 
 #[derive(Clone, Debug)]
 pub struct CassandraOpTask {
-    config: DeploymentConfig,
     task_id: TaskId,
+    cass_host: String,
 }
 
 impl CassandraOpTask {
-    #[allow(dead_code)]
-    pub fn from_config(
-        cmd: String,
-        cql: String,
-        config: &DeploymentConfig,
-    ) -> IndexMap<TaskId, TaskInstance> {
-        let task_id = TaskId {
-            cmd,
-            task: "cassandra-op".to_string(),
-            host: "_local".to_string(),
-        };
-
-        IndexMap::from([(
-            task_id.clone(),
-            TaskInstance {
-                task_input: HashMap::from([(CASS_CQL_STMT.to_string(), TaskArgValue::Str(cql))]),
-                task: Box::new(CassandraOpTask::new(config.clone(), task_id)),
-                task_host: TaskHost::Local,
-            },
-        )])
-    }
-
-    pub fn new(config: DeploymentConfig, task_id: TaskId) -> Self {
-        Self { config, task_id }
+    pub fn new(cass_host: String, task_id: TaskId) -> Self {
+        Self { cass_host, task_id }
     }
 
     pub async fn cassandra_session(
@@ -61,7 +35,7 @@ impl CassandraOpTask {
             RoundRobinLoadBalancingStrategy<TransportTcp, TcpConnectionManager>,
         >,
     > {
-        let cass_hosts = self.config.get_host_list(DeploymentPackage::Storage);
+        //let cass_hosts = self.config.get_host_list(DeploymentPackage::Storage);
         let cass_config = load_yaml_config_template(CASSANDRA_CONF_TEMPLATE)?;
         let client_transport_port = cass_config
             .get("native_transport_port")
@@ -69,22 +43,25 @@ impl CassandraOpTask {
             .as_i64()
             .unwrap();
 
-        let contact_points = cass_hosts
-            .iter()
-            .map(|host| NodeAddress::from(format!("{host}:{client_transport_port}")))
-            .collect_vec();
+        let contact_point =
+            NodeAddress::from(format!("{}:{client_transport_port}", self.cass_host));
+
+        println!("CassandraOpTask contact_points={:#?}", contact_point);
 
         let cluster_config = NodeTcpConfigBuilder::new()
-            .with_contact_points(contact_points)
-            .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
+            .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider {}))
+            .with_contact_point(contact_point)
             .build()
             .await?;
 
         let session =
             TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
-                .with_reconnection_policy(Arc::new(ConstantReconnectionPolicy::default()))
+                .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
                 .with_retry_policy(Box::<DefaultRetryPolicy>::default())
-                .build().await?;
+                .build()
+                .await?;
+
+        println!("CassandraOpTask create session success!");
         Ok(session)
     }
 }
@@ -102,18 +79,11 @@ impl TaskExecutor for CassandraOpTask {
     ) -> anyhow::Result<Option<ExecutionValue>> {
         let cql_stmt_input = task_arg.get(CASS_CQL_STMT);
         assert!(cql_stmt_input.is_some());
-        let cass_session = self.cassandra_session().await;
+        let session = self.cassandra_session().await.unwrap();
         let mut task_result = HashMap::new();
         let cql_stmt = TaskArgValue::into_inner_value::<String>(cql_stmt_input.unwrap().clone());
         task_result.insert(CMD.to_string(), TaskArgValue::Str(cql_stmt.clone()));
-        if let Err(cass_err) = cass_session {
-            let err_msg = cass_err.to_string();
-            error!("Create new cassandra connection error cause by {}", err_msg);
-            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
-            task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(err_msg));
-            return Ok(Some(task_result));
-        }
-        let session = cass_session?;
+
         let query_rs = session.query(cql_stmt.as_str()).await;
         if let Err(query_err) = query_rs {
             let err_msg = query_err.to_string();

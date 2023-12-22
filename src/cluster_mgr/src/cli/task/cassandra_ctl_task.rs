@@ -255,13 +255,14 @@ impl CassandraCtlTask {
         // TODO refactor use closure
         let sleep_duration = Duration::from_secs(2);
         let mut timeout_remaining = Duration::from_secs(5 * 60);
-        loop {
+        let cass_hosts = self.config.get_host_list(DeploymentPackage::Storage);
+        for cass_host in cass_hosts.iter() {
             if timeout_remaining.as_secs() == 0 {
-                warn!("CheckStatus timeout");
+                warn!("CheckCassandraStatus timeout");
                 break;
             }
             let cassandra_op = CassandraOpTask::new(
-                self.config.clone(),
+                cass_host.clone(),
                 TaskId {
                     cmd: "start".to_string(),
                     task: "check-cassandra-status".to_string(),
@@ -284,7 +285,8 @@ impl CassandraCtlTask {
                 println!("Cassandra Cluster UP now");
                 break;
             } else {
-                std::thread::sleep(sleep_duration);
+                println!("Cassandra Cluster not ready! {status_code:?}");
+                tokio::time::sleep(sleep_duration).await;
                 timeout_remaining -= sleep_duration;
             }
         }
