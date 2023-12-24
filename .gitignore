@@ -6,7 +6,6 @@
 .devcontainer/
 mono_waiter_dist/
 mono_cluster_mgr_dist/
-mono_cluster_mgr_rest_dest/
 mono_devtools_dist/
 *.bash
 #*.json

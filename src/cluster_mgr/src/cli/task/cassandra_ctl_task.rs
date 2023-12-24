@@ -214,7 +214,9 @@ impl CassandraCtlTask {
             let mut pid = None;
             for line in output.lines() {
                 let p_info_pair = line.split('+').collect_vec();
-                println!("CassandraCtlTask check_process_info={p_info_pair:#?}");
+                println!(
+                    "CassandraCtlTask JAVA_HOME={java_home} check_process_info={p_info_pair:#?}"
+                );
                 if p_info_pair.is_empty() || p_info_pair.len() == 1 {
                     continue;
                 }
