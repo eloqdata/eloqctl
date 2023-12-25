@@ -1,6 +1,6 @@
 use crate::cli::download_dir;
 use crate::config::connection::Connection;
-use crate::config::deployment::Deployment;
+use crate::config::deployment::{Deployment, Product};
 use crate::config::log_service::LogProcessKey;
 use crate::config::{
     config_path_string, config_template, DeploymentPackage, StorageProvider,
@@ -273,8 +273,8 @@ impl DeploymentConfig {
         )
     }
 
-    pub fn product(&self) -> &str {
-        self.deployment.product.as_ref()
+    pub fn product(&self) -> Product {
+        self.deployment.product.clone()
     }
 
     pub fn build_install_monograph_script(&self) -> anyhow::Result<String> {

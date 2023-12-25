@@ -11,6 +11,7 @@ use crate::cli::{CommandArgs, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::{
     DeploymentConfig, MONOGRAPH_TX_SERVICE_DIR, REDIS_TX_SERVICE_DIR,
 };
+use crate::config::deployment::Product;
 use crate::config::DeploymentPackage;
 use crate::{get_ctl_cmd_string, task_return_value, wait_command_complete};
 use anyhow::anyhow;
@@ -38,7 +39,7 @@ get_ctl_cmd_string!(TxCtlCmd, Start, Stop, ForceStop, Status);
 macro_rules! mono_start_cmd {
     ($remote_install_home:expr, $host:expr, $product:expr) => {
         match $product {
-            "Monograph" => format!(
+            Product::Monograph => format!(
                 r#"mkdir -p {}/{}/logs && cd {}/{}/install && \
     export LD_LIBRARY_PATH={}/{}/install/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
@@ -56,7 +57,7 @@ macro_rules! mono_start_cmd {
                 $remote_install_home,
                 MONOGRAPH_TX_SERVICE_DIR
             ),
-            "Redis" => format!(
+            Product::Redis => format!(
                 r#"mkdir -p {}/{}/logs && cd {}/{}/install && \
     export LD_LIBRARY_PATH={}/{}/install/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
@@ -72,9 +73,6 @@ macro_rules! mono_start_cmd {
                 $remote_install_home,
                 REDIS_TX_SERVICE_DIR
             ),
-            _ => {
-                unreachable!()
-            }
         }
     };
 }
@@ -83,15 +81,14 @@ macro_rules! monograph_cmd {
     ($ctl_cmd:ty,$remote_install_home:expr, $user:expr, $host:expr, $product:expr) => {{
         let ctl_cmd = stringify!($ctl_cmd);
         let pid_cmd = match $product {
-            "Monograph" => format!(
+            Product::Monograph => format!(
                 r#"ps uxwe -u {} | grep {}/{}/install/bin/mysqld | grep -v grep | "#,
                 $user, $remote_install_home, MONOGRAPH_TX_SERVICE_DIR
             ),
-            "Redis" => format!(
+            Product::Redis => format!(
                 r#"ps uxwe -u {} | grep {}/{}/install/redis_server | grep -v grep | "#,
                 $user, $remote_install_home, REDIS_TX_SERVICE_DIR
             ),
-            _ => unreachable!(),
         };
         let output_pid = r#"awk '{print $2}'"#;
         match ctl_cmd {
@@ -266,7 +263,7 @@ impl MonographTxCtlTask {
             .map(|host| {
                 let task_id = TaskId {
                     cmd: cmd_str_ref.to_string(),
-                    task: format!("{product}-{cmd_str_ref}"),
+                    task: format!("txservice-{cmd_str_ref}"),
                     host: host.to_string(),
                 };
                 let cmd_task_input_tuple = match cmd_str_ref {
@@ -385,13 +382,13 @@ impl TaskExecutor for MonographTxCtlTask {
                 .await?;
         let remote_install_dir = self.config.install_dir();
         let (host_value, user) = ssh_session.ssh_conn_info();
-
+        let product = self.config.product();
         let check_status_cmd = monograph_cmd!(
             TxCtlCmd::Status,
             remote_install_dir,
             user,
             host_value.clone(),
-            self.config.product()
+            product
         )
         .cmd_value();
         let check_process_status = self

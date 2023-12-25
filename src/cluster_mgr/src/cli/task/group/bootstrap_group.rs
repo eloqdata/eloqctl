@@ -6,6 +6,7 @@ use crate::cli::task::task_base::{TaskExecutionContext, TaskHost};
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::CommandArgs;
 use crate::config::config_base::DeploymentConfig;
+use crate::config::deployment::Product;
 use crate::config::{DeploymentPackage, StorageProvider};
 use indexmap::IndexMap;
 use tracing::info;
@@ -83,7 +84,7 @@ impl TaskGroup for InstallDBTaskGroup {
         let mut barrier = execution_context_tuple.clone().barrier.unwrap();
         let mut executable = execution_context_tuple.executable;
 
-        if config.product() == "Monograph" {
+        if config.product() == Product::Monograph {
             // Bootstrap
             let monograph_install = MonographInstall::from_config(&config, install_db_host);
             barrier.push(monograph_install.len());
