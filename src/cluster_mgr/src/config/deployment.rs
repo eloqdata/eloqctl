@@ -45,8 +45,17 @@ pub struct MonographService {
     pub host: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Eq)]
+pub enum Product {
+    #[serde(alias = "monograph", alias = "MONOGRAPH")]
+    Monograph,
+    #[serde(alias = "redis", alias = "REDIS")]
+    Redis,
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Deployment {
+    pub product: Option<Product>,
     pub tx_image: String,
     pub log_image: Option<String>,
     pub cluster_name: String,

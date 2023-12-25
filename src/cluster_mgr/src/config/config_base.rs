@@ -1,6 +1,6 @@
 use crate::cli::download_dir;
 use crate::config::connection::Connection;
-use crate::config::deployment::Deployment;
+use crate::config::deployment::{Deployment, Product};
 use crate::config::log_service::LogProcessKey;
 use crate::config::{
     config_path_string, config_template, DeploymentPackage, StorageProvider,
@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 use tracing::{error, info};
 
 pub const MONOGRAPH_TX_SERVICE_DIR: &str = "monograph-tx-service-release";
+pub const REDIS_TX_SERVICE_DIR: &str = "monograph_redis";
 pub const MONOGRAPH_LOG_SERVICE_DIR: &str = "monograph-log-service-release";
 
 pub const MONOGRAPH_FILE_KEY: &str = "monograph_tx";
@@ -270,6 +271,14 @@ impl DeploymentConfig {
             "{}/{}",
             &self.deployment.install_dir, self.deployment.cluster_name
         )
+    }
+
+    pub fn product(&self) -> Product {
+        if let Some(p) = self.deployment.product.clone() {
+            p
+        } else {
+            Product::Monograph
+        }
     }
 
     pub fn build_install_monograph_script(&self) -> anyhow::Result<String> {

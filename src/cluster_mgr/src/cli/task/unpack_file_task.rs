@@ -3,8 +3,9 @@ use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
 use crate::config::config_base::{
-    DeploymentConfig, MONOGRAPH_LOG_SERVICE_DIR, MONOGRAPH_TX_SERVICE_DIR,
+    DeploymentConfig, MONOGRAPH_LOG_SERVICE_DIR, MONOGRAPH_TX_SERVICE_DIR, REDIS_TX_SERVICE_DIR,
 };
+use crate::config::deployment::Product;
 use crate::config::DownloadUrl;
 use crate::task_return_value;
 use async_trait::async_trait;
@@ -71,7 +72,10 @@ impl UnpackFileTask {
                 let unpacked_file = if curr_file_name.eq(&log_image) {
                     MONOGRAPH_LOG_SERVICE_DIR.to_string()
                 } else if curr_file_name.eq(&tx_image) {
-                    MONOGRAPH_TX_SERVICE_DIR.to_string()
+                    match config.product() {
+                        Product::Monograph => MONOGRAPH_TX_SERVICE_DIR.to_string(),
+                        Product::Redis => REDIS_TX_SERVICE_DIR.to_string(),
+                    }
                 } else {
                     extract_unpacked_name(curr_file_name.as_str())
                 };
