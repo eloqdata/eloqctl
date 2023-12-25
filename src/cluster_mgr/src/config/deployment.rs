@@ -47,7 +47,9 @@ pub struct MonographService {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Eq)]
 pub enum Product {
+    #[serde(alias = "monograph", alias = "MONOGRAPH")]
     Monograph,
+    #[serde(alias = "redis", alias = "REDIS")]
     Redis,
 }
 
