@@ -88,7 +88,7 @@ macro_rules! monograph_cmd {
                 $user, $remote_install_home, MONOGRAPH_TX_SERVICE_DIR
             ),
             Product::Redis => format!(
-                r#"ps uxwe -u {} | grep {}/{}/install/redis_server | grep -v grep | "#,
+                r#"ps uxwe -u {} | grep {}/{}/redis_server | grep -v grep | "#,
                 $user, $remote_install_home, REDIS_TX_SERVICE_DIR
             ),
         };
