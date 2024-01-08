@@ -153,6 +153,14 @@ pub enum CommandArgs {
         #[arg(long, value_name = "Whether to restart the TX service.TURE|FALSE ")]
         restart: Option<String>,
     },
+    #[command(
+        long_about = "Build a playground quickly.\n./cluster_mgr play --topology-file  ${PWD}/config/playground.yaml"
+    )]
+    #[strum(serialize = "play")]
+    Play {
+        #[arg(short, long, value_name = "CLUSTER TOPOLOGY FILE")]
+        topology_file: String,
+    },
 }
 
 pub fn download_dir() -> PathBuf {

@@ -12,6 +12,7 @@ use crate::config::config_base::{
     DeploymentConfig, GRAFANA_FILE_KEY, MYSQL_EXPORTER_FILE_KEY, NODE_EXPORTER_FILE_KEY,
     PROMETHEUS_FILE_KEY,
 };
+use crate::config::deployment::Product;
 use crate::config::monitor::Monitor;
 use crate::config::DeploymentPackage;
 use crate::{task_return_value, wait_command_complete};
@@ -166,7 +167,7 @@ impl MonitorCtlTask {
         }
     }
 
-    pub fn grafana_clt_task(
+    pub fn grafana_ctl_task(
         cmd_arg: CommandArgs,
         config: &DeploymentConfig,
     ) -> IndexMap<TaskId, TaskInstance> {
@@ -200,7 +201,8 @@ impl MonitorCtlTask {
                     || pkg_copy.eq(&DeploymentPackage::Storage)
             })
             .flat_map(|(pkg, hosts)| {
-                let is_tx_srv = pkg.eq(&DeploymentPackage::MonographTx);
+                let mysql_expt = pkg.eq(&DeploymentPackage::MonographTx)
+                    && config.product() == Product::Monograph;
                 hosts
                     .iter()
                     .unique()
@@ -224,7 +226,7 @@ impl MonitorCtlTask {
                             cmd_arg.clone()
                         )];
 
-                        if is_tx_srv {
+                        if mysql_expt {
                             let mysql_exporter_cmd = MonitorComponentCommand::MySqlExporter {
                                 home: format!("{install_dir}/{MYSQL_EXPORTER_FILE_KEY}"),
                                 mysql_conf: format!(

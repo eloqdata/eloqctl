@@ -134,13 +134,19 @@ impl CassandraCtlTask {
         config: &DeploymentConfig,
     ) -> IndexMap<TaskId, TaskInstance> {
         let cassandra_task_ctrl_attr = match cmd {
-            CommandArgs::Start { cluster: _ }
-            | CommandArgs::Install { cluster: _ }
-            | CommandArgs::Restart { cluster: _ } => (
+            CommandArgs::Start { cluster: _ } | CommandArgs::Restart { cluster: _ } => (
                 "start",
                 TaskId {
                     cmd: "start".to_string(),
                     task: "cassandra-start".to_string(),
+                    host: "_NONE".to_string(),
+                },
+            ),
+            CommandArgs::Install { cluster: _ } => (
+                "start",
+                TaskId {
+                    cmd: "start".to_string(),
+                    task: "cassandra-bootstarp".to_string(),
                     host: "_NONE".to_string(),
                 },
             ),

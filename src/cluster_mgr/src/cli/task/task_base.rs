@@ -384,7 +384,8 @@ impl TaskMgr {
     ) -> anyhow::Result<Vec<TaskResultPair>> {
         let tasks_execution = self.task_context(cmd_args, &config).await?;
         info!(
-            "TaskMgr start current barrier={:?}",
+            "TaskMgr start current tasks={} barrier={:?}",
+            tasks_execution.executable.len(),
             tasks_execution.barrier
         );
         self.task_controller

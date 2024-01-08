@@ -4,6 +4,7 @@ use crate::cli::task::monitor_ctl_task::MonitorCtlTask;
 use crate::cli::task::task_base::TaskExecutionContext;
 use crate::cli::CommandArgs;
 use crate::config::config_base::DeploymentConfig;
+use crate::config::deployment::Product;
 use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
 
@@ -23,7 +24,7 @@ impl TaskGroup for MonitorCtlTaskGroup {
         };
         let mut executable = IndexMap::new();
         let mut barrier = vec![];
-        if monitor_ctl_cmd.to_lowercase().eq("start") {
+        if monitor_ctl_cmd.to_lowercase().eq("start") && config.product() == Product::Monograph {
             let monitor_opt = config.deployment.monitor.as_ref();
             assert!(monitor_opt.is_some());
             let monitor = monitor_opt.unwrap();
@@ -59,7 +60,7 @@ impl TaskGroup for MonitorCtlTaskGroup {
         let exporter_task_instance = MonitorCtlTask::exporter_ctl_task(cmd_arg.clone(), &config);
         let prometheus_task_instance =
             MonitorCtlTask::prometheus_ctl_task(cmd_arg.clone(), &config);
-        let grafana_task_instance = MonitorCtlTask::grafana_clt_task(cmd_arg.clone(), &config);
+        let grafana_task_instance = MonitorCtlTask::grafana_ctl_task(cmd_arg.clone(), &config);
 
         barrier.push(exporter_task_instance.len());
         barrier.push(prometheus_task_instance.len());

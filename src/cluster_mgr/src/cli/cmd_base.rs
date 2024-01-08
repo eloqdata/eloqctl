@@ -85,7 +85,9 @@ impl CommandExecutor {
 
     async fn get_config(&self, cmd: CommandArgs) -> anyhow::Result<Option<DeploymentConfig>> {
         match cmd.clone() {
-            CommandArgs::Deploy { topology_file } | CommandArgs::Upgrade { topology_file } => {
+            CommandArgs::Deploy { topology_file }
+            | CommandArgs::Upgrade { topology_file }
+            | CommandArgs::Play { topology_file } => {
                 let config_rs = DeploymentConfig::load(Some(topology_file));
                 let config = config_rs.unwrap().clone();
                 let cmd_ref = cmd.as_ref();

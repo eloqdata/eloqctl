@@ -5,6 +5,7 @@ mod deployment_group;
 mod install_runtime_deps_group;
 mod log_srv_ctl_group;
 mod monitor_ctl_group;
+mod play_group;
 mod update_config_group;
 mod upgrade_cluster_group;
 
@@ -53,7 +54,8 @@ task_group_boxed! {
     {MonitorCtlTaskGroup},
     {LogServiceCtlTaskGroup},
     {UpgradeClusterTaskGroup},
-    {UpdateConfigTaskGroup}
+    {UpdateConfigTaskGroup},
+    {PlayTaskGroup}
 }
 
 pub static TASK_GROUP: OnceCell<HashMap<String, Box<dyn TaskGroup>>> = OnceCell::new();
@@ -73,6 +75,7 @@ pub fn init_task_group() -> &'static HashMap<String, Box<dyn TaskGroup>> {
             ("log-srv".to_string(), LogServiceCtlTaskGroup::boxed()),
             ("upgrade".to_string(), UpgradeClusterTaskGroup::boxed()),
             ("update-conf".to_string(), UpdateConfigTaskGroup::boxed()),
+            ("play".to_string(), PlayTaskGroup::boxed()),
         ])
     })
 }

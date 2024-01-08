@@ -51,7 +51,7 @@ impl TaskController {
                     begin = end;
                     end = begin + *barrier_val;
                 }
-                //info!("TaskController run_task_split {begin}..{end}");
+                info!("TaskController run_task_split {begin}..{end}");
                 let task_slice = &tasks[begin..end];
                 split.push(task_slice);
             }

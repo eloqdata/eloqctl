@@ -33,14 +33,14 @@ impl TaskGroup for InstallDBTaskGroup {
         let install_cmd = CommandArgs::Install {
             cluster: config.clone().deployment.cluster_name,
         };
+        let mut barrier = vec![];
+        let mut executable = IndexMap::new();
         let storage_provider = config.get_monograph_storage()?;
-
-        let mut execution_context_tuple = match storage_provider {
+        match storage_provider {
             StorageProvider::Cassandra => {
                 let upload_cass_config_task =
                     upload_tasks(UploadTaskBuilderType::CassConf, &config);
-                let mut barrier = vec![upload_cass_config_task.len()];
-                let mut executable = IndexMap::new();
+                barrier.push(upload_cass_config_task.len());
                 executable.extend(upload_cass_config_task);
                 if let Some(monitor) = config.deployment.monitor.as_ref() {
                     if let Some(mcac_collector) = &monitor.cassandra_collector {
@@ -57,29 +57,25 @@ impl TaskGroup for InstallDBTaskGroup {
                         executable.extend(update_http_port_task);
                     }
                 }
+            }
+            _ => unreachable!(),
+        };
+        if config.product() == Product::Redis {
+            return Ok(TaskExecutionContext {
+                task_group: cmd_args.as_ref().to_string(),
+                barrier: Some(barrier),
+                executable,
+            });
+        }
+        // Bootstrap
+        match storage_provider {
+            StorageProvider::Cassandra => {
                 let cassandra_start = CassandraCtlTask::from_config(install_cmd, &config);
                 barrier.push(cassandra_start.len());
                 executable.extend(cassandra_start);
-
-                TaskExecutionContext {
-                    task_group: cmd_args.as_ref().to_string(),
-                    barrier: Some(barrier),
-                    executable,
-                }
             }
-            _ => TaskExecutionContext {
-                task_group: cmd_args.as_ref().to_string(),
-                barrier: None,
-                executable: IndexMap::new(),
-            },
-        };
-        if config.product() == Product::Redis {
-            return Ok(execution_context_tuple);
+            _ => unreachable!(),
         }
-
-        let mut barrier = execution_context_tuple.clone().barrier.unwrap();
-        let mut executable = execution_context_tuple.executable;
-        // Bootstrap
         let monograph_install = MonographInstall::from_config(&config, install_db_host);
         barrier.push(monograph_install.len());
         executable.extend(monograph_install);
@@ -88,9 +84,6 @@ impl TaskGroup for InstallDBTaskGroup {
         if !upload_data_dir_task.is_empty() {
             barrier.push(upload_data_dir_task.len());
             executable.extend(upload_data_dir_task);
-
-            execution_context_tuple.barrier = Some(barrier.clone());
-            execution_context_tuple.executable = executable.clone();
         }
         // rm -rf cc_ng/ tx_log/
         let remote_install_dir = config.install_dir();
@@ -101,8 +94,10 @@ impl TaskGroup for InstallDBTaskGroup {
         let rm_log_data_task_instance = ExecCustomCommand::from_config(rm_log_data_cmd, &config);
         barrier.push(rm_log_data_task_instance.len());
         executable.extend(rm_log_data_task_instance);
-        execution_context_tuple.barrier = Some(barrier);
-        execution_context_tuple.executable = executable;
-        Ok(execution_context_tuple)
+        Ok(TaskExecutionContext {
+            task_group: cmd_args.as_ref().to_string(),
+            barrier: Some(barrier),
+            executable,
+        })
     }
 }

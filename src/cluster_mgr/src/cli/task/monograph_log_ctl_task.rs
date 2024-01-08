@@ -86,7 +86,9 @@ impl LogCtlCmd {
                     /bin/bash {home_dir}/start_tx_log_{host}_{log_port}.bash"
                 );
                 let log_cmd = match &cmd_arg {
-                    CommandArgs::Start { cluster: _ } => LogCtlCmd::Start(log_start_cmd),
+                    CommandArgs::Start { cluster: _ } | CommandArgs::Play { topology_file: _ } => {
+                        LogCtlCmd::Start(log_start_cmd)
+                    }
                     CommandArgs::Status {
                         cluster: _,
                         user: _,
