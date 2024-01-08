@@ -43,6 +43,7 @@ macro_rules! mono_start_cmd {
                 r#"mkdir -p {}/{}/logs && cd {}/{}/install && \
     export LD_LIBRARY_PATH={}/{}/install/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
+    export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so; \
     {}/{}/install/bin/mysqld --defaults-file={}/my_{}.cnf > {}/{}/logs/mysqld_start.log 2>&1 &"#,
                 $remote_install_home,
                 MONOGRAPH_TX_SERVICE_DIR,
@@ -61,6 +62,7 @@ macro_rules! mono_start_cmd {
                 r#"mkdir -p {}/{}/logs && cd {}/{} && \
     export LD_LIBRARY_PATH={}/{}/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
+    export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so; \
     {}/{}/redis_server --config={}/redis_{}.ini > {}/{}/logs/redis.log 2>&1 &"#,
                 $remote_install_home,
                 REDIS_TX_SERVICE_DIR,
