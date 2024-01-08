@@ -58,10 +58,10 @@ macro_rules! mono_start_cmd {
                 MONOGRAPH_TX_SERVICE_DIR
             ),
             Product::Redis => format!(
-                r#"mkdir -p {}/{}/logs && cd {}/{}/install && \
-    export LD_LIBRARY_PATH={}/{}/install/lib:$LD_LIBRARY_PATH; \
+                r#"mkdir -p {}/{}/logs && cd {}/{} && \
+    export LD_LIBRARY_PATH={}/{}/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
-    {}/{}/install/redis_server > {}/{}/logs/redis.log 2>&1 &"#,
+    {}/{}/redis_server --config={}/redis_{}.ini > {}/{}/logs/redis.log 2>&1 &"#,
                 $remote_install_home,
                 REDIS_TX_SERVICE_DIR,
                 $remote_install_home,
@@ -70,6 +70,8 @@ macro_rules! mono_start_cmd {
                 REDIS_TX_SERVICE_DIR,
                 $remote_install_home,
                 REDIS_TX_SERVICE_DIR,
+                $remote_install_home,
+                $host,
                 $remote_install_home,
                 REDIS_TX_SERVICE_DIR
             ),
@@ -86,7 +88,7 @@ macro_rules! monograph_cmd {
                 $user, $remote_install_home, MONOGRAPH_TX_SERVICE_DIR
             ),
             Product::Redis => format!(
-                r#"ps uxwe -u {} | grep {}/{}/install/redis_server | grep -v grep | "#,
+                r#"ps uxwe -u {} | grep {}/{}/redis_server | grep -v grep | "#,
                 $user, $remote_install_home, REDIS_TX_SERVICE_DIR
             ),
         };

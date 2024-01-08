@@ -21,6 +21,7 @@ pub mod storage_service_config;
 
 pub const MONOGRAPH_CONF_TEMPLATE: &str = "my_template.cnf";
 pub const MONOGRAPH_CONF_DYNAMO_TEMPLATE: &str = "my_template_dynamo.cnf";
+pub const REDIS_CONF_TEMPLATE: &str = "redis_template.ini";
 
 pub const START_LOG_TEMPLATE: &str = "start_tx_log.template";
 pub const MONOGRAPH_INSTALL_TEMPLATE: &str = "monograph_install_db.template";
@@ -81,6 +82,9 @@ pub enum ConfigErr {
 
 pub const CONFIG_PATH_DIR: &str = "CLUSTER_MGR_CLI_CONFIG";
 pub const CONFIG_MARIADB_SECTION: &str = "mariadb";
+pub const CONFIG_SECTION_LOCAL: &str = "local";
+pub const CONFIG_SECTION_CLUSTER: &str = "cluster";
+pub const CONFIG_SECTION_STORE: &str = "store";
 
 #[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr)]
 pub enum StorageProvider {
