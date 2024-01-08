@@ -73,15 +73,16 @@ impl TaskGroup for InstallDBTaskGroup {
                 executable: IndexMap::new(),
             },
         };
+        if config.product() == Product::Redis {
+            return Ok(execution_context_tuple);
+        }
+
         let mut barrier = execution_context_tuple.clone().barrier.unwrap();
         let mut executable = execution_context_tuple.executable;
-
-        if config.product() == Product::Monograph {
-            // Bootstrap
-            let monograph_install = MonographInstall::from_config(&config, install_db_host);
-            barrier.push(monograph_install.len());
-            executable.extend(monograph_install);
-        }
+        // Bootstrap
+        let monograph_install = MonographInstall::from_config(&config, install_db_host);
+        barrier.push(monograph_install.len());
+        executable.extend(monograph_install);
 
         let upload_data_dir_task = upload_tasks(UploadTaskBuilderType::DataDir, &config);
         if !upload_data_dir_task.is_empty() {

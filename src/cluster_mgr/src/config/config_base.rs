@@ -4,8 +4,8 @@ use crate::config::deployment::{Deployment, Product};
 use crate::config::log_service::LogProcessKey;
 use crate::config::{
     config_path_string, config_template, DeploymentPackage, StorageProvider,
-    CONFIG_MARIADB_SECTION, CONFIG_PATH_DIR, MONOGRAPH_INSTALL_SCRIPT, MONOGRAPH_INSTALL_TEMPLATE,
-    START_LOG_TEMPLATE,
+    CONFIG_MARIADB_SECTION, CONFIG_PATH_DIR, CONFIG_SECTION_STORE, MONOGRAPH_INSTALL_SCRIPT,
+    MONOGRAPH_INSTALL_TEMPLATE, START_LOG_TEMPLATE,
 };
 use crate::config::{ConfigErr, DownloadUrl};
 use crate::gen_db_misc_files;
@@ -177,18 +177,31 @@ impl DeploymentConfig {
 
     pub fn gen_all_monograph_configs(&self) -> anyhow::Result<Vec<PathBuf>> {
         let install_dir = self.install_dir();
-        let mut path_vec = vec![self
-            .deployment
-            .gen_monograph_config_by_host(None, install_dir.clone())?];
+        let mut path_vec = match self.product() {
+            Product::Monograph => vec![self
+                .deployment
+                .gen_monograph_config_by_host(None, install_dir.clone())?],
+            Product::Redis => vec![self.deployment.gen_redis_config_by_host(None)?],
+        };
         let db_hosts = &self.deployment.tx_service.host;
-        let all_config_path = db_hosts
-            .iter()
-            .map(|host| {
-                self.deployment
-                    .gen_monograph_config_by_host(Some(host.to_string()), install_dir.clone())
-                    .unwrap()
-            })
-            .collect_vec();
+        let all_config_path = match self.product() {
+            Product::Monograph => db_hosts
+                .iter()
+                .map(|host| {
+                    self.deployment
+                        .gen_monograph_config_by_host(Some(host.to_string()), install_dir.clone())
+                        .unwrap()
+                })
+                .collect_vec(),
+            Product::Redis => db_hosts
+                .iter()
+                .map(|host| {
+                    self.deployment
+                        .gen_redis_config_by_host(Some(host.to_string()))
+                        .unwrap()
+                })
+                .collect_vec(),
+        };
         path_vec.extend(all_config_path);
         Ok(path_vec)
     }
@@ -266,6 +279,21 @@ impl DeploymentConfig {
         }
     }
 
+    pub fn get_redis_keyspace(&self) -> anyhow::Result<String> {
+        let download_dir = download_dir();
+        let my_local = download_dir.join("redis_local.ini");
+        if !my_local.exists() {
+            self.deployment.gen_redis_config_by_host(None)?;
+        }
+        let mut my_ini_local = Ini::new();
+        let _config_map_rs = my_ini_local.load(my_local).unwrap();
+        if let Some(keyspace) = my_ini_local.get(CONFIG_SECTION_STORE, "keyspace") {
+            Ok(keyspace)
+        } else {
+            Ok("mono_redis".to_string())
+        }
+    }
+
     pub fn install_dir(&self) -> String {
         format!(
             "{}/{}",
@@ -274,11 +302,7 @@ impl DeploymentConfig {
     }
 
     pub fn product(&self) -> Product {
-        if let Some(p) = self.deployment.product.clone() {
-            p
-        } else {
-            Product::Monograph
-        }
+        return self.deployment.product();
     }
 
     pub fn build_install_monograph_script(&self) -> anyhow::Result<String> {

@@ -9,8 +9,9 @@ use crate::config::log_service::LogService;
 use crate::config::monitor::Monitor;
 use crate::config::storage_service_config::StorageService;
 use crate::config::{
-    config_template, DownloadUrl, CONFIG_MARIADB_SECTION, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
-    MONOGRAPH_CONF_TEMPLATE,
+    config_template, DownloadUrl, CONFIG_MARIADB_SECTION, CONFIG_SECTION_CLUSTER,
+    CONFIG_SECTION_LOCAL, CONFIG_SECTION_STORE, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
+    MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE,
 };
 use anyhow::anyhow;
 use configparser::ini::Ini;
@@ -68,6 +69,14 @@ pub struct Deployment {
 }
 
 impl Deployment {
+    pub fn product(&self) -> Product {
+        if let Some(p) = self.product.clone() {
+            p
+        } else {
+            Product::Monograph
+        }
+    }
+
     fn build_log_config(&self) -> Option<HashMap<String, String>> {
         if let Some(ref log_srv) = self.log_service {
             let replica_num = log_srv.log_replica();
@@ -81,13 +90,17 @@ impl Deployment {
             let node_group = Vec::from_iter(ordered_members.values())
                 .into_iter()
                 .join(",");
-
+            let key_list = match self.product() {
+                Product::Monograph => "monograph_txlog_service_list".to_string(),
+                Product::Redis => "txlog_service_list".to_string(),
+            };
+            let key_replica = match self.product() {
+                Product::Monograph => "monograph_txlog_group_replica_num".to_string(),
+                Product::Redis => "txlog_group_replica_num".to_string(),
+            };
             Some(HashMap::from([
-                (
-                    "monograph_txlog_group_replica_num".to_string(),
-                    replica_num.to_string(),
-                ),
-                ("monograph_txlog_service_list".to_string(), node_group),
+                (key_replica, replica_num.to_string()),
+                (key_list, node_group),
             ]))
         } else {
             None
@@ -223,6 +236,71 @@ impl Deployment {
             my_ini.set(
                 CONFIG_MARIADB_SECTION,
                 "monograph_local_ip",
+                Some(format!("{}:{}", host_and_file_tuple.0, port)),
+            );
+
+            if let Err(err) = my_ini.write(db_config_location.clone()) {
+                Err(anyhow!(err))
+            } else {
+                Ok(db_config_location)
+            }
+        } else {
+            Err(my_ini_rs.err().unwrap())
+        }
+    }
+
+    pub fn build_redis_config(&self, set_ip_list: bool) -> anyhow::Result<Ini> {
+        let mut redis_ini = Ini::new();
+        if let Some(cassandra) = self.storage_service.cassandra.as_ref() {
+            redis_ini
+                .load(config_template(REDIS_CONF_TEMPLATE)?.as_path())
+                .unwrap();
+
+            let cassandra_hosts = cassandra.host.join(",");
+            redis_ini.set(CONFIG_SECTION_STORE, "host", Some(cassandra_hosts));
+        }
+        let use_port = self.port.monograph_port.start;
+        let monograph_hosts = &self.tx_service.host;
+        if set_ip_list {
+            let ip_list = monograph_hosts
+                .iter()
+                .map(|host| format!("{}:{}", host.clone(), use_port))
+                .join(",");
+            redis_ini.set(CONFIG_SECTION_CLUSTER, "ip_list", Some(ip_list));
+        } else {
+            redis_ini.set(
+                CONFIG_SECTION_CLUSTER,
+                "ip_list",
+                Some(format!("{}:{}", "127.0.0.1", use_port)),
+            );
+        }
+        Ok(redis_ini.clone())
+    }
+
+    pub fn gen_redis_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
+        let port = self.port.monograph_port.start;
+        let set_ip_list = tx_host.is_some();
+        let my_ini_rs = self.build_redis_config(set_ip_list);
+
+        let host_and_file_tuple = if let Some(host) = tx_host {
+            (host.clone(), host)
+        } else {
+            ("127.0.0.1".to_string(), "local".to_string())
+        };
+        let file_suffix = host_and_file_tuple.1;
+        let db_config_location = download_dir().join(format!("redis_{file_suffix}.ini"));
+        let log_member_config = self.build_log_config();
+        if let Ok(mut my_ini) = my_ini_rs {
+            if !file_suffix.eq("local") {
+                if let Some(config_map) = log_member_config {
+                    config_map.iter().for_each(|(key, conf_val)| {
+                        my_ini.set(CONFIG_SECTION_CLUSTER, key, Some(conf_val.to_string()));
+                    });
+                }
+            }
+            my_ini.set(
+                CONFIG_SECTION_LOCAL,
+                "ip",
                 Some(format!("{}:{}", host_and_file_tuple.0, port)),
             );
 

@@ -6,6 +6,7 @@ use crate::cli::task::task_base::{
 };
 use crate::cli::CMD_OUTPUT;
 use crate::config::config_base::{DeploymentConfig, MONOGRAPH_TX_SERVICE_DIR};
+use crate::config::deployment::Product;
 use crate::config::{DeploymentPackage, StorageProvider, MONOGRAPH_INSTALL_SCRIPT};
 use crate::task_return_value;
 use async_trait::async_trait;
@@ -45,7 +46,10 @@ impl MonographInstall {
     }
 
     pub async fn monograph_keyspace_exists(&self) -> anyhow::Result<bool> {
-        let keyspace = self.config.get_monograph_keyspace()?;
+        let keyspace = match self.config.product() {
+            Product::Monograph => self.config.get_monograph_keyspace()?,
+            Product::Redis => self.config.get_redis_keyspace()?,
+        };
         let keyspace_cql = format!(
             r#"select keyspace_name from system_schema.keyspaces where keyspace_name='{keyspace}'"#,
         );
