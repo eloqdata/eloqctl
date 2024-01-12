@@ -15,6 +15,13 @@ impl TaskGroup for MonitorCtlTaskGroup {
         cmd_arg: CommandArgs,
         config: DeploymentConfig,
     ) -> anyhow::Result<TaskExecutionContext> {
+        if config.deployment.monitor.is_none() {
+            return Ok(TaskExecutionContext {
+                task_group: format!("control-{}", cmd_arg.as_ref()),
+                barrier: None,
+                executable: IndexMap::new(),
+            });
+        }
         let monitor_ctl_cmd = match &cmd_arg {
             CommandArgs::Monitor {
                 cluster: _,

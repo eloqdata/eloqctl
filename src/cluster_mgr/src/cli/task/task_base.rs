@@ -139,12 +139,14 @@ pub fn merge_execution(
             debug!("Playground add task {}", id.format_string());
         });
 
-        if let Some(b) = tasks.barrier {
-            barrier.extend(b);
-        } else {
-            barrier.push(tasks.executable.len());
+        if !tasks.executable.is_empty() {
+            if let Some(b) = tasks.barrier {
+                barrier.extend(b);
+            } else {
+                barrier.push(tasks.executable.len());
+            }
+            executable.extend(tasks.executable);
         }
-        executable.extend(tasks.executable);
     });
     (barrier, executable)
 }
