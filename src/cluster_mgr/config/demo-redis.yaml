@@ -4,10 +4,10 @@ connection:
   auth:
     keypair: "/home/ubuntu/.ssh/ed25519_mono"
 deployment:
-  product: "Monograph"
-  tx_image: "https://dzkle3nb4zzyc.cloudfront.net/main_tagged_range_ubuntu2004/cassandra/0.3.3/monographdb-tx-release-bin.tar.gz"
-  log_image: "https://dzkle3nb4zzyc.cloudfront.net/main_tagged_range_ubuntu2004/cassandra/0.3.3/monographdb-log-release-bin.tar.gz"
-  cluster_name: "play-maria"
+  product: "Redis"
+  tx_image: "https://dzkle3nb4zzyc.cloudfront.net/mono-release-ci-redis/monograph_redis.tar.gz"
+  log_image: "https://dzkle3nb4zzyc.cloudfront.net/mono-release-ci-redis/log_service.tar.gz"
+  cluster_name: "demo-redis"
   install_dir: "/home/ubuntu/POC"
   port:
     mysql_port: 3300
@@ -19,9 +19,9 @@ deployment:
       - host: 127.0.0.1
         port: 9000
         data_dir:
-          - "/home/ubuntu/POC/play-maria/logDisk1"
-          - "/home/ubuntu/POC/play-maria/logDisk2"
-          - "/home/ubuntu/POC/play-maria/logDisk3"
+          - "/home/ubuntu/POC/demo-redis/logDisk1"
+          - "/home/ubuntu/POC/demo-redis/logDisk2"
+          - "/home/ubuntu/POC/demo-redis/logDisk3"
     replica: 1
   tx_service:
     host:
