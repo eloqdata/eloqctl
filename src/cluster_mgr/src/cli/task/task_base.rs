@@ -225,12 +225,7 @@ impl TaskHost {
 
 pub type ExecutionValue = HashMap<String, TaskArgValue>;
 pub type TaskStatusRecord = Vec<HashMap<String, TaskArgValue>>;
-// ::new(|| {
-//     HashMap::from([(
-//         "_FINISH_SIGNAL".to_string(),
-//         TaskArgValue::Str("".to_string()),
-//     )])
-// });
+
 pub(crate) static FINISH_: OnceCell<LastResult> = OnceCell::new();
 
 pub(crate) fn init_finish_signal() -> &'static LastResult {

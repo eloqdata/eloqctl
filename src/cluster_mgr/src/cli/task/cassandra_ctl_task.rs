@@ -260,17 +260,12 @@ impl CassandraCtlTask {
             start_cmd
         );
         let start_rs = ssh_conn.command(start_cmd.as_str(), CollectOutput).await?;
-        // TODO refactor use closure
+        let curr_cass_host = ssh_info.0;
         let sleep_duration = Duration::from_secs(2);
         let mut timeout_remaining = Duration::from_secs(5 * 60);
-        let cass_hosts = self.config.get_host_list(DeploymentPackage::Storage);
-        for cass_host in cass_hosts.iter() {
-            if timeout_remaining.as_secs() == 0 {
-                warn!("CheckCassandraStatus timeout");
-                break;
-            }
+        loop {
             let cassandra_op = CassandraOpTask::new(
-                cass_host.clone(),
+                curr_cass_host.clone(),
                 TaskId {
                     cmd: "start".to_string(),
                     task: "check-cassandra-status".to_string(),
@@ -287,15 +282,19 @@ impl CassandraCtlTask {
                 )
                 .await?
                 .unwrap();
+
             let status_value = op_status.get(CMD_STATUS).unwrap();
             let status_code = TaskArgValue::into_inner_value::<i32>(status_value.clone());
             if status_code == 0 {
-                println!("Cassandra Cluster UP now");
+                println!("Cassandra instance={:?} UP now", curr_cass_host.clone());
                 break;
             } else {
-                println!("Cassandra Cluster not ready! {status_code:?}");
                 tokio::time::sleep(sleep_duration).await;
                 timeout_remaining -= sleep_duration;
+            }
+            if timeout_remaining.as_secs() == 0 {
+                warn!("Cassandra instance={:?} startup timeout", curr_cass_host);
+                return Ok(op_status);
             }
         }
         Ok(start_rs)
