@@ -3,6 +3,7 @@ use anyhow::anyhow;
 use itertools::Itertools;
 use serde_yaml::Value;
 use std::collections::HashMap;
+use std::env;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
@@ -86,6 +87,24 @@ pub const CONFIG_MARIADB_SECTION: &str = "mariadb";
 pub const CONFIG_SECTION_LOCAL: &str = "local";
 pub const CONFIG_SECTION_CLUSTER: &str = "cluster";
 pub const CONFIG_SECTION_STORE: &str = "store";
+
+pub fn set_home_dir(home: &Option<PathBuf>) -> anyhow::Result<()> {
+    match home {
+        Some(ref home) => env::set_var(HOME_DIR, home),
+        None => {
+            if env::var(HOME_DIR).is_err() {
+                env::set_var(HOME_DIR, env::current_dir().unwrap())
+            }
+        }
+    };
+    // check config directory
+    let cnf_dir = PathBuf::from(env::var(HOME_DIR).unwrap()).join("config");
+    if !cnf_dir.exists() {
+        return Err(anyhow!("Config path not exist: {} ", cnf_dir.display()));
+    }
+    env::set_var(CONFIG_PATH_DIR, cnf_dir);
+    Ok(())
+}
 
 #[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr)]
 pub enum StorageProvider {

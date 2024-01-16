@@ -66,8 +66,8 @@ pub struct ResponseData {
 )]
 #[command(next_line_help = true)]
 pub struct ServerCommandArgs {
-    #[arg(short, long, value_name = "config")]
-    pub config: PathBuf,
+    #[arg(long, value_name = "HOME_DIR")]
+    pub home: Option<PathBuf>,
     #[arg(short, long, value_name = "addr")]
     pub addr: Option<String>,
     #[arg(short, long, value_name = "port")]

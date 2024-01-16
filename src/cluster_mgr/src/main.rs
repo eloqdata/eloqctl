@@ -1,8 +1,8 @@
 use clap::Parser;
 use cluster_mgr::cli::cmd_base::CommandExecutor;
 use cluster_mgr::cli::ClusterMgrCommandArgs;
-use cluster_mgr::config::{CONFIG_PATH_DIR, HOME_DIR};
-use std::{env, path::PathBuf, process::exit};
+use cluster_mgr::config::set_home_dir;
+use std::{env, process::exit};
 use tracing::{error, Level};
 use tracing_subscriber::EnvFilter;
 
@@ -25,21 +25,10 @@ async fn main() {
         .with_env_filter(filter)
         .init();
     let cluster_mgr_cmd = ClusterMgrCommandArgs::parse();
-    match cluster_mgr_cmd.home {
-        Some(ref home) => env::set_var(HOME_DIR, home),
-        None => {
-            if env::var(HOME_DIR).is_err() {
-                env::set_var(HOME_DIR, env::current_dir().unwrap())
-            }
-        }
-    };
-    // Set config directory path
-    let cnf_dir = PathBuf::from(env::var(HOME_DIR).unwrap()).join("config");
-    if !cnf_dir.exists() {
-        error!("Config path not exist: {} ", cnf_dir.display());
+    if let Err(e) = set_home_dir(&cluster_mgr_cmd.home) {
+        error!("{}", e);
         exit(1);
     }
-    env::set_var(CONFIG_PATH_DIR, cnf_dir);
 
     let cmd_executor = Box::leak(Box::new(CommandExecutor::new()));
     if let Some(command) = cluster_mgr_cmd.command {

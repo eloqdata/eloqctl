@@ -28,7 +28,7 @@ if [ -z "$arch" ]; then
 fi
 
 if [ -z "$CLUSTER_MGR_HOME" ]; then
-    CLUSTER_MGR_HOME=$HOME/.MonoCluster
+    CLUSTER_MGR_HOME=$HOME/.MonoWaiter
 fi
 bin_dir=$CLUSTER_MGR_HOME
 mkdir -p "$bin_dir"

@@ -18,7 +18,7 @@ pub const CMD: &str = "_cmd_";
 #[command(author, version = "1.0.0", about = "MonographDB Cluster Manager Cli")]
 #[command(next_line_help = true)]
 pub struct ClusterMgrCommandArgs {
-    #[arg(short, long, value_name = "FILE")]
+    #[arg(long, value_name = "HOME_DIR")]
     pub home: Option<PathBuf>,
     #[command(subcommand)]
     pub command: Option<CommandArgs>,
