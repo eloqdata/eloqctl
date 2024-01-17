@@ -8,6 +8,8 @@ use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use std::collections::HashMap;
+use std::vec;
+use users::get_current_uid;
 
 #[derive(Clone, Debug)]
 pub struct RuntimeDepsInstallation {
@@ -24,22 +26,40 @@ impl RuntimeDepsInstallation {
         let os_name = os_and_deps_pair.0;
         let os_version = os_and_deps_pair.1;
         println!("RuntimeDep from_config = {os_name}");
-        let dep_cmd_partial = match os_name.as_str() {
+        let  dep_cmd_partial = match os_name.as_str() {
             "ubuntu" => {
-               "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends"
+               vec![
+                "apt-get update", 
+                "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends"]
             }
             "centos" => {
                 match os_version.as_str() {
-                    "8" => r#"sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm -y &&
-sudo /usr/bin/crb enable &&
-sudo yum install -y epel-release && sudo yum update -y && sudo yum install -y"#,
-                    "7"=> "sudo yum install -y epel-release && sudo yum update -y && sudo yum install -y",
+                    "8" => 
+                    vec![
+                        "dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm -y", 
+                        "/usr/bin/crb enable", 
+                        "yum install -y epel-release", 
+                        "yum update -y", 
+                        "yum install -y"],
+                    "7"=>  vec![
+                        "yum install -y epel-release", 
+                        "yum update -y", 
+                        "yum install -y"],
                     _ => unreachable!()
                 }
             }
             _=> {
                 panic!("For now MonographDB only run on Ubuntu or Centos7/Centos8");
             }
+        };
+        let dep_cmd_partial = if get_current_uid() == 0 {
+            dep_cmd_partial.join(" && ")
+        } else {
+            dep_cmd_partial
+                .iter()
+                .map(|e| format!("sudo {}", e))
+                .collect::<Vec<String>>()
+                .join(" && ")
         };
         let dep_pkg = os_and_deps_pair.2;
         let install_dep_cmd = format!("{dep_cmd_partial} {dep_pkg}");

@@ -75,6 +75,14 @@ case :$PATH: in
 esac
 
 ssh-keygen -t ed25519 -f $CLUSTER_MGR_HOME/ed25519 -q -N ""
+if [ ! -d "~/.ssh" ]; then
+    mkdir ~/.ssh
+    chmod 700 ~/.ssh
+fi
+if [ ! -f "~/.ssh/authorized_keys" ]; then
+    touch ~/.ssh/authorized_keys
+    chmod 600 ~/.ssh/authorized_keys
+fi
 cat $CLUSTER_MGR_HOME/ed25519.pub >> ~/.ssh/authorized_keys
 
 echo "Installed path: ${bold}$bin_dir/cluster_mgr${sgr0}"
