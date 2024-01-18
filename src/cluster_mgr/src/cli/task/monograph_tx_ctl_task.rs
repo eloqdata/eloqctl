@@ -19,6 +19,7 @@ use async_trait::async_trait;
 use indexmap::IndexMap;
 use sqlx::{Connection, Executor, Row};
 use std::collections::HashMap;
+use std::process;
 use strum_macros::AsRefStr;
 use tracing::{error, info};
 
@@ -44,42 +45,28 @@ macro_rules! mono_start_cmd {
     export LD_LIBRARY_PATH={}/{}/install/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
     export LD_PRELOAD={}/{}/install/lib/libmimalloc.so; \
-    {}/{}/install/bin/mysqld --defaults-file={}/my_{}.cnf > {}/{}/logs/mysqld_start.log 2>&1 &"#,
-                $remote_install_home,
-                MONOGRAPH_TX_SERVICE_DIR,
-                $remote_install_home,
-                MONOGRAPH_TX_SERVICE_DIR,
-                $remote_install_home,
-                MONOGRAPH_TX_SERVICE_DIR,
-                $remote_install_home,
-                MONOGRAPH_TX_SERVICE_DIR,
-                $remote_install_home,
-                MONOGRAPH_TX_SERVICE_DIR,
-                $remote_install_home,
-                $host,
-                $remote_install_home,
-                MONOGRAPH_TX_SERVICE_DIR
+    {}/{}/install/bin/mysqld --defaults-file={}/my_{}.cnf > {}/{}/logs/mysqld_start_{}.log 2>&1 &"#,
+                $remote_install_home, MONOGRAPH_TX_SERVICE_DIR,
+                $remote_install_home, MONOGRAPH_TX_SERVICE_DIR,
+                $remote_install_home, MONOGRAPH_TX_SERVICE_DIR,
+                $remote_install_home, MONOGRAPH_TX_SERVICE_DIR,
+                $remote_install_home, MONOGRAPH_TX_SERVICE_DIR,
+                $remote_install_home, $host,
+                $remote_install_home, MONOGRAPH_TX_SERVICE_DIR, process::id()
             ),
             Product::Redis => format!(
                 r#"mkdir -p {}/{}/logs && cd {}/{} && \
     export LD_LIBRARY_PATH={}/{}/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
     export LD_PRELOAD={}/{}/lib/libmimalloc.so; \
-    {}/{}/redis_server --config={}/redis_{}.ini > {}/{}/logs/redis.log 2>&1 &"#,
-                $remote_install_home,
-                MONOGRAPH_TX_SERVICE_DIR,
-                $remote_install_home,
-                REDIS_TX_SERVICE_DIR,
-                $remote_install_home,
-                REDIS_TX_SERVICE_DIR,
-                $remote_install_home,
-                REDIS_TX_SERVICE_DIR,
-                $remote_install_home,
-                REDIS_TX_SERVICE_DIR,
-                $remote_install_home,
-                $host,
-                $remote_install_home,
-                REDIS_TX_SERVICE_DIR
+    {}/{}/redis_server --config={}/redis_{}.ini > {}/{}/logs/redis_{}.log 2>&1 &"#,
+                $remote_install_home, REDIS_TX_SERVICE_DIR,
+                $remote_install_home, REDIS_TX_SERVICE_DIR,
+                $remote_install_home, REDIS_TX_SERVICE_DIR,
+                $remote_install_home, REDIS_TX_SERVICE_DIR,
+                $remote_install_home, REDIS_TX_SERVICE_DIR,
+                $remote_install_home, $host,
+                $remote_install_home, REDIS_TX_SERVICE_DIR, process::id()
             ),
         }
     };
