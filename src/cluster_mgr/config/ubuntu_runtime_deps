@@ -11,4 +11,3 @@ wget
 curl
 unzip
 libboost-context-dev
-libjemalloc-dev
