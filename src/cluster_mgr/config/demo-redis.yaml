@@ -4,10 +4,9 @@ connection:
   auth:
     keypair: "/home/ubuntu/.ssh/ed25519_mono"
 deployment:
-  product: "Redis"
-  tx_image: "https://dzkle3nb4zzyc.cloudfront.net/mono-release-ci-redis/monograph_redis.tar.gz"
-  log_image: "https://dzkle3nb4zzyc.cloudfront.net/mono-release-ci-redis/log_service.tar.gz"
   cluster_name: "demo-redis"
+  product: "Redis"
+  tx_image: "latest"
   install_dir: "/tmp"
   port:
     mysql_port: 3300
@@ -19,7 +18,7 @@ deployment:
       - host: 127.0.0.1
         port: 9000
         data_dir:
-          - "/tmp/demo-redis/logDisk1"
+          - "/tmp/logDisk_demoRedis"
     replica: 1
   tx_service:
     host:

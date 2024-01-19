@@ -534,7 +534,8 @@ impl DeploymentConfig {
         let path_string = config_path_string(path)?;
         info!("DeploymentConfig load file from {}", path_string);
         let config_rs = DeploymentConfig::read_config_from_file(path_string);
-        if let Ok(config) = config_rs {
+        if let Ok(mut config) = config_rs {
+            config.deployment.version_convert();
             Ok(config)
         } else {
             let config_err = config_rs.err().unwrap().to_string();

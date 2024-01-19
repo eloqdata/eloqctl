@@ -1,6 +1,4 @@
 use crate::cli::download_dir;
-use std::collections::HashMap;
-
 use crate::config::config_base::CASSANDRA_FILE_KEY;
 use crate::config::config_base::{
     MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY, MONOGRAPH_TX_SERVICE_DIR,
@@ -11,13 +9,15 @@ use crate::config::storage_service_config::StorageService;
 use crate::config::{
     config_template, DownloadUrl, CONFIG_MARIADB_SECTION, CONFIG_SECTION_CLUSTER,
     CONFIG_SECTION_LOCAL, CONFIG_SECTION_STORE, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
-    MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE,
+    MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO,
 };
 use anyhow::anyhow;
 use configparser::ini::Ini;
 use indexmap::IndexMap;
 use itertools::Itertools;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[macro_export]
@@ -69,6 +69,45 @@ pub struct Deployment {
 }
 
 impl Deployment {
+    pub fn version_convert(&mut self) {
+        match self.product() {
+            Product::Monograph => {
+                let version = if self.tx_image.to_lowercase() == "latest" {
+                    "0.3.3".to_owned()
+                } else {
+                    self.tx_image.clone()
+                };
+                let re = Regex::new(r"(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)").unwrap();
+                if !re.is_match(&version) {
+                    return;
+                }
+                let store = self.storage_service.provider().unwrap().to_string();
+                self.tx_image = format!(
+                    "{}/main_tagged_range_ubuntu2004/{}/{}/monographdb-tx-release-bin.tar.gz",
+                    RESOURCE_REPO, store, version
+                );
+                if self.log_service.is_some() && self.log_image.is_none() {
+                    self.log_image = Some(format!(
+                        "{}/main_tagged_range_ubuntu2004/{}/{}/monographdb-log-release-bin.tar.gz",
+                        RESOURCE_REPO, store, version
+                    ));
+                }
+            }
+            Product::Redis => {
+                self.tx_image = format!(
+                    "{}/mono-release-ci-redis/monograph_redis.tar.gz",
+                    RESOURCE_REPO
+                );
+                if self.log_service.is_some() && self.log_image.is_none() {
+                    self.log_image = Some(format!(
+                        "{}/mono-release-ci-redis/log_service.tar.gz",
+                        RESOURCE_REPO
+                    ));
+                }
+            }
+        }
+    }
+
     pub fn product(&self) -> Product {
         if let Some(p) = self.product.clone() {
             p

@@ -7,7 +7,7 @@ use std::env;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
-use strum_macros::AsRefStr;
+use strum_macros::{AsRefStr, Display};
 use thiserror::Error;
 use tracing::error;
 use url::Url;
@@ -45,6 +45,8 @@ pub const GRAFANA_CONFIG_FILE: &str = "defaults.ini";
 
 pub const CREATE_MONITOR_USER_SQL_FILE: &str = "create_monitor_user.sql";
 pub const MYSQL_EXPORTER_CLIENT_CONFIG: &str = "mysql_exporter.cnf";
+
+pub const RESOURCE_REPO: &str = "https://dzkle3nb4zzyc.cloudfront.net";
 
 #[macro_export]
 macro_rules! gen_db_script {
@@ -114,7 +116,7 @@ pub fn home_path() -> PathBuf {
     PathBuf::from(env::var(HOME_DIR).unwrap())
 }
 
-#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display)]
 pub enum StorageProvider {
     #[strum(serialize = "cassandra")]
     Cassandra,
