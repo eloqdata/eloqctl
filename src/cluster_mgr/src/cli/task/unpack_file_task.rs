@@ -47,7 +47,7 @@ impl UnpackFileTask {
     ) -> anyhow::Result<IndexMap<TaskId, TaskInstance>> {
         let deployment_ref = &config.deployment;
 
-        let tx_image = DownloadUrl::from_url_str(deployment_ref.tx_image.as_str())
+        let tx_image = DownloadUrl::from_url_str(&deployment_ref.get_tx_image())
             .unwrap()
             .file_name();
         let log_image = if let Some(log_image_file) = deployment_ref.log_image.as_ref() {

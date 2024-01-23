@@ -93,6 +93,7 @@ impl LogCtlCmd {
                         cluster: _,
                         user: _,
                         password: _,
+                        wait: _,
                     } => LogCtlCmd::Status(ps_cmd_part),
                     CommandArgs::Stop {
                         cluster: _,
@@ -286,6 +287,7 @@ impl MonographLogCtlTask {
             cluster: self.config.deployment.cluster_name.to_string(),
             user: None,
             password: None,
+            wait: None,
         };
         // key is host:port,value is ps log command.
         let check_status_cmd_by_key = self

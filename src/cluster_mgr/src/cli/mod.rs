@@ -1,9 +1,9 @@
+use crate::config::home_path;
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
 use std::path::PathBuf;
 use strum_macros::AsRefStr;
-use tracing::error;
 
 pub mod cmd_base;
 mod cmd_printer;
@@ -101,6 +101,8 @@ pub enum CommandArgs {
         user: Option<String>,
         #[arg(short, long, value_name = "MonographDB password")]
         password: Option<String>,
+        #[arg(short, long, value_name = "Wait cluster ready")]
+        wait: Option<u16>,
     },
     #[command(
         long_about = "Install MonographDB runtime dependencies.\n./cluster_mgr run-deps --topology-file ${PWD}/config/deployment.yaml
@@ -176,22 +178,7 @@ pub enum CommandArgs {
 }
 
 pub fn download_dir() -> PathBuf {
-    let download_dir = dirs::download_dir();
-    if download_dir.is_none() {
-        let download_path_buf = dirs::home_dir()
-            .unwrap()
-            .join("Downloads")
-            .join("mono-cluster-cli");
-        let download_path_create_rs = std::fs::create_dir_all(download_path_buf.as_path());
-        if let Err(create_err) = download_path_create_rs {
-            let err_msg = create_err.to_string();
-            error!("Create download path  {download_path_buf:#?} error {err_msg}");
-            panic!("Create download path Error cause by {err_msg:?} ");
-        }
-        download_path_buf
-    } else {
-        dirs::download_dir().unwrap()
-    }
+    home_path().join("downloads")
 }
 
 pub fn download_file_path(download_files: Vec<String>) -> Vec<PathBuf> {
@@ -202,12 +189,8 @@ pub fn download_file_path(download_files: Vec<String>) -> Vec<PathBuf> {
         .collect_vec()
 }
 
-pub fn file_process_progress(
-    total_size: u64,
-    file_name: String,
-    process_chars: &str,
-) -> ProgressBar {
-    let cmd_pb = ProgressBar::new(total_size);
+pub fn file_process_progress(file_name: String, process_chars: &str) -> ProgressBar {
+    let cmd_pb = ProgressBar::hidden();
     let sty = format!(
         "{{spinner:.green}} {file_name:14}: [{{elapsed_precise}}] \
         [{{wide_bar:.green/white}}] \

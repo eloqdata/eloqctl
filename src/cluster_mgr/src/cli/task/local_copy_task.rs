@@ -94,9 +94,7 @@ impl TaskExecutor for LocalCopyTask {
             let mut copy_task_rs = HashMap::from([
                 (
                     CMD.to_string(),
-                    TaskArgValue::Str(format!(
-                        "copy {source_dir_string} Downloads/mono-cluster-cli/{dest_file}"
-                    )),
+                    TaskArgValue::Str(format!("copy {source_dir_string} downloads/{dest_file}")),
                 ),
                 (CMD_OUTPUT.to_string(), TaskArgValue::Str("".to_string())),
                 (CMD_STATUS.to_string(), TaskArgValue::Number(0)),

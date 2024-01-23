@@ -70,6 +70,7 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> CommandArgs
             cluster: cluster.unwrap(),
             user: None,
             password: None,
+            wait: None,
         },
         "run-deps" => CommandArgs::RunDeps {
             topology_file: "_NONE".to_string(),
@@ -233,6 +234,7 @@ pub async fn mono_service_status(
         cluster: param_cluster.to_string(),
         user: Some(mono_conn_info.user),
         password: Some(mono_conn_info.password),
+        wait: Some(20),
     };
     global_handler.submit(RequestPayload {
         command: Some(status_cmd),

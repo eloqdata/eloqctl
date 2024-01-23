@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use strum_macros::AsRefStr;
 use tracing::{error, info, warn};
+use users::{get_current_gid, get_current_uid};
 
 pub(crate) const CASSANDRA_CMD_STR: &str = "cassandra_cmd";
 
@@ -31,10 +32,16 @@ macro_rules! cassandra_cmd {
         let cmd_user = $conn_user;
         let echo_cmd=format!("ps uxwe -u {} | grep {} | grep -v grep", cmd_user, $cassandra_home);
         match cmd_var {
-            "CassandraCmd::Start" => CassandraCmd::Start(format!(
-                r#"mkdir -p {}/logs && cd {} && export JAVA_HOME={}; {}/bin/cassandra -f > {}/logs/cassandra_start.log 2>&1 &"#,
-                $cassandra_home, $cassandra_home, java_home, $cassandra_home, $cassandra_home
-            )),
+            "CassandraCmd::Start" => {
+                let mut opts = "-f".to_string();
+                if get_current_uid() == 0 || get_current_gid() == 0 {
+                    opts.push_str(" -R");
+                }
+                CassandraCmd::Start(format!(
+                    r#"mkdir -p {}/logs && cd {} && export JAVA_HOME={}; {}/bin/cassandra {} > {}/logs/cassandra_start.log 2>&1 &"#,
+                    $cassandra_home, $cassandra_home, java_home, $cassandra_home, opts, $cassandra_home
+                ))
+            }
             "CassandraCmd::Status" => CassandraCmd::Status("select keyspace_name,durable_writes from system_schema.keyspaces".to_string()),
             "CassandraCmd::Stop" => {
                 let kill_cass = r#"| awk '{print $2}' | xargs kill"#;

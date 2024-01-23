@@ -28,7 +28,7 @@ if [ -z "$arch" ]; then
 fi
 
 if [ -z "$CLUSTER_MGR_HOME" ]; then
-    CLUSTER_MGR_HOME=$HOME/.MonoWaiter
+    CLUSTER_MGR_HOME=${HOME}/.MonoWaiter
 fi
 bin_dir=$CLUSTER_MGR_HOME
 mkdir -p "$bin_dir"
@@ -49,12 +49,23 @@ chmod 755 "$bin_dir/cluster_mgr"
 
 # "$bin_dir/cluster_mgr" mirror set $repo
 
+ssh-keygen -t ed25519 -f $CLUSTER_MGR_HOME/ed25519 -q -N ""
+if [ ! -d "${HOME}/.ssh" ]; then
+    mkdir ${HOME}/.ssh
+    chmod 700 ${HOME}/.ssh
+fi
+if [ ! -f "${HOME}/.ssh/authorized_keys" ]; then
+    touch ${HOME}/.ssh/authorized_keys
+    chmod 600 ${HOME}/.ssh/authorized_keys
+fi
+cat $CLUSTER_MGR_HOME/ed25519.pub >> ${HOME}/.ssh/authorized_keys
+
 bold=$(tput bold 2>/dev/null)
 sgr0=$(tput sgr0 2>/dev/null)
 
 # Refrence: https://stackoverflow.com/questions/14637979/how-to-permanently-set-path-on-linux-unix
 shell=$(echo $SHELL | awk 'BEGIN {FS="/";} { print $NF }')
-echo "Detected shell: ${bold}$shell${sgr0}"
+# echo "Detected shell: ${bold}$shell${sgr0}"
 if [ -f "${HOME}/.${shell}_profile" ]; then
     PROFILE=${HOME}/.${shell}_profile
 elif [ -f "${HOME}/.${shell}_login" ]; then
@@ -64,20 +75,19 @@ elif [ -f "${HOME}/.${shell}rc" ]; then
 else
     PROFILE=${HOME}/.profile
 fi
-echo "Shell profile:  ${bold}$PROFILE${sgr0}"
+# echo "Shell profile:  ${bold}$PROFILE${sgr0}"
 
 case :$PATH: in
-    *:$bin_dir:*) : "PATH already contains $bin_dir" ;;
-    *) printf '\nexport PATH=%s:$PATH\nexport CLUSTER_MGR_HOME=%s\n' "$bin_dir" "$CLUSTER_MGR_HOME" >> "$PROFILE"
+    *:$bin_dir:*)
+        echo "PATH already contains $bin_dir" ;;
+    *)
+        printf '\nexport PATH=%s:$PATH\nexport CLUSTER_MGR_HOME=%s\n' "$bin_dir" "$CLUSTER_MGR_HOME" >> "$PROFILE"
         echo "$PROFILE has been modified to add cluster_mgr to PATH"
-        echo "open a new terminal or ${bold}source ${PROFILE}${sgr0} to use it"
         ;;
 esac
 
-ssh-keygen -t ed25519 -f $CLUSTER_MGR_HOME/ed25519 -q -N ""
-cat $CLUSTER_MGR_HOME/ed25519.pub >> ~/.ssh/authorized_keys
-
-echo "Installed path: ${bold}$bin_dir/cluster_mgr${sgr0}"
+# echo "Installed path: ${bold}$bin_dir/cluster_mgr${sgr0}"
 echo "==============================================="
-echo "Have a try:     ${bold}cluster_mgr launch${sgr0}"
+echo "To use it, open a new terminal or execute:"
+echo "${bold}source ${PROFILE}${sgr0}"
 echo "==============================================="

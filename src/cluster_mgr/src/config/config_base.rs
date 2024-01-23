@@ -93,7 +93,7 @@ impl DeploymentConfig {
         let all_hosts = self.get_host_as_map();
         let cassandra_opt = self.deployment.storage_service.cassandra.as_ref();
         let monitor_opt = self.deployment.monitor.as_ref();
-        let tx_image = &self.deployment.tx_image;
+        let tx_image = &self.deployment.get_tx_image();
         let log_image = &self.deployment.log_image;
         let monitor_link = if let Some(monitor) = monitor_opt {
             monitor.download_links_as_amp().unwrap()
@@ -534,7 +534,8 @@ impl DeploymentConfig {
         let path_string = config_path_string(path)?;
         info!("DeploymentConfig load file from {}", path_string);
         let config_rs = DeploymentConfig::read_config_from_file(path_string);
-        if let Ok(config) = config_rs {
+        if let Ok(mut config) = config_rs {
+            config.deployment.image_by_version();
             Ok(config)
         } else {
             let config_err = config_rs.err().unwrap().to_string();

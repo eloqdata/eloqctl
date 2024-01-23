@@ -7,7 +7,7 @@ use std::env;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
-use strum_macros::AsRefStr;
+use strum_macros::{AsRefStr, Display};
 use thiserror::Error;
 use tracing::error;
 use url::Url;
@@ -45,6 +45,8 @@ pub const GRAFANA_CONFIG_FILE: &str = "defaults.ini";
 
 pub const CREATE_MONITOR_USER_SQL_FILE: &str = "create_monitor_user.sql";
 pub const MYSQL_EXPORTER_CLIENT_CONFIG: &str = "mysql_exporter.cnf";
+
+pub const RESOURCE_REPO: &str = "https://dzkle3nb4zzyc.cloudfront.net";
 
 #[macro_export]
 macro_rules! gen_db_script {
@@ -98,15 +100,23 @@ pub fn set_home_dir(home: &Option<PathBuf>) -> anyhow::Result<()> {
         }
     };
     // check config directory
-    let cnf_dir = PathBuf::from(env::var(HOME_DIR).unwrap()).join("config");
+    let cnf_dir = home_path().join("config");
     if !cnf_dir.exists() {
         return Err(anyhow!("Config path not exist: {} ", cnf_dir.display()));
     }
     env::set_var(CONFIG_PATH_DIR, cnf_dir);
+    if let Err(create_err) = std::fs::create_dir_all(home_path().join("downloads").as_path()) {
+        let err_msg = create_err.to_string();
+        panic!("Create download path Error cause by {err_msg:?} ");
+    }
     Ok(())
 }
 
-#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr)]
+pub fn home_path() -> PathBuf {
+    PathBuf::from(env::var(HOME_DIR).unwrap())
+}
+
+#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display)]
 pub enum StorageProvider {
     #[strum(serialize = "cassandra")]
     Cassandra,

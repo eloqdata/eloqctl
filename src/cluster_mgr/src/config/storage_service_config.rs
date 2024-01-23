@@ -3,8 +3,8 @@ use crate::config::config_base::CASSANDRA_COLLECTOR_AGENT_FILE_KEY;
 use crate::config::monitor::Monitor;
 use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
-    config_template, load_yaml_config_template, CASSANDRA_CONF_TEMPLATE, CASSANDRA_ENV_TEMPLATE,
-    CASSANDRA_JVM_SERVER_CONF,
+    config_template, load_yaml_config_template, StorageProvider, CASSANDRA_CONF_TEMPLATE,
+    CASSANDRA_ENV_TEMPLATE, CASSANDRA_JVM_SERVER_CONF,
 };
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
@@ -37,6 +37,15 @@ pub struct Dynamodb {
 }
 
 impl StorageService {
+    pub fn provider(&self) -> Option<StorageProvider> {
+        if self.cassandra.is_some() {
+            Some(StorageProvider::Cassandra)
+        } else if self.dynamodb.is_some() {
+            Some(StorageProvider::DynamoDB)
+        } else {
+            None
+        }
+    }
     pub fn gen_cassandra_env(
         &self,
         install_dir: String,

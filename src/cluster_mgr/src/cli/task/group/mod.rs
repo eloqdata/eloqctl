@@ -47,8 +47,8 @@ macro_rules! task_group_boxed {
 }
 
 task_group_boxed! {
-    {DeploymentTaskGroup},
     {InstallDBTaskGroup},
+    {DeploymentTaskGroup},
     {CtrlDBTaskGroup},
     {CustomCmdTaskGroup},
     {InstallRuntimeDepsTaskGroup},

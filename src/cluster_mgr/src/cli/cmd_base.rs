@@ -91,10 +91,8 @@ impl CommandExecutor {
             CommandArgs::Deploy { topology_file }
             | CommandArgs::Upgrade { topology_file }
             | CommandArgs::Launch { topology_file } => {
-                let config_rs = DeploymentConfig::load(Some(topology_file));
-                let config = config_rs.unwrap().clone();
-                let cmd_ref = cmd.as_ref();
-                self.save_deployment_config(&config, cmd_ref.eq("upgrade"))
+                let config = DeploymentConfig::load(Some(topology_file)).unwrap().clone();
+                self.save_deployment_config(&config, cmd.as_ref().eq("upgrade"))
                     .await?;
                 info!("CmdExecutor Save DeploymentConfig successfully.");
                 Ok(config)
@@ -108,8 +106,7 @@ impl CommandExecutor {
                 let mut config = DeploymentConfig::load(Some(topology)).unwrap();
                 config.connection.username = whoami::username();
                 config.connection.auth.keypair = Some(format!("{}/ed25519", env::var(HOME_DIR)?));
-                // TODO(zhanghao): cross platform
-                // set tx_image log_image by platform information
+                config.deployment.install_dir = env::var(HOME_DIR)?;
                 self.save_deployment_config(&config, false).await?;
                 info!(
                     "CmdExecutor Save DeploymentConfig successfully. username={}",
@@ -137,6 +134,7 @@ impl CommandExecutor {
                 cluster,
                 user: _,
                 password: _,
+                wait: _,
             }
             | CommandArgs::Monitor {
                 command: _,
@@ -185,7 +183,7 @@ impl CommandExecutor {
 
         match cmd {
             CommandArgs::Launch { topology_file: _ } | CommandArgs::Demo { product: _ } => {
-                print!("\nLaunch cluster finished, Enjoy!");
+                println!("Launch cluster finished, Enjoy!");
                 println!("Connect to server: {}", config.client_conn());
                 if let Some(moni) = &config.deployment.monitor {
                     println!(
