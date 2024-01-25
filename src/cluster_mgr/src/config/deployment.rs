@@ -90,14 +90,15 @@ impl Deployment {
         let version = self.version.as_ref().unwrap();
         match self.product() {
             Product::Monograph => {
-                let store = self.storage_service.provider().unwrap().to_string();
                 if self.tx_image.is_none() {
+                    let store = self.storage_service.provider().unwrap().to_string();
                     self.tx_image = Some(format!(
                         "{}/main_tagged_range_ubuntu2004/{}/{}/monographdb-tx-release-bin.tar.gz",
                         RESOURCE_REPO, store, version
                     ));
                 }
                 if self.log_image.is_none() && self.log_service.is_some() {
+                    let store = self.storage_service.provider().unwrap().to_string();
                     self.log_image = Some(format!(
                         "{}/main_tagged_range_ubuntu2004/{}/{}/monographdb-log-release-bin.tar.gz",
                         RESOURCE_REPO, store, version
