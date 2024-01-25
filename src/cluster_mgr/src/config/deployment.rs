@@ -1,4 +1,4 @@
-use crate::cli::download_dir;
+use crate::cli::{download_dir, upload_dir};
 use crate::config::config_base::CASSANDRA_FILE_KEY;
 use crate::config::config_base::{
     MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY, MONOGRAPH_TX_SERVICE_DIR,
@@ -6,10 +6,12 @@ use crate::config::config_base::{
 use crate::config::log_service::LogService;
 use crate::config::monitor::Monitor;
 use crate::config::storage_service_config::StorageService;
+use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
-    config_template, DownloadUrl, CONFIG_MARIADB_SECTION, CONFIG_SECTION_CLUSTER,
-    CONFIG_SECTION_LOCAL, CONFIG_SECTION_STORE, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
-    MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO,
+    config_template, load_yaml_config_template, DownloadUrl, CASSANDRA_CONF_TEMPLATE,
+    CASSANDRA_JVM_TEMPLATE, CONFIG_MARIADB_SECTION, CONFIG_SECTION_CLUSTER, CONFIG_SECTION_LOCAL,
+    CONFIG_SECTION_STORE, MONOGRAPH_CONF_DYNAMO_TEMPLATE, MONOGRAPH_CONF_TEMPLATE,
+    REDIS_CONF_TEMPLATE, RESOURCE_REPO,
 };
 use anyhow::anyhow;
 use configparser::ini::Ini;
@@ -17,8 +19,33 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_yaml::Value;
 use std::collections::HashMap;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::PathBuf;
+
+const GC_SETTING_CMS: &str = "
+-XX:+UseConcMarkSweepGC
+-XX:+CMSParallelRemarkEnabled
+-XX:SurvivorRatio=8
+-XX:MaxTenuringThreshold=1
+-XX:CMSInitiatingOccupancyFraction=75
+-XX:+UseCMSInitiatingOccupancyOnly
+-XX:CMSWaitDuration=10000
+-XX:+CMSParallelInitialMarkEnabled
+-XX:+CMSEdenChunksRecordAlways
+-XX:+CMSClassUnloadingEnabled
+";
+const GC_SETTING_G1: &str = "
+-XX:+UseG1GC
+-XX:+ParallelRefProcEnabled
+-XX:MaxTenuringThreshold=1
+-XX:G1HeapRegionSize=16m
+-XX:G1RSetUpdatingPauseTimePercent=5
+-XX:MaxGCPauseMillis=300
+-XX:InitiatingHeapOccupancyPercent=70
+";
 
 #[macro_export]
 macro_rules! download_urls {
@@ -126,7 +153,7 @@ impl Deployment {
         self.tx_image.clone().unwrap()
     }
 
-    pub fn hardware_info(&self, host: &str) -> Option<&Hardware> {
+    pub fn get_hardware(&self, host: &str) -> Option<&Hardware> {
         self.hardware.as_ref().unwrap().get(host)
     }
 
@@ -299,7 +326,7 @@ impl Deployment {
                 "monograph_local_ip",
                 Some(format!("{}:{}", host_and_file_tuple.0, port)),
             );
-            if let Some(hw) = self.hardware_info(&host_and_file_tuple.0) {
+            if let Some(hw) = self.get_hardware(&host_and_file_tuple.0) {
                 let mut ncore = (hw.cpu * 3) / 8;
                 if ncore == 0 {
                     ncore = 1;
@@ -385,7 +412,7 @@ impl Deployment {
                 "ip",
                 Some(format!("{}:{}", host_and_file_tuple.0, port)),
             );
-            if let Some(hw) = self.hardware_info(&host_and_file_tuple.0) {
+            if let Some(hw) = self.get_hardware(&host_and_file_tuple.0) {
                 let ncore = if hw.cpu >= 4 { hw.cpu / 4 } else { 1 };
                 my_ini.set(CONFIG_SECTION_LOCAL, "core_number", Some(ncore.to_string()));
             }
@@ -424,6 +451,98 @@ impl Deployment {
             db_image_download_links.extend(monitor_srv.download_links_as_amp()?);
         }
         Ok(db_image_download_links)
+    }
+
+    // key is cassandra node IP, value config files path
+    pub fn gen_cassandra_config(
+        &self,
+        install_dir: String,
+        cluster_name: String,
+    ) -> anyhow::Result<HashMap<String, Vec<PathBuf>>> {
+        if self.storage_service.cassandra.is_none() {
+            return Err(anyhow!(GenCassandraConfigErr("Dynamodb".to_string())));
+        }
+        let has_cassandra_monitor = self
+            .storage_service
+            .gen_cassandra_env(install_dir, self.monitor.as_ref())?;
+        let cass_env_sh = if has_cassandra_monitor {
+            Some(download_dir().join("cassandra-env.sh"))
+        } else {
+            None
+        };
+        let jvm_temp = fs::read_to_string(config_template(CASSANDRA_JVM_TEMPLATE)?)?;
+        let cass = self.storage_service.cassandra.as_ref().unwrap();
+        // cassandra.yaml config object
+        let mut cass_conf_map = load_yaml_config_template(CASSANDRA_CONF_TEMPLATE)?;
+        let cassandra_hosts = cass.clone().host;
+        let storage_cluster = if cass.storage_cluster.is_none() {
+            format!("{cluster_name}_cass_cluster")
+        } else {
+            cass.clone().storage_cluster.unwrap()
+        };
+
+        cass_conf_map.insert("cluster_name".to_string(), Value::String(storage_cluster));
+        let seeds = cassandra_hosts.join(",");
+        let seed_values = format!(
+            r#"
+               - class_name: org.apache.cassandra.locator.SimpleSeedProvider
+                 parameters:
+                 - seeds: {seeds}"#,
+        );
+        let seed_yaml_value: Value = serde_yaml::from_str(seed_values.as_str())?;
+        cass_conf_map.insert(String::from("seed_provider"), seed_yaml_value);
+        let cass_config_vec = cassandra_hosts
+            .iter()
+            .map(|host| {
+                fs::create_dir_all(upload_dir().join(host)).expect("create upload dir failed");
+                let host_value = Value::String(host.to_string());
+                cass_conf_map.insert(String::from("listen_address"), host_value.clone());
+                cass_conf_map.insert(
+                    String::from("rpc_address"),
+                    Value::String("0.0.0.0".to_string()),
+                );
+                cass_conf_map.insert(String::from("broadcast_rpc_address"), host_value.clone());
+                cass_conf_map.insert(String::from("broadcast_address"), host_value);
+                let config_path = upload_dir().join(host).join("cassandra.yaml");
+                let new_config_file = File::create(config_path.as_path()).unwrap();
+                let gen_config_write = serde_yaml::to_writer(new_config_file, &cass_conf_map);
+                assert!(gen_config_write.is_ok());
+                let mut config_path_vec = vec![config_path];
+                if let Some(env_sh) = &cass_env_sh {
+                    config_path_vec.push(env_sh.clone());
+                }
+
+                // Tune JVM for each cassandra node
+                // https://docs.datastax.com/en/cassandra-oss/3.0/cassandra/operations/opsTuneJVM.html
+                let mut gc_setting = GC_SETTING_CMS.to_owned();
+                if let Some(hw) = self.get_hardware(&host) {
+                    const GB: u32 = 1024; // *MiB
+                    if hw.memory >= 16 * GB {
+                        let heap = if hw.memory > 256 * GB {
+                            64 * GB
+                        } else {
+                            hw.memory / 4
+                        };
+                        let heap_set = format!("\n-Xms{}M\n-Xmx{}M\n", heap, heap);
+                        gc_setting = GC_SETTING_G1.to_owned() + &heap_set;
+                    }
+                }
+                let jvm_cnf = jvm_temp
+                    .clone()
+                    .replace("_GC_SETTINGS_PLACEHOLDER_", &gc_setting);
+                let cnf_path = upload_dir()
+                    .join(host)
+                    .join(format!("jvm11-server.options"));
+                File::create(cnf_path.as_path())
+                    .unwrap()
+                    .write_all(jvm_cnf.as_bytes())
+                    .unwrap();
+                config_path_vec.push(cnf_path);
+                (host.to_string(), config_path_vec)
+            })
+            .collect::<HashMap<String, Vec<PathBuf>>>();
+
+        Ok(cass_config_vec)
     }
 }
 

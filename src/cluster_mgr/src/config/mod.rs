@@ -3,7 +3,6 @@ use anyhow::anyhow;
 use itertools::Itertools;
 use serde_yaml::Value;
 use std::collections::HashMap;
-use std::env;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
@@ -29,7 +28,7 @@ pub const MONOGRAPH_INSTALL_TEMPLATE: &str = "monograph_install_db.template";
 pub const MONOGRAPH_INSTALL_SCRIPT: &str = "monograph_install_db.bash";
 pub const CASSANDRA_CONF_TEMPLATE: &str = "cassandra_template.yaml";
 pub const CASSANDRA_ENV_TEMPLATE: &str = "cassandra-env-template";
-pub const CASSANDRA_JVM_SERVER_CONF: &str = "jvm11-server.options";
+pub const CASSANDRA_JVM_TEMPLATE: &str = "jvm11-server.template";
 pub const PROMETHEUS_CONFIG_TEMPLATE: &str = "mono_prometheus.yaml";
 
 pub const GRAFANA_DASHBOARDS_CONFIG_TEMPLATE: &str = "grafana_dashboards.yaml";
@@ -83,38 +82,11 @@ pub enum ConfigErr {
     DownloadUrlFormatErr(String),
 }
 
-pub const HOME_DIR: &str = "CLUSTER_MGR_HOME";
 pub const CONFIG_PATH_DIR: &str = "CLUSTER_MGR_CLI_CONFIG";
 pub const CONFIG_MARIADB_SECTION: &str = "mariadb";
 pub const CONFIG_SECTION_LOCAL: &str = "local";
 pub const CONFIG_SECTION_CLUSTER: &str = "cluster";
 pub const CONFIG_SECTION_STORE: &str = "store";
-
-pub fn set_home_dir(home: &Option<PathBuf>) -> anyhow::Result<()> {
-    match home {
-        Some(ref home) => env::set_var(HOME_DIR, home),
-        None => {
-            if env::var(HOME_DIR).is_err() {
-                env::set_var(HOME_DIR, env::current_dir().unwrap())
-            }
-        }
-    };
-    // check config directory
-    let cnf_dir = home_path().join("config");
-    if !cnf_dir.exists() {
-        return Err(anyhow!("Config path not exist: {} ", cnf_dir.display()));
-    }
-    env::set_var(CONFIG_PATH_DIR, cnf_dir);
-    if let Err(create_err) = std::fs::create_dir_all(home_path().join("downloads").as_path()) {
-        let err_msg = create_err.to_string();
-        panic!("Create download path Error cause by {err_msg:?} ");
-    }
-    Ok(())
-}
-
-pub fn home_path() -> PathBuf {
-    PathBuf::from(env::var(HOME_DIR).unwrap())
-}
 
 #[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display)]
 pub enum StorageProvider {

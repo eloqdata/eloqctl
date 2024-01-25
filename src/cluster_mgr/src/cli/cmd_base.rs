@@ -1,7 +1,7 @@
 use crate::cli::task::task_base::TaskMgr;
-use crate::cli::CommandArgs;
+use crate::cli::{CommandArgs, HOME_DIR};
 use crate::config::config_base::DeploymentConfig;
-use crate::config::{CONFIG_PATH_DIR, HOME_DIR};
+use crate::config::CONFIG_PATH_DIR;
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
 use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, STATE_MGR};

@@ -1,7 +1,6 @@
 use clap::Parser;
-use cluster_mgr::cli::cmd_base::CommandExecutor;
 use cluster_mgr::cli::ClusterMgrCommandArgs;
-use cluster_mgr::config::set_home_dir;
+use cluster_mgr::cli::{cmd_base::CommandExecutor, set_home_dir};
 use std::{env, process::exit};
 use tracing::{error, Level};
 use tracing_subscriber::EnvFilter;

@@ -1,8 +1,9 @@
-use crate::config::home_path;
+use crate::config::CONFIG_PATH_DIR;
+use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 use strum_macros::AsRefStr;
 
 pub mod cmd_base;
@@ -177,8 +178,40 @@ pub enum CommandArgs {
     },
 }
 
+pub const HOME_DIR: &str = "CLUSTER_MGR_HOME";
+
+pub fn set_home_dir(home: &Option<PathBuf>) -> anyhow::Result<()> {
+    match home {
+        Some(ref home) => env::set_var(HOME_DIR, home),
+        None => {
+            if env::var(HOME_DIR).is_err() {
+                env::set_var(HOME_DIR, env::current_dir().unwrap())
+            }
+        }
+    };
+    // check config directory
+    let cnf_dir = home_path().join("config");
+    if !cnf_dir.exists() {
+        return Err(anyhow!("Config path not exist: {} ", cnf_dir.display()));
+    }
+    env::set_var(CONFIG_PATH_DIR, cnf_dir);
+    if let Err(create_err) = std::fs::create_dir(download_dir()) {
+        let err_msg = create_err.to_string();
+        panic!("Create download path Error cause by {err_msg:?} ");
+    }
+    if let Err(create_err) = std::fs::create_dir(upload_dir()) {
+        let err_msg = create_err.to_string();
+        panic!("Create upload path Error cause by {err_msg:?} ");
+    }
+    Ok(())
+}
+
+pub fn home_path() -> PathBuf {
+    PathBuf::from(env::var(HOME_DIR).unwrap())
+}
+
 pub fn download_dir() -> PathBuf {
-    home_path().join("downloads")
+    home_path().join("download")
 }
 
 pub fn download_file_path(download_files: Vec<String>) -> Vec<PathBuf> {
@@ -187,6 +220,10 @@ pub fn download_file_path(download_files: Vec<String>) -> Vec<PathBuf> {
         .iter()
         .map(|file| download_dir.join(file.as_str()))
         .collect_vec()
+}
+
+pub fn upload_dir() -> PathBuf {
+    home_path().join("upload")
 }
 
 pub fn file_process_progress(file_name: String, process_chars: &str) -> ProgressBar {

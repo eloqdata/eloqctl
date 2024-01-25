@@ -88,6 +88,7 @@ pub fn upload_tasks(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn create_temp_dir(prefix: &str, parent_dir: &str) -> anyhow::Result<PathBuf> {
     let suffix: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
