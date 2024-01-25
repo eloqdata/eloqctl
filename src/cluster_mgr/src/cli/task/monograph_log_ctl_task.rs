@@ -83,7 +83,6 @@ impl LogCtlCmd {
                     .replace("_COLUMN", "$2");
                 let log_start_cmd = format!(
                     "export LD_LIBRARY_PATH={log_home}/lib:$LD_LIBRARY_PATH;\
-                    export LD_PRELOAD={log_home}/lib/libmimalloc.so; \
                     /bin/bash {home_dir}/start_tx_log_{host}_{log_port}.bash"
                 );
                 let log_cmd = match &cmd_arg {
