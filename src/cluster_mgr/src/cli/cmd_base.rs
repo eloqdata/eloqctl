@@ -92,12 +92,11 @@ impl CommandExecutor {
             | CommandArgs::Upgrade { topology_file }
             | CommandArgs::Launch { topology_file } => {
                 let mut config = DeploymentConfig::load(Some(topology_file)).unwrap();
-                let scan_ret = config.scan_hardware().await?;
-                if let Some(hw) = config.deployment.hardware.as_mut() {
-                    hw.extend(scan_ret);
-                } else {
-                    config.deployment.hardware = Some(scan_ret);
+                let mut scan_ret = config.scan_hardware().await?;
+                if let Some(hw) = config.deployment.hardware.take() {
+                    scan_ret.extend(hw);
                 }
+                config.deployment.hardware = Some(scan_ret);
                 self.save_deployment_config(&config, cmd.as_ref().eq("upgrade"))
                     .await?;
                 info!("CmdExecutor Save DeploymentConfig successfully.");

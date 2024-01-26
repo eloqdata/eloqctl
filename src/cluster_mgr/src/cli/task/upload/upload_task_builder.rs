@@ -17,7 +17,6 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::vec;
 use walkdir::WalkDir;
 
 pub trait UploadTaskBuilder {
@@ -33,13 +32,6 @@ pub trait UploadTaskBuilder {
 
 pub(crate) const SCP_COMMAND: &str = "_scp_cmd_";
 pub(crate) const SOURCE_IP: &str = "_source_ip_";
-
-#[allow(dead_code)]
-const MONOGRAPH_TX_BASH_FILES: [&str; 3] = [
-    "my_local.cnf",
-    MONOGRAPH_INSTALL_SCRIPT,
-    CREATE_MONITOR_USER_SQL_FILE,
-];
 
 // r#"scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {copy_dir}
 // {scp_auth_key} -P {port} {source_path_str}
