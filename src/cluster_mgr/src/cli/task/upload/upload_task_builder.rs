@@ -17,6 +17,7 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::vec;
 use walkdir::WalkDir;
 
 pub trait UploadTaskBuilder {
@@ -115,36 +116,21 @@ pub(crate) fn get_source_host(host: Option<String>) -> String {
 }
 
 pub(crate) fn list_files_by_host(host: &str, product: Product) -> Vec<String> {
-    let mut ret = WalkDir::new(upload_host_dir(host))
+    let mut paths = WalkDir::new(upload_host_dir(host))
         .min_depth(1)
         .into_iter()
         .filter_map(|entry_rs| entry_rs.ok())
-        .map(|entry| entry.path().to_str().unwrap().to_string())
+        .map(|entry| entry.into_path())
         .collect_vec();
     if product == Product::Monograph {
-        ret.push(
-            upload_dir()
-                .join("my_local.cnf")
-                .to_str()
-                .unwrap()
-                .to_owned(),
-        );
-        ret.push(
-            upload_dir()
-                .join(MONOGRAPH_INSTALL_SCRIPT)
-                .to_str()
-                .unwrap()
-                .to_owned(),
-        );
-        ret.push(
-            upload_dir()
-                .join(CREATE_MONITOR_USER_SQL_FILE)
-                .to_str()
-                .unwrap()
-                .to_owned(),
-        );
+        paths.push(upload_dir().join("my_local.cnf"));
+        paths.push(upload_dir().join(MONOGRAPH_INSTALL_SCRIPT));
+        paths.push(upload_dir().join(CREATE_MONITOR_USER_SQL_FILE));
     }
-    ret
+    paths
+        .into_iter()
+        .map(|pb| pb.to_str().unwrap().to_string())
+        .collect()
 }
 
 pub(crate) fn build_task_instance(
