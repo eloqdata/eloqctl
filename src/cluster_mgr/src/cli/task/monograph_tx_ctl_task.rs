@@ -162,6 +162,7 @@ impl MySQLProbe {
     }
 
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
+        println!("Probe whether MonographDB is ready to be connected");
         let user_pwd = if self.password.eq("_NONE") {
             self.user.clone()
         } else {
@@ -227,6 +228,24 @@ impl MySQLProbe {
             };
         }
     }
+
+    pub async fn ssh_probe(
+        config: &DeploymentConfig,
+        ssh_sess: &SSHSession,
+        mut wait_secs: i32,
+    ) -> anyhow::Result<ExecutionValue> {
+        println!("Probe whether MonographDB is ready to be connected locally");
+        let mut cmd = config.client_conn();
+        cmd.push_str(" --execute 'SELECT 1'");
+        loop {
+            let ret = ssh_sess.command(&cmd, CollectOutput).await?;
+            let code = TaskArgValue::into_inner_value::<i32>(ret.get(CMD_STATUS).unwrap().clone());
+            if code != 0 {
+                maybe_continue_probe!(wait_secs);
+            }
+            return Ok(ret);
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -239,6 +258,7 @@ impl RedisProbe {
         Self { host }
     }
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
+        println!("Probe whether Redis is ready to be connected");
         let url = format!("redis://{}/", self.host);
         let client = redis::Client::open(url.clone())?;
         loop {
@@ -447,29 +467,24 @@ impl TaskExecutor for MonographTxCtlTask {
             "status" => {
                 let wait_secs =
                     TaskArgValue::into_inner_value::<i32>(task_arg.get(WAIT_SECS).unwrap().clone());
-                let db_user = TaskArgValue::into_inner_value::<String>(
-                    task_arg.get(MONO_DB_USER).unwrap().clone(),
-                );
-                let db_pwd = TaskArgValue::into_inner_value::<String>(
-                    task_arg.get(MONO_DB_PWD).unwrap().clone(),
-                );
                 match self.config.product() {
                     Product::Monograph => {
-                        let mysql_port = self.config.deployment.port.mysql_port;
+                        let db_user = TaskArgValue::into_inner_value::<String>(
+                            task_arg.get(MONO_DB_USER).unwrap().clone(),
+                        );
                         if !db_user.eq("_NONE") {
-                            println!("Probe whether MonographDB is ready to be connected");
-                            let db_detector =
-                                MySQLProbe::new(host_value, mysql_port, db_user, db_pwd);
-                            db_detector.probe(wait_secs).await
+                            let db_pwd = TaskArgValue::into_inner_value::<String>(
+                                task_arg.get(MONO_DB_PWD).unwrap().clone(),
+                            );
+                            let mysql_port = self.config.deployment.port.mysql_port;
+                            MySQLProbe::new(host_value, mysql_port, db_user, db_pwd)
+                                .probe(wait_secs)
+                                .await
                         } else {
-                            check_process_status
+                            MySQLProbe::ssh_probe(&self.config, &ssh_session, wait_secs).await
                         }
                     }
-                    Product::Redis => {
-                        println!("Probe whether Redis is ready to be connected");
-                        let db_detector = RedisProbe::new(host_value);
-                        db_detector.probe(wait_secs).await
-                    }
+                    Product::Redis => RedisProbe::new(host_value).probe(wait_secs).await,
                 }
             }
             "stop" | "force_stop" => {

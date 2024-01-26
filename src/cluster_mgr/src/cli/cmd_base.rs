@@ -190,7 +190,7 @@ impl CommandExecutor {
         match cmd {
             CommandArgs::Launch { topology_file: _ } | CommandArgs::Demo { product: _ } => {
                 println!("Launch cluster finished, Enjoy!");
-                println!("Connect to server: {}", config.client_conn());
+                println!("Connect to server: \n\t{}", config.client_conn());
                 if let Some(moni) = &config.deployment.monitor {
                     println!(
                         "Prometheus: http://{}:{}",

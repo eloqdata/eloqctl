@@ -63,7 +63,7 @@ impl TaskGroup for LaunchTaskGroup {
                 .tasks(
                     CommandArgs::Status {
                         cluster: config.deployment.cluster_name.clone(),
-                        user: Some(config.connection.username.clone()),
+                        user: None,
                         password: None,
                         wait: Some(30),
                     },
