@@ -307,7 +307,7 @@ impl MonographTxCtlTask {
         let mono_hosts = config.get_host_list(DeploymentPackage::MonographTx);
         let product = config.product();
 
-        let mut wait_secs = 0;
+        let mut wait_secs = -1;
         let mut db_user = "_NONE".to_string();
         let mut db_pwd = "_NONE".to_string();
         let mut is_force_stop = false;
@@ -330,7 +330,7 @@ impl MonographTxCtlTask {
                     db_pwd = password_val;
                 }
                 if let Some(w) = wait {
-                    wait_secs = w;
+                    wait_secs = w as i32;
                 }
             }
             _ => {}
@@ -362,10 +362,7 @@ impl MonographTxCtlTask {
                             product
                         ),
                         HashMap::from([
-                            (
-                                WAIT_SECS.to_string(),
-                                TaskArgValue::Number(wait_secs.into()),
-                            ),
+                            (WAIT_SECS.to_string(), TaskArgValue::Number(wait_secs)),
                             (MONO_DB_USER.to_string(), TaskArgValue::Str(db_user.clone())),
                             (MONO_DB_PWD.to_string(), TaskArgValue::Str(db_pwd.clone())),
                         ]),
@@ -480,11 +477,19 @@ impl TaskExecutor for MonographTxCtlTask {
                             MySQLProbe::new(host_value, mysql_port, db_user, db_pwd)
                                 .probe(wait_secs)
                                 .await
-                        } else {
+                        } else if wait_secs >= 0 {
                             MySQLProbe::ssh_probe(&self.config, &ssh_session, wait_secs).await
+                        } else {
+                            check_process_status
                         }
                     }
-                    Product::Redis => RedisProbe::new(host_value).probe(wait_secs).await,
+                    Product::Redis => {
+                        if wait_secs >= 0 {
+                            RedisProbe::new(host_value).probe(wait_secs).await
+                        } else {
+                            check_process_status
+                        }
+                    }
                 }
             }
             "stop" | "force_stop" => {
