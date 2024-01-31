@@ -13,8 +13,6 @@ plugin_load_add=ha_monograph
 thread_handling=pool-of-threads
 thread_pool_max_threads=4
 thread_pool_dedicated_listener=1
-# thread_pool_size should be 3/8 of CPU core number.
-thread_pool_size=1
 # monograph engine specific parameter.
 monograph
 monograph_cass_hosts=127.0.0.1
@@ -28,8 +26,3 @@ monograph_enable_mvcc=off
 transaction_isolation=READ-COMMITTED
 monograph_cc_protocol=OCC
 monograph_enable_collect_metrics=true
-# core_num should be 3/8 of CPU core number.
-monograph_core_num=1
-# node_memory_limit_mb is the buffer pool of monographDB,
-# should be less than 60% physical memory.
-monograph_node_memory_limit_mb=1024
