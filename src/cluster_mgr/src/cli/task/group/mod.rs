@@ -1,4 +1,5 @@
 mod bootstrap_group;
+mod check_group;
 mod custom_cmd_group;
 mod db_cluster_ctrl_group;
 mod deployment_group;
@@ -57,7 +58,8 @@ task_group_boxed! {
     {UpgradeClusterTaskGroup},
     {UpdateConfigTaskGroup},
     {LaunchTaskGroup},
-    {RemoveTaskGroup}
+    {RemoveTaskGroup},
+    {CheckTaskGroup}
 }
 
 pub static TASK_GROUP: OnceCell<HashMap<String, Box<dyn TaskGroup>>> = OnceCell::new();
@@ -80,6 +82,7 @@ pub fn init_task_group() -> &'static HashMap<String, Box<dyn TaskGroup>> {
             ("launch".to_string(), LaunchTaskGroup::boxed()),
             ("remove".to_string(), RemoveTaskGroup::boxed()),
             ("demo".to_string(), LaunchTaskGroup::boxed()),
+            ("check".to_string(), CheckTaskGroup::boxed()),
         ])
     })
 }

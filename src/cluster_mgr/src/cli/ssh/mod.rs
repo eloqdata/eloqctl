@@ -1,6 +1,6 @@
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskHost};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
-use anyhow::anyhow;
+use anyhow::bail;
 use async_trait::async_trait;
 use futures::AsyncWriteExt;
 use itertools::Itertools;
@@ -147,10 +147,25 @@ impl SSHSession {
             .command(command, SSHCommandOption::CollectOutput)
             .await?;
         if TaskArgValue::into_inner_value::<i32>(ret.get(CMD_STATUS).unwrap().clone()) != 0 {
-            return Err(anyhow!("SSH command failed"));
+            bail!("SSH command failed");
         }
         let output = TaskArgValue::into_inner_value::<String>(ret.get(CMD_OUTPUT).unwrap().clone());
-        Ok(output.trim_end().to_owned())
+        Ok(output.trim().to_owned())
+    }
+
+    pub async fn used_tcp_ports(&self) -> anyhow::Result<Vec<u16>> {
+        let used = self
+            .execute("ss -tnl | awk 'NR>1 {print $4}' | awk -F':' '{print $NF}'")
+            .await?
+            .split('\n')
+            .unique()
+            .map(|s| {
+                let port = s.parse::<u16>().expect("can't parse port number");
+                info!("socket {}:{} is already used", self.host, port);
+                port
+            })
+            .collect();
+        Ok(used)
     }
 
     pub async fn parallel(
@@ -173,10 +188,7 @@ impl SSHSession {
                 let ssh_session = Self::from_task_host(task_host, key_path)
                     .await
                     .expect("SSH failed");
-                let output = ssh_session
-                    .command(&c, SSHCommandOption::CollectOutput)
-                    .await
-                    .expect("Execute failed");
+                let output = ssh_session.execute(&c).await.expect("Execute failed");
                 ssh_session.close().await.expect("Close failed");
                 (host, output)
             });
@@ -185,14 +197,7 @@ impl SSHSession {
         futures::future::join_all(joins)
             .await
             .into_iter()
-            .filter(|e| e.is_ok())
-            .map(|e| {
-                let (host, out_map) = e.unwrap();
-                match out_map.get(CMD_OUTPUT).unwrap().clone() {
-                    TaskArgValue::Str(output) => (host, output),
-                    _ => unreachable!(),
-                }
-            })
+            .filter_map(|e| e.ok())
             .collect::<HashMap<String, String>>()
     }
 
@@ -203,7 +208,7 @@ impl SSHSession {
             .await;
         if let Err(close_err) = close_rs {
             error!("SSHSession close error cause by {}", close_err.to_string());
-            Err(anyhow!(close_err.to_string()))
+            bail!(close_err.to_string())
         } else {
             println!("SSHSession close by monograph waiter cluster_mgr");
             Ok(())

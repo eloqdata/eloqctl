@@ -65,6 +65,12 @@ pub struct Port {
     pub monograph_port: MonographPort,
 }
 
+impl Port {
+    pub fn contains(&self, p: u16) -> bool {
+        p == self.mysql_port || (p >= self.monograph_port.start && p <= self.monograph_port.end)
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct MonographPort {
     pub start: u16,

@@ -154,6 +154,7 @@ impl CommandExecutor {
                 Ok(config)
             }
             CommandArgs::RunDeps { topology_file }
+            | CommandArgs::Check { topology_file }
             | CommandArgs::Exec {
                 command: _,
                 topology_file,

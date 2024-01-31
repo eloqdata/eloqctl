@@ -1,10 +1,11 @@
 use crate::config::ConfigErr::DownloadUrlFormatErr;
 use anyhow::anyhow;
 use itertools::Itertools;
+use regex::Regex;
 use serde_yaml::Value;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufReader, Read};
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use strum_macros::{AsRefStr, Display};
 use thiserror::Error;
@@ -176,8 +177,7 @@ pub fn config_path_string(path: Option<String>) -> anyhow::Result<String> {
 }
 
 pub fn load_remote_env(path: Option<String>) -> anyhow::Result<HashMap<String, String>> {
-    let path_string = config_path_string(path)?;
-    let file = File::open(PathBuf::from(path_string).join("remote_env"))?;
+    let file = File::open(PathBuf::from(config_path_string(path)?).join("remote_env"))?;
     let mut reader = BufReader::new(file);
     let mut file_content_buf = String::new();
     reader.read_to_string(&mut file_content_buf)?;
@@ -215,4 +215,41 @@ pub fn load_yaml_config_template(template_name: &str) -> anyhow::Result<HashMap<
     let cass_opened_file = File::open(cass_template_path_buf.as_path())?;
     let yaml_map = serde_yaml::from_reader::<File, HashMap<String, Value>>(cass_opened_file)?;
     Ok(yaml_map)
+}
+
+pub fn get_cassandra_port() -> anyhow::Result<u16> {
+    let port = load_yaml_config_template(CASSANDRA_CONF_TEMPLATE)?
+        .get("native_transport_port")
+        .expect("native_transport_port is not configured")
+        .as_u64()
+        .expect("native_transport_port is invalid");
+    Ok(port as u16)
+}
+
+pub fn cassandra_used_ports() -> Vec<(String, u16)> {
+    let cass_cnf =
+        load_yaml_config_template(CASSANDRA_CONF_TEMPLATE).expect("cassandra config invalid");
+    let mut used = vec![];
+    for name in vec!["native_transport_port", "storage_port", "ssl_storage_port"] {
+        let port = cass_cnf
+            .get(name)
+            .expect("port is not configured")
+            .as_u64()
+            .expect("port is invalid") as u16;
+        used.push((name.to_owned(), port));
+    }
+
+    let re = Regex::new(r#"^(?<name>\w+)_PORT="(?<port>\d{1,5})""#).expect("invalid regex pattern");
+    let cass_env_p = config_template(CASSANDRA_ENV_TEMPLATE).expect("cassandra env config missing");
+    let cass_env = fs::File::open(cass_env_p).unwrap();
+    for line in BufReader::new(cass_env).lines().map(|l| l.unwrap()) {
+        if let Some(caps) = re.captures(&line) {
+            if let Ok(p) = caps["port"].parse::<u16>() {
+                used.push((caps["name"].to_owned(), p));
+            } else {
+                error!("cassandra port of {} is {}", &caps["name"], &caps["port"]);
+            }
+        }
+    }
+    used
 }

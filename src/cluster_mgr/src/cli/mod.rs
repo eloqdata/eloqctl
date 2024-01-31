@@ -115,6 +115,14 @@ pub enum CommandArgs {
         topology_file: String,
     },
     #[command(
+        long_about = "Check whether cluster can be deployed\n./cluster_mgr check --topology-file ${PWD}/config/deployment.yaml"
+    )]
+    #[strum(serialize = "check")]
+    Check {
+        #[arg(long, value_name = "CLUSTER TOPOLOGY FILE")]
+        topology_file: String,
+    },
+    #[command(
         long_about = "Start or stop monitoring components,including prometheus, grafana,node_exporter,mysql_exporter.\n./cluster_mgr monitor --cluster $CLUSTER_NAME --command start | stop
     "
     )]

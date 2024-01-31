@@ -589,8 +589,8 @@ impl DeploymentConfig {
             (
                 host,
                 Hardware {
-                    cpu: hw[0].trim().parse().unwrap(),
-                    memory: hw[1].trim().parse().unwrap(),
+                    cpu: hw[0].parse().unwrap(),
+                    memory: hw[1].parse().unwrap(),
                 },
             )
         })
