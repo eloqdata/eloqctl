@@ -60,41 +60,36 @@ impl TaskGroup for InstallDBTaskGroup {
             }
             _ => unreachable!(),
         };
-        if config.product() == Product::Redis {
-            return Ok(TaskExecutionContext {
-                task_group: cmd_args.as_ref().to_string(),
-                barrier: Some(barrier),
-                executable,
-            });
-        }
-        // Bootstrap
         match storage_provider {
             StorageProvider::Cassandra => {
                 let cassandra_start = CassandraCtlTask::from_config(install_cmd, &config);
                 barrier.push(cassandra_start.len());
                 executable.extend(cassandra_start);
             }
-            _ => unreachable!(),
+            StorageProvider::DynamoDB => {}
         }
+        // Bootstrap
         let monograph_install = MonographInstall::from_config(&config, install_db_host);
         barrier.push(monograph_install.len());
         executable.extend(monograph_install);
 
-        let upload_data_dir_task = upload_tasks(UploadTaskBuilderType::DataDir, &config);
-        if !upload_data_dir_task.is_empty() {
-            barrier.push(upload_data_dir_task.len());
-            executable.extend(upload_data_dir_task);
+        if config.product() == Product::Monograph {
+            let upload_data_dir_task = upload_tasks(UploadTaskBuilderType::DataDir, &config);
+            if !upload_data_dir_task.is_empty() {
+                barrier.push(upload_data_dir_task.len());
+                executable.extend(upload_data_dir_task);
+            }
+            // rm -rf cc_ng/ tx_log/
+            let remote_install_dir = config.install_dir();
+            let rm_log_data_cmd = format!(
+                "rm -rf {remote_install_dir}/datafarm/cc_ng {remote_install_dir}/datafarm/tx_log",
+            );
+            let rm_log_data_task_instance =
+                ExecCustomCommand::from_config(&cmd_args, "rm_log", rm_log_data_cmd, &config);
+            barrier.push(rm_log_data_task_instance.len());
+            executable.extend(rm_log_data_task_instance);
         }
-        // rm -rf cc_ng/ tx_log/
-        let remote_install_dir = config.install_dir();
-        let rm_log_data_cmd = format!(
-            "rm -rf {remote_install_dir}/datafarm/cc_ng {remote_install_dir}/datafarm/tx_log",
-        );
 
-        let rm_log_data_task_instance =
-            ExecCustomCommand::from_config(&cmd_args, "rm_log", rm_log_data_cmd, &config);
-        barrier.push(rm_log_data_task_instance.len());
-        executable.extend(rm_log_data_task_instance);
         Ok(TaskExecutionContext {
             task_group: cmd_args.as_ref().to_string(),
             barrier: Some(barrier),

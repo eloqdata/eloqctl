@@ -1,7 +1,7 @@
 use clap::Parser;
 use cluster_mgr::{
-    cli::cmd_base::NOT_PRINT_TASK_RESULT,
-    config::{set_home_dir, CONFIG_PATH_DIR},
+    cli::{cmd_base::NOT_PRINT_TASK_RESULT, set_home_dir},
+    config::CONFIG_PATH_DIR,
 };
 use rest_api::server::CliMgrHttpServer;
 use rest_api::ServerCommandArgs;

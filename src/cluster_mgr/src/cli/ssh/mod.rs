@@ -1,6 +1,6 @@
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskHost};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
-use anyhow::anyhow;
+use anyhow::bail;
 use async_trait::async_trait;
 use futures::AsyncWriteExt;
 use itertools::Itertools;
@@ -11,8 +11,9 @@ use std::net::ToSocketAddrs;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use std::vec;
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 #[derive(Clone)]
 pub struct SSHClient {}
@@ -136,10 +137,68 @@ impl SSHSession {
         ]);
         if status_code != 0 {
             let conn_info = (self.host.clone(), self.port);
-            error!("SSHSession Failed execute command. ssh_info={conn_info:?}, {cmd_res:#?}] ");
+            warn!("SSHSession Failed execute command. ssh_info={conn_info:?}, {cmd_res:#?}] ");
         }
         channel.close().await?;
         Ok(cmd_res)
+    }
+
+    pub async fn execute(&self, command: &str) -> anyhow::Result<String> {
+        let ret = self
+            .command(command, SSHCommandOption::CollectOutput)
+            .await?;
+        if TaskArgValue::into_inner_value::<i32>(ret.get(CMD_STATUS).unwrap().clone()) != 0 {
+            bail!("SSH command failed");
+        }
+        let output = TaskArgValue::into_inner_value::<String>(ret.get(CMD_OUTPUT).unwrap().clone());
+        Ok(output.trim().to_owned())
+    }
+
+    pub async fn used_tcp_ports(&self) -> anyhow::Result<Vec<u16>> {
+        let used = self
+            .execute("ss -tnl | awk 'NR>1 {print $4}' | awk -F':' '{print $NF}'")
+            .await?
+            .split('\n')
+            .unique()
+            .map(|s| {
+                let port = s.parse::<u16>().expect("can't parse port number");
+                info!("socket {}:{} is already used", self.host, port);
+                port
+            })
+            .collect();
+        Ok(used)
+    }
+
+    pub async fn parallel(
+        key: String,
+        user: &str,
+        port: usize,
+        hosts: Vec<String>,
+        content: &str,
+    ) -> anyhow::Result<Vec<(String, String)>> {
+        let mut joins = vec![];
+        hosts.into_iter().for_each(|host| {
+            let task_host = TaskHost::Remote {
+                user: user.to_owned(),
+                port,
+                hosts: host.clone(),
+            };
+            let key_path = key.clone();
+            let c = content.to_owned();
+            let join = tokio::task::spawn(async move {
+                let sess = Self::from_task_host(task_host, key_path).await?;
+                let output = sess.execute(&c).await?;
+                sess.close().await?;
+                anyhow::Ok((host, output))
+            });
+            joins.push(join);
+        });
+        let mut all_out = vec![];
+        for join_res in futures::future::join_all(joins).await {
+            let out = join_res??;
+            all_out.push(out);
+        }
+        Ok(all_out)
     }
 
     pub async fn close(&self) -> anyhow::Result<()> {
@@ -149,7 +208,7 @@ impl SSHSession {
             .await;
         if let Err(close_err) = close_rs {
             error!("SSHSession close error cause by {}", close_err.to_string());
-            Err(anyhow!(close_err.to_string()))
+            bail!(close_err.to_string())
         } else {
             println!("SSHSession close by monograph waiter cluster_mgr");
             Ok(())

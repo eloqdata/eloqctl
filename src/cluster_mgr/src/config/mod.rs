@@ -1,11 +1,11 @@
 use crate::config::ConfigErr::DownloadUrlFormatErr;
 use anyhow::anyhow;
 use itertools::Itertools;
+use regex::Regex;
 use serde_yaml::Value;
 use std::collections::HashMap;
-use std::env;
-use std::fs::File;
-use std::io::{BufReader, Read};
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use strum_macros::{AsRefStr, Display};
 use thiserror::Error;
@@ -29,7 +29,9 @@ pub const MONOGRAPH_INSTALL_TEMPLATE: &str = "monograph_install_db.template";
 pub const MONOGRAPH_INSTALL_SCRIPT: &str = "monograph_install_db.bash";
 pub const CASSANDRA_CONF_TEMPLATE: &str = "cassandra_template.yaml";
 pub const CASSANDRA_ENV_TEMPLATE: &str = "cassandra-env-template";
-pub const CASSANDRA_JVM_SERVER_CONF: &str = "jvm11-server.options";
+pub const CASSANDRA_JVM_OPTION: &str = "jvm11-server.options";
+pub const CASSANDRA_JVM_TEMPLATE: &str = "jvm11-server.template";
+pub const JVM_SETTING_HOLDER: &str = "_GC_SETTINGS_PLACEHOLDER_";
 pub const PROMETHEUS_CONFIG_TEMPLATE: &str = "mono_prometheus.yaml";
 
 pub const GRAFANA_DASHBOARDS_CONFIG_TEMPLATE: &str = "grafana_dashboards.yaml";
@@ -66,7 +68,7 @@ macro_rules! gen_db_script {
 macro_rules! gen_db_misc_files {
     ($self:ident,$build_func:ident, $script_template:expr) => {{
         let script = $self.$build_func()?;
-        let script_location = download_dir().join($script_template);
+        let script_location = upload_dir().join($script_template);
         std::fs::write(script_location.clone(), script).unwrap();
         Ok(script_location)
     }};
@@ -83,38 +85,11 @@ pub enum ConfigErr {
     DownloadUrlFormatErr(String),
 }
 
-pub const HOME_DIR: &str = "CLUSTER_MGR_HOME";
 pub const CONFIG_PATH_DIR: &str = "CLUSTER_MGR_CLI_CONFIG";
 pub const CONFIG_MARIADB_SECTION: &str = "mariadb";
 pub const CONFIG_SECTION_LOCAL: &str = "local";
 pub const CONFIG_SECTION_CLUSTER: &str = "cluster";
 pub const CONFIG_SECTION_STORE: &str = "store";
-
-pub fn set_home_dir(home: &Option<PathBuf>) -> anyhow::Result<()> {
-    match home {
-        Some(ref home) => env::set_var(HOME_DIR, home),
-        None => {
-            if env::var(HOME_DIR).is_err() {
-                env::set_var(HOME_DIR, env::current_dir().unwrap())
-            }
-        }
-    };
-    // check config directory
-    let cnf_dir = home_path().join("config");
-    if !cnf_dir.exists() {
-        return Err(anyhow!("Config path not exist: {} ", cnf_dir.display()));
-    }
-    env::set_var(CONFIG_PATH_DIR, cnf_dir);
-    if let Err(create_err) = std::fs::create_dir_all(home_path().join("downloads").as_path()) {
-        let err_msg = create_err.to_string();
-        panic!("Create download path Error cause by {err_msg:?} ");
-    }
-    Ok(())
-}
-
-pub fn home_path() -> PathBuf {
-    PathBuf::from(env::var(HOME_DIR).unwrap())
-}
 
 #[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display)]
 pub enum StorageProvider {
@@ -202,8 +177,7 @@ pub fn config_path_string(path: Option<String>) -> anyhow::Result<String> {
 }
 
 pub fn load_remote_env(path: Option<String>) -> anyhow::Result<HashMap<String, String>> {
-    let path_string = config_path_string(path)?;
-    let file = File::open(PathBuf::from(path_string).join("remote_env"))?;
+    let file = File::open(PathBuf::from(config_path_string(path)?).join("remote_env"))?;
     let mut reader = BufReader::new(file);
     let mut file_content_buf = String::new();
     reader.read_to_string(&mut file_content_buf)?;
@@ -241,4 +215,41 @@ pub fn load_yaml_config_template(template_name: &str) -> anyhow::Result<HashMap<
     let cass_opened_file = File::open(cass_template_path_buf.as_path())?;
     let yaml_map = serde_yaml::from_reader::<File, HashMap<String, Value>>(cass_opened_file)?;
     Ok(yaml_map)
+}
+
+pub fn get_cassandra_port() -> anyhow::Result<u16> {
+    let port = load_yaml_config_template(CASSANDRA_CONF_TEMPLATE)?
+        .get("native_transport_port")
+        .expect("native_transport_port is not configured")
+        .as_u64()
+        .expect("native_transport_port is invalid");
+    Ok(port as u16)
+}
+
+pub fn cassandra_used_ports() -> Vec<(String, u16)> {
+    let cass_cnf =
+        load_yaml_config_template(CASSANDRA_CONF_TEMPLATE).expect("cassandra config invalid");
+    let mut used = vec![];
+    for name in ["native_transport_port", "storage_port", "ssl_storage_port"] {
+        let port = cass_cnf
+            .get(name)
+            .expect("port is not configured")
+            .as_u64()
+            .expect("port is invalid") as u16;
+        used.push((name.to_owned(), port));
+    }
+
+    let re = Regex::new(r#"^(?<name>\w+)_PORT="(?<port>\d{1,5})""#).expect("invalid regex pattern");
+    let cass_env_p = config_template(CASSANDRA_ENV_TEMPLATE).expect("cassandra env config missing");
+    let cass_env = fs::File::open(cass_env_p).unwrap();
+    for line in BufReader::new(cass_env).lines().map(|l| l.unwrap()) {
+        if let Some(caps) = re.captures(&line) {
+            if let Ok(p) = caps["port"].parse::<u16>() {
+                used.push((caps["name"].to_owned(), p));
+            } else {
+                error!("cassandra port of {} is {}", &caps["name"], &caps["port"]);
+            }
+        }
+    }
+    used
 }

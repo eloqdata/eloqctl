@@ -1,4 +1,4 @@
-use crate::cli::download_dir;
+use crate::cli::{upload_dir, upload_host_dir};
 use crate::config::config_base::{
     CASSANDRA_COLLECTOR_AGENT_FILE_KEY, GRAFANA_FILE_KEY, MONOGRAPH_TX_SERVICE_DIR,
     MYSQL_EXPORTER_FILE_KEY, NODE_EXPORTER_FILE_KEY, PROMETHEUS_FILE_KEY,
@@ -127,7 +127,7 @@ impl Monitor {
         let create_monitor_user = config_template(CREATE_MONITOR_USER_SQL_FILE)?;
         let sql_file_template = fs::read_to_string(create_monitor_user)?;
         let create_sql_script = sql_file_template.replace("_MONITOR_", MONO_MONITOR_USER);
-        let script_path = download_dir().join(CREATE_MONITOR_USER_SQL_FILE);
+        let script_path = upload_dir().join(CREATE_MONITOR_USER_SQL_FILE);
         fs::write(script_path.clone(), create_sql_script)
             .expect("unable write create_monitor_user.sql");
         Ok(script_path)
@@ -140,7 +140,7 @@ impl Monitor {
         let mut providers = dashboard.get("providers").unwrap().clone();
         providers[0]["options"]["path"] = Value::String(path);
         dashboard.insert("providers".to_string(), providers);
-        let dashboard_path = download_dir().join(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
+        let dashboard_path = upload_dir().join(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
         let dashboard_rs = File::create(dashboard_path.as_path())?;
         serde_yaml::to_writer(dashboard_rs, &dashboard)?;
         Ok(dashboard_path)
@@ -156,7 +156,7 @@ impl Monitor {
             "http_port".to_string(),
             grafana_http_port.to_string(),
         );
-        let grafana_default_ini = download_dir().join(GRAFANA_CONFIG_FILE);
+        let grafana_default_ini = upload_dir().join(GRAFANA_CONFIG_FILE);
         grafana_ini.write_to_file(grafana_default_ini.as_path())?;
         Ok(grafana_default_ini)
     }
@@ -176,7 +176,7 @@ impl Monitor {
         mysql_exporter_conf.set("client", "host", Some(host.clone()));
         mysql_exporter_conf.set("client", "port", Some(mysql_port.to_string()));
 
-        let final_exporter_path = download_dir().join(format!("mysql_exporter_{host}.cnf"));
+        let final_exporter_path = upload_host_dir(&host).join(format!("mysql_exporter_{host}.cnf"));
         mysql_exporter_conf.write(final_exporter_path.as_path())?;
         Ok(final_exporter_path)
     }
@@ -307,7 +307,7 @@ impl Monitor {
             "scrape_configs".to_string(),
             Value::Sequence(scrape_configs),
         );
-        let prometheus_config_path = download_dir().join(PROMETHEUS_CONFIG_FILE);
+        let prometheus_config_path = upload_dir().join(PROMETHEUS_CONFIG_FILE);
         let prometheus_config_file = File::create(prometheus_config_path.as_path()).unwrap();
         serde_yaml::to_writer(prometheus_config_file, &prometheus_config_map)?;
         Ok(prometheus_config_path)
@@ -329,7 +329,7 @@ impl Monitor {
                     "targets": [cassandra_target],"labels": {}
                 }
             ]);
-            let mcac_json_path = download_dir().join(CASS_MCAC_CONF_FILE);
+            let mcac_json_path = upload_dir().join(CASS_MCAC_CONF_FILE);
             let mcac_json_file = File::create(mcac_json_path.as_path()).unwrap();
             serde_json::to_writer(mcac_json_file, &mcac_json)?;
             Ok(Some(mcac_json_path))
@@ -353,7 +353,7 @@ impl Monitor {
         );
         let prometheus_datasource: Value =
             serde_yaml::from_str(datasource_config_yaml.as_str()).unwrap();
-        let prometheus_datasource_path = download_dir().join(GRAFANA_PROMETHEUS_DS_FILE);
+        let prometheus_datasource_path = upload_dir().join(GRAFANA_PROMETHEUS_DS_FILE);
         let prometheus_datasource_file =
             File::create(prometheus_datasource_path.as_path()).unwrap();
         serde_yaml::to_writer(prometheus_datasource_file, &prometheus_datasource)?;

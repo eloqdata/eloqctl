@@ -40,30 +40,30 @@ pub enum TxCtlCmd {
 get_ctl_cmd_string!(TxCtlCmd, Start, Stop, ForceStop, Status);
 
 macro_rules! mono_start_cmd {
-    ($remote_install_home:expr, $host:expr, $product:expr) => {
+    ($remote_install_home:expr, $product:expr) => {
         match $product {
             Product::Monograph => format!(
                 r#"mkdir -p {}/{}/logs && cd {}/{}/install && \
     export LD_LIBRARY_PATH={}/{}/install/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
-    {}/{}/install/bin/mysqld --defaults-file={}/my_{}.cnf > {}/{}/logs/mysqld_start_{}.log 2>&1 &"#,
+    {}/{}/install/bin/mysqld --defaults-file={}/my.cnf > {}/{}/logs/mysqld_start_{}.log 2>&1 &"#,
                 $remote_install_home, MONOGRAPH_TX_SERVICE_DIR,
                 $remote_install_home, MONOGRAPH_TX_SERVICE_DIR,
                 $remote_install_home, MONOGRAPH_TX_SERVICE_DIR,
                 $remote_install_home, MONOGRAPH_TX_SERVICE_DIR,
-                $remote_install_home, $host,
+                $remote_install_home,
                 $remote_install_home, MONOGRAPH_TX_SERVICE_DIR, process::id()
             ),
             Product::Redis => format!(
                 r#"mkdir -p {}/{}/logs && cd {}/{} && \
     export LD_LIBRARY_PATH={}/{}/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
-    {}/{}/redis_server --config={}/redis_{}.ini > {}/{}/logs/redis_{}.log 2>&1 &"#,
+    {}/{}/redis_server --config={}/redis.ini > {}/{}/logs/redis_{}.log 2>&1 &"#,
                 $remote_install_home, REDIS_TX_SERVICE_DIR,
                 $remote_install_home, REDIS_TX_SERVICE_DIR,
                 $remote_install_home, REDIS_TX_SERVICE_DIR,
                 $remote_install_home, REDIS_TX_SERVICE_DIR,
-                $remote_install_home, $host,
+                $remote_install_home,
                 $remote_install_home, REDIS_TX_SERVICE_DIR, process::id()
             ),
         }
@@ -71,7 +71,7 @@ macro_rules! mono_start_cmd {
 }
 
 macro_rules! monograph_cmd {
-    ($ctl_cmd:ty,$remote_install_home:expr, $user:expr, $host:expr, $product:expr) => {{
+    ($ctl_cmd:ty,$remote_install_home:expr, $user:expr, $product:expr) => {{
         let ctl_cmd = stringify!($ctl_cmd);
         let pid_cmd = match $product {
             Product::Monograph => format!(
@@ -85,9 +85,7 @@ macro_rules! monograph_cmd {
         };
         let output_pid = r#"awk '{print $2}'"#;
         match ctl_cmd {
-            "TxCtlCmd::Start" => {
-                TxCtlCmd::Start(mono_start_cmd!($remote_install_home, $host, $product))
-            }
+            "TxCtlCmd::Start" => TxCtlCmd::Start(mono_start_cmd!($remote_install_home, $product)),
             "TxCtlCmd::ForceStop" => {
                 TxCtlCmd::ForceStop(format!("{} {} | xargs kill -9", pid_cmd, output_pid))
             }
@@ -164,6 +162,7 @@ impl MySQLProbe {
     }
 
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
+        println!("Probe whether MonographDB is ready to be connected");
         let user_pwd = if self.password.eq("_NONE") {
             self.user.clone()
         } else {
@@ -229,6 +228,24 @@ impl MySQLProbe {
             };
         }
     }
+
+    pub async fn ssh_probe(
+        config: &DeploymentConfig,
+        ssh_sess: &SSHSession,
+        mut wait_secs: i32,
+    ) -> anyhow::Result<ExecutionValue> {
+        println!("Probe whether MonographDB is ready to be connected locally");
+        let mut cmd = config.client_conn();
+        cmd.push_str(" --execute 'SELECT 1'");
+        loop {
+            let ret = ssh_sess.command(&cmd, CollectOutput).await?;
+            let code = TaskArgValue::into_inner_value::<i32>(ret.get(CMD_STATUS).unwrap().clone());
+            if code != 0 {
+                maybe_continue_probe!(wait_secs);
+            }
+            return Ok(ret);
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -241,6 +258,7 @@ impl RedisProbe {
         Self { host }
     }
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
+        println!("Probe whether Redis is ready to be connected");
         let url = format!("redis://{}/", self.host);
         let client = redis::Client::open(url.clone())?;
         loop {
@@ -289,7 +307,7 @@ impl MonographTxCtlTask {
         let mono_hosts = config.get_host_list(DeploymentPackage::MonographTx);
         let product = config.product();
 
-        let mut wait_secs = 0;
+        let mut wait_secs = -1;
         let mut db_user = "_NONE".to_string();
         let mut db_pwd = "_NONE".to_string();
         let mut is_force_stop = false;
@@ -312,7 +330,7 @@ impl MonographTxCtlTask {
                     db_pwd = password_val;
                 }
                 if let Some(w) = wait {
-                    wait_secs = w;
+                    wait_secs = w as i32;
                 }
             }
             _ => {}
@@ -332,7 +350,6 @@ impl MonographTxCtlTask {
                             TxCtlCmd::Start,
                             remote_install_dir,
                             conn_user.clone(),
-                            host.to_string(),
                             product
                         ),
                         HashMap::default(),
@@ -342,14 +359,10 @@ impl MonographTxCtlTask {
                             TxCtlCmd::Status,
                             remote_install_dir,
                             conn_user.clone(),
-                            host.to_string(),
                             product
                         ),
                         HashMap::from([
-                            (
-                                WAIT_SECS.to_string(),
-                                TaskArgValue::Number(wait_secs.into()),
-                            ),
+                            (WAIT_SECS.to_string(), TaskArgValue::Number(wait_secs)),
                             (MONO_DB_USER.to_string(), TaskArgValue::Str(db_user.clone())),
                             (MONO_DB_PWD.to_string(), TaskArgValue::Str(db_pwd.clone())),
                         ]),
@@ -361,7 +374,6 @@ impl MonographTxCtlTask {
                                     TxCtlCmd::ForceStop,
                                     remote_install_dir,
                                     conn_user.clone(),
-                                    host.to_string(),
                                     product
                                 ),
                                 HashMap::default(),
@@ -372,7 +384,6 @@ impl MonographTxCtlTask {
                                     TxCtlCmd::Stop,
                                     remote_install_dir,
                                     conn_user.clone(),
-                                    host.to_string(),
                                     product
                                 ),
                                 HashMap::default(),
@@ -413,14 +424,12 @@ impl MonographTxCtlTask {
         &self,
         ssh_conn: SSHSession,
         user: &str,
-        host: &str,
     ) -> anyhow::Result<ExecutionValue> {
         let remote_install_dir = self.config.install_dir();
         let check_status = monograph_cmd!(
             TxCtlCmd::Status,
             remote_install_dir,
             user.to_string(),
-            host.to_string(),
             self.config.product()
         );
         let cmd_val = check_status.cmd_value();
@@ -447,44 +456,39 @@ impl TaskExecutor for MonographTxCtlTask {
         let remote_install_dir = self.config.install_dir();
         let (host_value, user) = ssh_session.ssh_conn_info();
         let product = self.config.product();
-        let check_status_cmd = monograph_cmd!(
-            TxCtlCmd::Status,
-            remote_install_dir,
-            user,
-            host_value.clone(),
-            product
-        )
-        .cmd_value();
-        let check_process_status = self
-            .monograph_pid(ssh_session.clone(), user.as_str(), host_value.as_str())
-            .await;
+        let check_status_cmd =
+            monograph_cmd!(TxCtlCmd::Status, remote_install_dir, user, product).cmd_value();
+        let check_process_status = self.monograph_pid(ssh_session.clone(), user.as_str()).await;
         let ctl_cmd_ref = self.ctl_cmd.as_ref();
         let mono_ctl_rs = match ctl_cmd_ref {
             "status" => {
                 let wait_secs =
                     TaskArgValue::into_inner_value::<i32>(task_arg.get(WAIT_SECS).unwrap().clone());
-                let db_user = TaskArgValue::into_inner_value::<String>(
-                    task_arg.get(MONO_DB_USER).unwrap().clone(),
-                );
-                let db_pwd = TaskArgValue::into_inner_value::<String>(
-                    task_arg.get(MONO_DB_PWD).unwrap().clone(),
-                );
                 match self.config.product() {
                     Product::Monograph => {
-                        let mysql_port = self.config.deployment.port.mysql_port;
+                        let db_user = TaskArgValue::into_inner_value::<String>(
+                            task_arg.get(MONO_DB_USER).unwrap().clone(),
+                        );
                         if !db_user.eq("_NONE") {
-                            println!("Probe whether MonographDB is ready to be connected");
-                            let db_detector =
-                                MySQLProbe::new(host_value, mysql_port, db_user, db_pwd);
-                            db_detector.probe(wait_secs).await
+                            let db_pwd = TaskArgValue::into_inner_value::<String>(
+                                task_arg.get(MONO_DB_PWD).unwrap().clone(),
+                            );
+                            let mysql_port = self.config.deployment.port.mysql_port;
+                            MySQLProbe::new(host_value, mysql_port, db_user, db_pwd)
+                                .probe(wait_secs)
+                                .await
+                        } else if wait_secs >= 0 {
+                            MySQLProbe::ssh_probe(&self.config, &ssh_session, wait_secs).await
                         } else {
                             check_process_status
                         }
                     }
                     Product::Redis => {
-                        println!("Probe whether Redis is ready to be connected");
-                        let db_detector = RedisProbe::new(host_value);
-                        db_detector.probe(wait_secs).await
+                        if wait_secs >= 0 {
+                            RedisProbe::new(host_value).probe(wait_secs).await
+                        } else {
+                            check_process_status
+                        }
                     }
                 }
             }

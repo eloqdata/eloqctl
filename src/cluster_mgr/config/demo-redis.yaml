@@ -49,3 +49,7 @@ deployment:
     cassandra_collector:
       mcac_agent: "https://github.com/datastax/metric-collector-for-apache-cassandra/releases/download/v0.3.4/datastax-mcac-agent-0.3.4-4.1-beta1.tar.gz"
       mcac_port: 9103
+  hardware:
+    127.0.0.1:
+      cpu: 2
+      memory: 2048

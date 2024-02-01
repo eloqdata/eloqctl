@@ -94,6 +94,19 @@ impl LogService {
             .collect_vec()
     }
 
+    pub fn host_used_ports(&self, host: &str) -> Vec<u16> {
+        self.nodes
+            .iter()
+            .filter_map(|node| {
+                if node.host.eq(host) {
+                    Some(node.port)
+                } else {
+                    None
+                }
+            })
+            .collect_vec()
+    }
+
     pub fn readiness_opts(&self) -> LogReadiness {
         if let Some(readiness_ref) = self.readiness.as_ref() {
             readiness_ref.clone()

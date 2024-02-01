@@ -1,8 +1,9 @@
-use crate::config::home_path;
+use crate::config::CONFIG_PATH_DIR;
+use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use std::path::PathBuf;
+use std::{env, fs::create_dir_all, path::PathBuf};
 use strum_macros::AsRefStr;
 
 pub mod cmd_base;
@@ -114,6 +115,14 @@ pub enum CommandArgs {
         topology_file: String,
     },
     #[command(
+        long_about = "Check whether cluster can be deployed\n./cluster_mgr check --topology-file ${PWD}/config/deployment.yaml"
+    )]
+    #[strum(serialize = "check")]
+    Check {
+        #[arg(long, value_name = "CLUSTER TOPOLOGY FILE")]
+        topology_file: String,
+    },
+    #[command(
         long_about = "Start or stop monitoring components,including prometheus, grafana,node_exporter,mysql_exporter.\n./cluster_mgr monitor --cluster $CLUSTER_NAME --command start | stop
     "
     )]
@@ -146,7 +155,7 @@ pub enum CommandArgs {
     },
     #[command(
         long_about = "Update the configuration file and restart the tx service (the default value of restart is true). \
-        Note: Please edit conf/my_template.cnf first\n ./cluster_mgr update-conf --cluster $CLUSTER_NAME --restart true | false"
+        Note: Please edit config/my_template.cnf first\n ./cluster_mgr update-conf --cluster $CLUSTER_NAME --restart true | false"
     )]
     #[strum(serialize = "update-conf")]
     UpdateConf {
@@ -177,8 +186,38 @@ pub enum CommandArgs {
     },
 }
 
+pub const HOME_DIR: &str = "CLUSTER_MGR_HOME";
+
+pub fn set_home_dir(home: &Option<PathBuf>) -> anyhow::Result<()> {
+    match home {
+        Some(ref home) => env::set_var(HOME_DIR, home),
+        None => {
+            if env::var(HOME_DIR).is_err() {
+                env::set_var(HOME_DIR, env::current_dir().unwrap())
+            }
+        }
+    };
+    // check config directory
+    let cnf_dir = home_path().join("config");
+    if !cnf_dir.exists() {
+        return Err(anyhow!("Config path not exist: {} ", cnf_dir.display()));
+    }
+    env::set_var(CONFIG_PATH_DIR, cnf_dir);
+    if !download_dir().exists() {
+        std::fs::create_dir(download_dir())?;
+    }
+    if !upload_dir().exists() {
+        std::fs::create_dir(upload_dir())?;
+    }
+    Ok(())
+}
+
+pub fn home_path() -> PathBuf {
+    PathBuf::from(env::var(HOME_DIR).unwrap())
+}
+
 pub fn download_dir() -> PathBuf {
-    home_path().join("downloads")
+    home_path().join("download")
 }
 
 pub fn download_file_path(download_files: Vec<String>) -> Vec<PathBuf> {
@@ -187,6 +226,16 @@ pub fn download_file_path(download_files: Vec<String>) -> Vec<PathBuf> {
         .iter()
         .map(|file| download_dir.join(file.as_str()))
         .collect_vec()
+}
+
+pub fn upload_dir() -> PathBuf {
+    home_path().join("upload")
+}
+
+pub fn upload_host_dir(host: &str) -> PathBuf {
+    let dir = upload_dir().join(host);
+    create_dir_all(dir.as_path()).expect("create upload directory for host");
+    dir
 }
 
 pub fn file_process_progress(file_name: String, process_chars: &str) -> ProgressBar {

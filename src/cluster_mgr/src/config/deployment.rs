@@ -1,4 +1,4 @@
-use crate::cli::download_dir;
+use crate::cli::{upload_dir, upload_host_dir};
 use crate::config::config_base::CASSANDRA_FILE_KEY;
 use crate::config::config_base::{
     MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY, MONOGRAPH_TX_SERVICE_DIR,
@@ -6,19 +6,49 @@ use crate::config::config_base::{
 use crate::config::log_service::LogService;
 use crate::config::monitor::Monitor;
 use crate::config::storage_service_config::StorageService;
+use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
-    config_template, DownloadUrl, CONFIG_MARIADB_SECTION, CONFIG_SECTION_CLUSTER,
-    CONFIG_SECTION_LOCAL, CONFIG_SECTION_STORE, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
+    config_template, load_yaml_config_template, DownloadUrl, CASSANDRA_CONF_TEMPLATE,
+    CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CONFIG_MARIADB_SECTION, CONFIG_SECTION_CLUSTER,
+    CONFIG_SECTION_LOCAL, CONFIG_SECTION_STORE, JVM_SETTING_HOLDER, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
     MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO,
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use configparser::ini::Ini;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_yaml::Value;
+use std::cmp;
 use std::collections::HashMap;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::PathBuf;
+use tracing::warn;
+
+const GC_SETTING_CMS: &str = "
+-XX:+UseConcMarkSweepGC
+-XX:+CMSParallelRemarkEnabled
+-XX:SurvivorRatio=8
+-XX:MaxTenuringThreshold=1
+-XX:CMSInitiatingOccupancyFraction=75
+-XX:+UseCMSInitiatingOccupancyOnly
+-XX:CMSWaitDuration=10000
+-XX:+CMSParallelInitialMarkEnabled
+-XX:+CMSEdenChunksRecordAlways
+-XX:+CMSClassUnloadingEnabled
+";
+const GC_SETTING_G1: &str = "
+-XX:+UseG1GC
+-XX:+ParallelRefProcEnabled
+-XX:MaxTenuringThreshold=1
+-XX:G1HeapRegionSize=16m
+-XX:G1RSetUpdatingPauseTimePercent=5
+-XX:MaxGCPauseMillis=300
+-XX:InitiatingHeapOccupancyPercent=70
+";
+const GB: u32 = 1024; // *MiB
 
 #[macro_export]
 macro_rules! download_urls {
@@ -33,6 +63,12 @@ macro_rules! download_urls {
 pub struct Port {
     pub mysql_port: u16,
     pub monograph_port: MonographPort,
+}
+
+impl Port {
+    pub fn contains(&self, p: u16) -> bool {
+        p == self.mysql_port || (p >= self.monograph_port.start && p <= self.monograph_port.end)
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -55,6 +91,12 @@ pub enum Product {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct Hardware {
+    pub cpu: u16,
+    pub memory: u32, // MiB
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Deployment {
     pub product: Option<Product>,
     pub version: Option<String>,
@@ -67,6 +109,7 @@ pub struct Deployment {
     pub log_service: Option<LogService>,
     pub storage_service: StorageService,
     pub monitor: Option<Monitor>,
+    pub hardware: Option<HashMap<String, Hardware>>,
 }
 
 impl Deployment {
@@ -83,14 +126,15 @@ impl Deployment {
         let version = self.version.as_ref().unwrap();
         match self.product() {
             Product::Monograph => {
-                let store = self.storage_service.provider().unwrap().to_string();
                 if self.tx_image.is_none() {
+                    let store = self.storage_service.provider().unwrap().to_string();
                     self.tx_image = Some(format!(
                         "{}/main_tagged_range_ubuntu2004/{}/{}/monographdb-tx-release-bin.tar.gz",
                         RESOURCE_REPO, store, version
                     ));
                 }
                 if self.log_image.is_none() && self.log_service.is_some() {
+                    let store = self.storage_service.provider().unwrap().to_string();
                     self.log_image = Some(format!(
                         "{}/main_tagged_range_ubuntu2004/{}/{}/monographdb-log-release-bin.tar.gz",
                         RESOURCE_REPO, store, version
@@ -118,6 +162,10 @@ impl Deployment {
         self.tx_image.clone().unwrap()
     }
 
+    pub fn get_hardware(&self, host: &str) -> Option<&Hardware> {
+        self.hardware.as_ref().unwrap().get(host)
+    }
+
     pub fn product(&self) -> Product {
         if let Some(p) = self.product.clone() {
             p
@@ -126,34 +174,34 @@ impl Deployment {
         }
     }
 
-    fn build_log_config(&self) -> Option<HashMap<String, String>> {
-        if let Some(ref log_srv) = self.log_service {
-            let replica_num = log_srv.log_replica();
-            let all_members = log_srv.group_member_as_vec();
-            let group_member_map = log_srv.group_member_config(all_members.as_slice());
-            // println!("group_member_map={group_member_map:#?}");
-            let ordered_members = group_member_map
-                .into_iter()
-                .sorted_by_key(|(key, _val)| *key)
-                .collect::<IndexMap<usize, String>>();
-            let node_group = Vec::from_iter(ordered_members.values())
-                .into_iter()
-                .join(",");
-            let key_list = match self.product() {
-                Product::Monograph => "monograph_txlog_service_list".to_string(),
-                Product::Redis => "txlog_service_list".to_string(),
-            };
-            let key_replica = match self.product() {
-                Product::Monograph => "monograph_txlog_group_replica_num".to_string(),
-                Product::Redis => "txlog_group_replica_num".to_string(),
-            };
-            Some(HashMap::from([
-                (key_replica, replica_num.to_string()),
-                (key_list, node_group),
-            ]))
-        } else {
-            None
-        }
+    fn build_log_config(&self) -> HashMap<String, String> {
+        let log_srv = self
+            .log_service
+            .as_ref()
+            .expect("log_service is not configured");
+        let replica_num = log_srv.log_replica();
+        let all_members = log_srv.group_member_as_vec();
+        let group_member_map = log_srv.group_member_config(all_members.as_slice());
+        // println!("group_member_map={group_member_map:#?}");
+        let ordered_members = group_member_map
+            .into_iter()
+            .sorted_by_key(|(key, _val)| *key)
+            .collect::<IndexMap<usize, String>>();
+        let node_group = Vec::from_iter(ordered_members.values())
+            .into_iter()
+            .join(",");
+        let key_list = match self.product() {
+            Product::Monograph => "monograph_txlog_service_list".to_string(),
+            Product::Redis => "txlog_service_list".to_string(),
+        };
+        let key_replica = match self.product() {
+            Product::Monograph => "monograph_txlog_group_replica_num".to_string(),
+            Product::Redis => "txlog_group_replica_num".to_string(),
+        };
+        HashMap::from([
+            (key_replica, replica_num.to_string()),
+            (key_list, node_group),
+        ])
     }
 
     pub fn bootstrap_host(&self) -> String {
@@ -263,50 +311,79 @@ impl Deployment {
         install_dir: String,
     ) -> anyhow::Result<PathBuf> {
         let port = self.port.monograph_port.start;
-        let set_ip_list = tx_host.is_some();
-        let my_ini_rs = self.build_monograph_config(set_ip_list, install_dir);
+        let is_host = tx_host.is_some();
+        let mut my_ini = self.build_monograph_config(is_host, install_dir)?;
 
-        let host_and_file_tuple = if let Some(host) = tx_host {
-            (host.clone(), host)
+        let (host, db_config_location) = if let Some(host) = tx_host {
+            (host.clone(), upload_host_dir(&host).join("my.cnf"))
         } else {
-            ("127.0.0.1".to_string(), "local".to_string())
+            ("127.0.0.1".to_string(), upload_dir().join("my_local.cnf"))
         };
-        let file_suffix = host_and_file_tuple.1;
-        let db_config_location = download_dir().join(format!("my_{file_suffix}.cnf"));
-        let log_member_config = self.build_log_config();
-        if let Ok(mut my_ini) = my_ini_rs {
-            if !file_suffix.eq("local") {
-                if let Some(config_map) = log_member_config {
-                    config_map.iter().for_each(|(key, conf_val)| {
-                        my_ini.set(CONFIG_MARIADB_SECTION, key, Some(conf_val.to_string()));
-                    });
-                }
-            }
-            my_ini.set(
-                CONFIG_MARIADB_SECTION,
-                "monograph_local_ip",
-                Some(format!("{}:{}", host_and_file_tuple.0, port)),
-            );
-
-            if let Err(err) = my_ini.write(db_config_location.clone()) {
-                Err(anyhow!(err))
-            } else {
-                Ok(db_config_location)
-            }
-        } else {
-            Err(my_ini_rs.err().unwrap())
+        if is_host && self.log_service.is_some() {
+            self.build_log_config()
+                .into_iter()
+                .for_each(|(key, conf_val)| {
+                    my_ini.set(CONFIG_MARIADB_SECTION, &key, Some(conf_val));
+                });
         }
+        my_ini.set(
+            CONFIG_MARIADB_SECTION,
+            "monograph_local_ip",
+            Some(format!("{}:{}", host, port)),
+        );
+        let opt_hw = self.get_hardware(&host);
+        if opt_hw.is_none() {
+            warn!("hardware information for {host} is missing");
+        }
+        let key = "thread_pool_size";
+        if my_ini.get(CONFIG_MARIADB_SECTION, key).is_none() {
+            let mut v;
+            if let Some(hw) = opt_hw {
+                v = (hw.cpu * 3) / 8;
+                if v == 0 {
+                    v = 1;
+                }
+            } else {
+                v = 1;
+            }
+            my_ini.set(CONFIG_MARIADB_SECTION, key, Some(v.to_string()));
+        }
+        let key = "monograph_core_num";
+        if my_ini.get(CONFIG_MARIADB_SECTION, key).is_none() {
+            let mut v;
+            if let Some(hw) = opt_hw {
+                v = (hw.cpu * 3) / 8;
+                if v == 0 {
+                    v = 1;
+                }
+            } else {
+                v = 1;
+            }
+            my_ini.set(CONFIG_MARIADB_SECTION, key, Some(v.to_string()));
+        }
+        let key = "monograph_node_memory_limit_mb";
+        if my_ini.get(CONFIG_MARIADB_SECTION, key).is_none() {
+            let v = if let Some(hw) = opt_hw {
+                (hw.memory * 6) / 10
+            } else {
+                GB
+            };
+            my_ini.set(CONFIG_MARIADB_SECTION, key, Some(v.to_string()));
+        }
+        my_ini.write(db_config_location.as_path())?;
+        Ok(db_config_location)
     }
 
     pub fn build_redis_config(&self, set_ip_list: bool) -> anyhow::Result<Ini> {
         let mut redis_ini = Ini::new();
+        redis_ini
+            .load(config_template(REDIS_CONF_TEMPLATE)?)
+            .unwrap();
         if let Some(cassandra) = self.storage_service.cassandra.as_ref() {
-            redis_ini
-                .load(config_template(REDIS_CONF_TEMPLATE)?.as_path())
-                .unwrap();
-
             let cassandra_hosts = cassandra.host.join(",");
             redis_ini.set(CONFIG_SECTION_STORE, "host", Some(cassandra_hosts));
+        } else if redis_ini.get(CONFIG_SECTION_STORE, "host").is_none() {
+            return Err(anyhow!("cassandra host is not confiured"));
         }
         let use_port = self.port.monograph_port.start;
         let monograph_hosts = &self.tx_service.host;
@@ -328,39 +405,93 @@ impl Deployment {
 
     pub fn gen_redis_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
         let port = self.port.monograph_port.start;
-        let set_ip_list = tx_host.is_some();
-        let my_ini_rs = self.build_redis_config(set_ip_list);
-
-        let host_and_file_tuple = if let Some(host) = tx_host {
-            (host.clone(), host)
+        let is_host = tx_host.is_some();
+        let mut my_ini = self.build_redis_config(is_host)?;
+        let (host, db_config_location) = if let Some(host) = tx_host {
+            (host.clone(), upload_host_dir(&host).join("redis.ini"))
         } else {
-            ("127.0.0.1".to_string(), "local".to_string())
+            (
+                "127.0.0.1".to_string(),
+                upload_dir().join("redis_local.ini"),
+            )
         };
-        let file_suffix = host_and_file_tuple.1;
-        let db_config_location = download_dir().join(format!("redis_{file_suffix}.ini"));
-        let log_member_config = self.build_log_config();
-        if let Ok(mut my_ini) = my_ini_rs {
-            if !file_suffix.eq("local") {
-                if let Some(config_map) = log_member_config {
-                    config_map.iter().for_each(|(key, conf_val)| {
-                        my_ini.set(CONFIG_SECTION_CLUSTER, key, Some(conf_val.to_string()));
-                    });
-                }
-            }
-            my_ini.set(
-                CONFIG_SECTION_LOCAL,
-                "ip",
-                Some(format!("{}:{}", host_and_file_tuple.0, port)),
-            );
+        if is_host && self.log_service.is_some() {
+            self.build_log_config()
+                .into_iter()
+                .for_each(|(key, conf_val)| {
+                    my_ini.set(CONFIG_SECTION_CLUSTER, &key, Some(conf_val));
+                });
+        }
+        my_ini.set(
+            CONFIG_SECTION_LOCAL,
+            "ip",
+            Some(format!("{}:{}", host, port)),
+        );
 
-            if let Err(err) = my_ini.write(db_config_location.clone()) {
-                Err(anyhow!(err))
-            } else {
-                Ok(db_config_location)
+        let opt_hw = self.get_hardware(&host);
+        if opt_hw.is_none() {
+            warn!("hardware information for {host} is missing");
+        }
+        let key = "core_number";
+        let core_tx;
+        if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
+            core_tx = v.parse()?;
+            if core_tx == 0 || (opt_hw.is_some() && opt_hw.unwrap().cpu < core_tx) {
+                bail!("invalid config {}={} for host {}", key, core_tx, host);
             }
         } else {
-            Err(my_ini_rs.err().unwrap())
+            if let Some(hw) = opt_hw {
+                assert!(hw.cpu > 0);
+                core_tx = (hw.cpu + 3) / 4;
+            } else {
+                core_tx = 1;
+            };
+            my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_tx.to_string()));
         }
+        assert!(core_tx > 0);
+
+        let key = "bthread_concurrency";
+        let mut core_bt = 0;
+        if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
+            core_bt = v.parse()?;
+            if core_bt == 0 || (opt_hw.is_some() && opt_hw.unwrap().cpu < core_bt) {
+                bail!("invalid config {}={}for host {}", key, core_bt, host);
+            }
+        } else {
+            if let Some(hw) = opt_hw {
+                assert!(core_tx <= hw.cpu);
+                core_bt = hw.cpu - core_tx;
+            }
+            if core_bt == 0 {
+                core_bt = 1;
+            }
+            my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_bt.to_string()));
+        }
+        assert!(core_bt > 0);
+
+        let key = "event_dispatcher_num";
+        if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
+            let core_io = v.parse()?;
+            if core_io == 0 || (opt_hw.is_some() && opt_hw.unwrap().cpu < core_io) {
+                bail!("invalid config {}={} for host {}", key, core_io, host);
+            }
+        } else {
+            let core_io = (core_bt + 5) / 6;
+            my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_io.to_string()));
+        }
+
+        let key = "node_memory_limit_mb";
+        if my_ini.get(CONFIG_SECTION_LOCAL, key).is_none() {
+            let v = if let Some(hw) = opt_hw {
+                (hw.memory * 4) / 5
+            } else {
+                GB
+            };
+            my_ini.set(CONFIG_SECTION_LOCAL, key, Some(v.to_string()));
+        }
+
+        my_ini.write(db_config_location.as_path())?;
+        Ok(db_config_location)
     }
 
     pub fn monograph_download_links(&self) -> anyhow::Result<HashMap<String, DownloadUrl>> {
@@ -387,6 +518,104 @@ impl Deployment {
             db_image_download_links.extend(monitor_srv.download_links_as_amp()?);
         }
         Ok(db_image_download_links)
+    }
+
+    // key is cassandra node IP, value config files path
+    pub fn gen_cassandra_config(
+        &self,
+        install_dir: String,
+        cluster_name: String,
+    ) -> anyhow::Result<HashMap<String, Vec<PathBuf>>> {
+        if self.storage_service.cassandra.is_none() {
+            return Err(anyhow!(GenCassandraConfigErr("Dynamodb".to_string())));
+        }
+        let has_cassandra_monitor = self
+            .storage_service
+            .gen_cassandra_env(install_dir, self.monitor.as_ref())?;
+        let cass_env_sh = if has_cassandra_monitor {
+            Some(upload_dir().join("cassandra-env.sh"))
+        } else {
+            None
+        };
+        let jvm_temp = fs::read_to_string(config_template(CASSANDRA_JVM_TEMPLATE)?)?;
+        let tune_jvm = jvm_temp.contains(JVM_SETTING_HOLDER);
+        let cass = self.storage_service.cassandra.as_ref().unwrap();
+        // cassandra.yaml config object
+        let mut cass_conf_map = load_yaml_config_template(CASSANDRA_CONF_TEMPLATE)?;
+        let cassandra_hosts = cass.clone().host;
+        let storage_cluster = if cass.storage_cluster.is_none() {
+            format!("{cluster_name}_cass_cluster")
+        } else {
+            cass.clone().storage_cluster.unwrap()
+        };
+
+        cass_conf_map.insert("cluster_name".to_string(), Value::String(storage_cluster));
+        let seeds = cassandra_hosts.join(",");
+        let seed_values = format!(
+            r#"
+               - class_name: org.apache.cassandra.locator.SimpleSeedProvider
+                 parameters:
+                 - seeds: {seeds}"#,
+        );
+        let seed_yaml_value: Value = serde_yaml::from_str(seed_values.as_str())?;
+        cass_conf_map.insert(String::from("seed_provider"), seed_yaml_value);
+        let cass_config_vec = cassandra_hosts
+            .iter()
+            .map(|host| {
+                let host_value = Value::String(host.to_string());
+                cass_conf_map.insert(String::from("listen_address"), host_value.clone());
+                cass_conf_map.insert(
+                    String::from("rpc_address"),
+                    Value::String("0.0.0.0".to_string()),
+                );
+                cass_conf_map.insert(String::from("broadcast_rpc_address"), host_value.clone());
+                cass_conf_map.insert(String::from("broadcast_address"), host_value);
+                let config_path = upload_host_dir(host).join("cassandra.yaml");
+                let new_config_file = File::create(config_path.as_path()).unwrap();
+                let gen_config_write = serde_yaml::to_writer(new_config_file, &cass_conf_map);
+                assert!(gen_config_write.is_ok());
+                let mut config_path_vec = vec![config_path];
+                if let Some(env_sh) = &cass_env_sh {
+                    config_path_vec.push(env_sh.clone());
+                }
+
+                // Tune JVM for each cassandra node
+                // https://docs.datastax.com/en/cassandra-oss/3.0/cassandra/operations/opsTuneJVM.html
+                let jvm_opt = if tune_jvm {
+                    let mut gc_setting;
+                    if let Some(hw) = self.get_hardware(host) {
+                        let h = if hw.memory < 16 * GB {
+                            gc_setting = GC_SETTING_CMS.to_owned();
+                            cmp::max(cmp::min(hw.memory / 2, GB), cmp::min(hw.memory / 4, 8 * GB))
+                        } else {
+                            gc_setting = GC_SETTING_G1.to_owned();
+                            if hw.memory > 256 * GB {
+                                64 * GB
+                            } else {
+                                hw.memory / 4
+                            }
+                        };
+                        let h_xm = format!("\n-Xms{}M\n-Xmx{}M\n", h, h);
+                        gc_setting.push_str(&h_xm);
+                    } else {
+                        warn!("hardware information for {} is missing", host);
+                        gc_setting = GC_SETTING_CMS.to_owned();
+                    }
+                    jvm_temp.clone().replace(JVM_SETTING_HOLDER, &gc_setting)
+                } else {
+                    jvm_temp.clone()
+                };
+                let opt_path = upload_host_dir(host).join(CASSANDRA_JVM_OPTION);
+                File::create(opt_path.as_path())
+                    .unwrap()
+                    .write_all(jvm_opt.as_bytes())
+                    .unwrap();
+                config_path_vec.push(opt_path);
+                (host.to_string(), config_path_vec)
+            })
+            .collect::<HashMap<String, Vec<PathBuf>>>();
+
+        Ok(cass_config_vec)
     }
 }
 

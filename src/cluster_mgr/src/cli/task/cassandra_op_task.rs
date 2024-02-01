@@ -1,6 +1,6 @@
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
-use crate::config::{load_yaml_config_template, CASSANDRA_CONF_TEMPLATE};
+use crate::config::get_cassandra_port;
 use async_trait::async_trait;
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{Session, SessionBuilder, TcpSessionBuilder};
@@ -36,13 +36,7 @@ impl CassandraOpTask {
         >,
     > {
         //let cass_hosts = self.config.get_host_list(DeploymentPackage::Storage);
-        let cass_config = load_yaml_config_template(CASSANDRA_CONF_TEMPLATE)?;
-        let client_transport_port = cass_config
-            .get("native_transport_port")
-            .unwrap()
-            .as_i64()
-            .unwrap();
-
+        let client_transport_port = get_cassandra_port()?;
         let contact_point =
             NodeAddress::from(format!("{}:{client_transport_port}", self.cass_host));
 

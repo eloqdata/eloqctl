@@ -23,6 +23,7 @@ use ExecutionValue as LastResult;
 
 pub type EnvProps = HashMap<String, String>;
 
+#[allow(dead_code)]
 pub(crate) static REMOTE_ENV_PROPS: Lazy<anyhow::Result<EnvProps>> =
     Lazy::new(|| load_remote_env(None));
 

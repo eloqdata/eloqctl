@@ -1,6 +1,6 @@
-use crate::cli::download_dir;
+use crate::cli::{ssh, upload_dir, upload_host_dir};
 use crate::config::connection::Connection;
-use crate::config::deployment::{Deployment, Product};
+use crate::config::deployment::{Deployment, Hardware, Product};
 use crate::config::log_service::LogProcessKey;
 use crate::config::{
     config_path_string, config_template, DeploymentPackage, StorageProvider,
@@ -246,9 +246,8 @@ impl DeploymentConfig {
                 .map(|(key, cmd)| {
                     let host = &key.host;
                     let port = key.port;
-                    let cmd_file_name =
-                        format!("start_tx_log_{}.bash", format_args!("{host}_{port}"));
-                    let script_location = download_dir().join(cmd_file_name);
+                    let cmd_file_name = format!("start_tx_log_{}.bash", port);
+                    let script_location = upload_host_dir(host).join(cmd_file_name);
                     if let Err(write_err) = fs::write(script_location.clone(), cmd) {
                         error!("Failed gen Log start command. cause by {write_err:#?}");
                         panic!("Failed gen Log start command");
@@ -263,8 +262,7 @@ impl DeploymentConfig {
     }
 
     pub fn get_monograph_keyspace(&self) -> anyhow::Result<String> {
-        let download_dir = download_dir();
-        let my_local = download_dir.join("my_local.cnf");
+        let my_local = upload_dir().join("my_local.cnf");
         if !my_local.exists() {
             self.deployment
                 .gen_monograph_config_by_host(None, self.install_dir())?;
@@ -280,8 +278,7 @@ impl DeploymentConfig {
     }
 
     pub fn get_redis_keyspace(&self) -> anyhow::Result<String> {
-        let download_dir = download_dir();
-        let my_local = download_dir.join("redis_local.ini");
+        let my_local = upload_dir().join("redis_local.ini");
         if !my_local.exists() {
             self.deployment.gen_redis_config_by_host(None)?;
         }
@@ -311,7 +308,9 @@ impl DeploymentConfig {
                 self.deployment.port.mysql_port
             ),
             Product::Redis => format!(
-                "redis-cli -h {} -p 6379",
+                "{}/{}/redis-cli -h {} -p 6379",
+                self.install_dir(),
+                REDIS_TX_SERVICE_DIR,
                 self.deployment.tx_service.host.first().unwrap()
             ),
         }
@@ -573,6 +572,30 @@ impl DeploymentConfig {
                 path_str.to_string()
             })
             .collect_vec()
+    }
+
+    pub async fn scan_hardware(&self) -> anyhow::Result<HashMap<String, Hardware>> {
+        let hw_sh = tokio::fs::read_to_string(config_template("hardware.sh")?).await?;
+        let hw_info = ssh::SSHSession::parallel(
+            self.connection.ssh_auth_key().unwrap(),
+            &self.connection.username,
+            self.connection.ssh_port() as usize,
+            self.get_unique_host_list(),
+            &hw_sh,
+        )
+        .await?
+        .into_iter()
+        .map(|(host, out)| {
+            let hw = out.trim().split(',').collect::<Vec<&str>>();
+            info!("{} hardware: cpu={}, memory={}Mib", host, hw[0], hw[1]);
+            let hw = Hardware {
+                cpu: hw[0].parse().unwrap(),
+                memory: hw[1].parse().unwrap(),
+            };
+            (host, hw)
+        })
+        .collect();
+        Ok(hw_info)
     }
 }
 
