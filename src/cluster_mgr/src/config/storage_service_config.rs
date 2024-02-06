@@ -20,6 +20,10 @@ pub struct Cassandra {
     pub storage_cluster: Option<String>,
 }
 
+impl Cassandra {
+    pub const MAX_SEED: usize = 3;
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Dynamodb {
     pub access_key_id: String,

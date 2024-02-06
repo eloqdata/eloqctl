@@ -63,7 +63,7 @@ impl TaskGroup for InstallDBTaskGroup {
         match storage_provider {
             StorageProvider::Cassandra => {
                 let cassandra_start = CassandraCtlTask::from_config(install_cmd, &config);
-                barrier.push(cassandra_start.len());
+                barrier.extend(CassandraCtlTask::barrier(cassandra_start.len()));
                 executable.extend(cassandra_start);
             }
             StorageProvider::DynamoDB => {}

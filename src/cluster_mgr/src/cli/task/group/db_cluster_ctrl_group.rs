@@ -30,16 +30,12 @@ impl TaskGroup for CtrlDBTaskGroup {
         let is_start_cmd = (cmd_ref == "start" || cmd_ref == "restart")
             && storage_provider == StorageProvider::Cassandra;
 
-        let mut mut_executable = if is_start_cmd || stop_all {
-            CassandraCtlTask::from_config(cmd_arg.clone(), &config)
+        let (mut executable, mut barrier) = if is_start_cmd || stop_all {
+            let exe = CassandraCtlTask::from_config(cmd_arg.clone(), &config);
+            let ba = CassandraCtlTask::barrier(exe.len());
+            (exe, ba)
         } else {
-            IndexMap::new()
-        };
-
-        let mut barrier = if !mut_executable.is_empty() {
-            vec![mut_executable.len()]
-        } else {
-            vec![]
+            (IndexMap::new(), vec![])
         };
 
         let batch_cmd = match cmd_arg {
@@ -77,18 +73,18 @@ impl TaskGroup for CtrlDBTaskGroup {
             }
             barrier.push(tx_srv_tasks.len());
 
-            mut_executable.extend(log_srv_tasks.into_iter());
+            executable.extend(log_srv_tasks.into_iter());
             if !log_probe_tasks.is_empty() {
-                mut_executable.extend(log_probe_tasks.into_iter());
+                executable.extend(log_probe_tasks.into_iter());
             }
-            mut_executable.extend(tx_srv_tasks.into_iter());
+            executable.extend(tx_srv_tasks.into_iter());
         }
 
         let final_barrier = if is_start_cmd { Some(barrier) } else { None };
         Ok(TaskExecutionContext {
             task_group: format!("cluster-control-{cmd_ref}"),
             barrier: final_barrier,
-            executable: mut_executable,
+            executable,
         })
     }
 }

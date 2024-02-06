@@ -8,6 +8,7 @@ use crate::cli::task::task_base::{
 use crate::cli::task::task_utils::{check_pid, PROCESS_PID};
 use crate::cli::{CommandArgs, CMD_STATUS};
 use crate::config::config_base::DeploymentConfig;
+use crate::config::storage_service_config::Cassandra;
 use crate::config::DeploymentPackage;
 use crate::get_ctl_cmd_string;
 use anyhow::anyhow;
@@ -198,6 +199,20 @@ impl CassandraCtlTask {
                 )
             })
             .collect::<IndexMap<TaskId, TaskInstance>>()
+    }
+
+    // DataStax recommends starting the seed nodes one at a time, and then starting the rest of the nodes.
+    pub fn barrier(size: usize) -> Vec<usize> {
+        let mut barrier = vec![];
+        for i in 1..=size {
+            if i <= Cassandra::MAX_SEED {
+                barrier.push(1);
+            } else {
+                barrier.push(size - Cassandra::MAX_SEED);
+                break;
+            }
+        }
+        barrier
     }
 
     pub fn new(config: DeploymentConfig, task_id: TaskId) -> Self {

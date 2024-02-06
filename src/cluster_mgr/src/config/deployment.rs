@@ -5,7 +5,7 @@ use crate::config::config_base::{
 };
 use crate::config::log_service::LogService;
 use crate::config::monitor::Monitor;
-use crate::config::storage_service_config::StorageService;
+use crate::config::storage_service_config::{Cassandra, StorageService};
 use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
     config_template, load_yaml_config_template, DownloadUrl, CASSANDRA_CONF_TEMPLATE,
@@ -13,7 +13,7 @@ use crate::config::{
     CONFIG_SECTION_LOCAL, CONFIG_SECTION_STORE, JVM_SETTING_HOLDER, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
     MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO,
 };
-use anyhow::{anyhow, bail};
+use anyhow::anyhow;
 use configparser::ini::Ini;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
-use tracing::warn;
+use tracing::{error, warn};
 
 const GC_SETTING_CMS: &str = "
 -XX:+UseConcMarkSweepGC
@@ -441,7 +441,7 @@ impl Deployment {
         if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
             core_tx = v.parse()?;
             if core_tx == 0 || (opt_hw.is_some() && opt_hw.unwrap().cpu < core_tx) {
-                bail!("invalid config {}={} for host {}", key, core_tx, host);
+                error!("invalid config {}={} for host {}", key, core_tx, host);
             }
         } else {
             if let Some(hw) = opt_hw {
@@ -459,7 +459,7 @@ impl Deployment {
         if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
             core_bt = v.parse()?;
             if core_bt == 0 || (opt_hw.is_some() && opt_hw.unwrap().cpu < core_bt) {
-                bail!("invalid config {}={}for host {}", key, core_bt, host);
+                error!("invalid config {}={}for host {}", key, core_bt, host);
             }
         } else {
             if let Some(hw) = opt_hw {
@@ -477,7 +477,7 @@ impl Deployment {
         if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
             let core_io = v.parse()?;
             if core_io == 0 || (opt_hw.is_some() && opt_hw.unwrap().cpu < core_io) {
-                bail!("invalid config {}={} for host {}", key, core_io, host);
+                error!("invalid config {}={} for host {}", key, core_io, host);
             }
         } else {
             let core_io = (core_bt + 5) / 6;
@@ -546,7 +546,6 @@ impl Deployment {
         let cass = self.storage_service.cassandra.as_ref().unwrap();
         // cassandra.yaml config object
         let mut cass_conf_map = load_yaml_config_template(CASSANDRA_CONF_TEMPLATE)?;
-        let cassandra_hosts = cass.clone().host;
         let storage_cluster = if cass.storage_cluster.is_none() {
             format!("{cluster_name}_cass_cluster")
         } else {
@@ -554,7 +553,7 @@ impl Deployment {
         };
 
         cass_conf_map.insert("cluster_name".to_string(), Value::String(storage_cluster));
-        let seeds = cassandra_hosts.join(",");
+        let seeds = cass.host.iter().take(Cassandra::MAX_SEED).join(",");
         let seed_values = format!(
             r#"
                - class_name: org.apache.cassandra.locator.SimpleSeedProvider
@@ -563,7 +562,8 @@ impl Deployment {
         );
         let seed_yaml_value: Value = serde_yaml::from_str(seed_values.as_str())?;
         cass_conf_map.insert(String::from("seed_provider"), seed_yaml_value);
-        let cass_config_vec = cassandra_hosts
+        let cass_config_vec = cass
+            .host
             .iter()
             .map(|host| {
                 let host_value = Value::String(host.to_string());
