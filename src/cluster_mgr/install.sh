@@ -1,6 +1,6 @@
 #!/bin/sh
 
-repo='https://dzkle3nb4zzyc.cloudfront.net'
+repo='https://d44nokjo5ywh8.cloudfront.net'
 if [ -n "$MONO_MIRRORS" ]; then
     repo=$MONO_MIRRORS
 fi

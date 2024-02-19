@@ -48,7 +48,7 @@ pub const GRAFANA_CONFIG_FILE: &str = "defaults.ini";
 pub const CREATE_MONITOR_USER_SQL_FILE: &str = "create_monitor_user.sql";
 pub const MYSQL_EXPORTER_CLIENT_CONFIG: &str = "mysql_exporter.cnf";
 
-pub const RESOURCE_REPO: &str = "https://dzkle3nb4zzyc.cloudfront.net";
+pub const RESOURCE_REPO: &str = "https://d44nokjo5ywh8.cloudfront.net";
 
 #[macro_export]
 macro_rules! gen_db_script {
