@@ -36,7 +36,7 @@ impl TaskGroup for MonitorCtlTaskGroup {
             assert!(monitor_opt.is_some());
             let monitor = monitor_opt.unwrap();
             let install_dir = config.install_dir();
-            let mysql_port = config.deployment.port.mysql_port.unwrap();
+            let mysql_port = config.deployment.cs_conn_port();
             let create_monitor_user_cmd =
                 monitor.create_monitor_user_cmd(install_dir.clone(), mysql_port);
 

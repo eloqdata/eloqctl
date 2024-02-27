@@ -9,6 +9,7 @@ deployment:
   cluster_name: "mono-poc"
   install_dir: "/data/opt"
   port:
+    cs_conn: 6379
     monograph_port:
       start: 8000
       end: 8009

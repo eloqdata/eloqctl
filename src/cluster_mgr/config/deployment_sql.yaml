@@ -9,7 +9,7 @@ deployment:
   cluster_name: "mono-poc"
   install_dir: "/data/opt"
   port:
-    mysql_port: 3300
+    cs_conn: 3300
     monograph_port:
       start: 8000
       end: 8009

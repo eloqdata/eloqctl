@@ -62,7 +62,7 @@ macro_rules! download_urls {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Port {
-    pub mysql_port: Option<u16>,
+    pub cs_conn: Option<u16>,
     pub monograph_port: MonographPort,
 }
 
@@ -71,7 +71,7 @@ impl Port {
         if p >= self.monograph_port.start && p <= self.monograph_port.end {
             return true;
         }
-        if let Some(mysql_port) = self.mysql_port {
+        if let Some(mysql_port) = self.cs_conn {
             if mysql_port == p {
                 return true;
             }
@@ -212,6 +212,17 @@ impl Deployment {
         }
     }
 
+    pub fn cs_conn_port(&self) -> u16 {
+        if let Some(p) = self.port.cs_conn {
+            p
+        } else {
+            match self.product() {
+                Product::EloqSQL => 3306,
+                Product::EloqKV => 6379,
+            }
+        }
+    }
+
     fn build_log_config(&self) -> HashMap<String, String> {
         let log_srv = self
             .log_service
@@ -316,13 +327,13 @@ impl Deployment {
         mysql_ini.set(
             CONFIG_MARIADB_SECTION,
             "port",
-            Some(self.port.mysql_port.unwrap().to_string()),
+            Some(self.cs_conn_port().to_string()),
         );
 
         mysql_ini.set(
             CONFIG_MARIADB_SECTION,
             "socket",
-            Some(format!("/tmp/mysql{}.sock", self.port.mysql_port.unwrap())),
+            Some(format!("/tmp/mysql{}.sock", self.cs_conn_port())),
         );
 
         let use_port = self.port.monograph_port.start;
@@ -419,8 +430,8 @@ impl Deployment {
             .unwrap();
         if let Some(cassandra) = self.storage_service.cassandra.as_ref() {
             let cassandra_hosts = cassandra.host.join(",");
-            redis_ini.set(CONFIG_SECTION_STORE, "host", Some(cassandra_hosts));
-        } else if redis_ini.get(CONFIG_SECTION_STORE, "host").is_none() {
+            redis_ini.set(CONFIG_SECTION_STORE, "cass_hosts", Some(cassandra_hosts));
+        } else if redis_ini.get(CONFIG_SECTION_STORE, "cass_hosts").is_none() {
             return Err(anyhow!("cassandra host is not confiured"));
         }
         let use_port = self.port.monograph_port.start;
@@ -430,11 +441,11 @@ impl Deployment {
                 .iter()
                 .map(|host| format!("{}:{}", host.clone(), use_port))
                 .join(",");
-            redis_ini.set(CONFIG_SECTION_CLUSTER, "ip_list", Some(ip_list));
+            redis_ini.set(CONFIG_SECTION_CLUSTER, "ip_port_list", Some(ip_list));
         } else {
             redis_ini.set(
                 CONFIG_SECTION_CLUSTER,
-                "ip_list",
+                "ip_port_list",
                 Some(format!("{}:{}", "127.0.0.1", use_port)),
             );
         }
@@ -442,7 +453,6 @@ impl Deployment {
     }
 
     pub fn gen_redis_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
-        let port = self.port.monograph_port.start;
         let is_host = tx_host.is_some();
         let mut my_ini = self.build_redis_config(is_host)?;
         let (host, db_config_location) = if let Some(host) = tx_host {
@@ -460,10 +470,11 @@ impl Deployment {
                     my_ini.set(CONFIG_SECTION_CLUSTER, &key, Some(conf_val));
                 });
         }
+        my_ini.set(CONFIG_SECTION_LOCAL, "ip", Some(host.clone()));
         my_ini.set(
             CONFIG_SECTION_LOCAL,
-            "ip",
-            Some(format!("{}:{}", host, port)),
+            "port",
+            Some(self.cs_conn_port().to_string()),
         );
 
         let opt_hw = self.get_hardware(&host);

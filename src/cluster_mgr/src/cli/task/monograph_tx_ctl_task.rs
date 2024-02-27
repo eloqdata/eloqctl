@@ -213,23 +213,22 @@ impl MySQLProbe {
                     (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
                     (CMD_OUTPUT.to_string(), TaskArgValue::Str(now_date)),
                 ]));
-            } else {
-                let err_msg = query_rs.err().unwrap().to_string();
-                error!(
-                    "Cannot connect to MonographDB on {}, err_msg={}",
-                    host, err_msg
-                );
-                maybe_continue_probe!(wait_secs);
-                mono_conn.close().await?;
-                return Ok(HashMap::from([
-                    (CMD.to_string(), TaskArgValue::Str(query_cmd.to_string())),
-                    (CMD_STATUS.to_string(), TaskArgValue::Number(-1)),
-                    (
-                        CMD_OUTPUT.to_string(),
-                        TaskArgValue::Str(err_msg.to_string()),
-                    ),
-                ]));
-            };
+            }
+            let err_msg = query_rs.err().unwrap().to_string();
+            error!(
+                "Cannot connect to MonographDB on {}, err_msg={}",
+                host, err_msg
+            );
+            maybe_continue_probe!(wait_secs);
+            mono_conn.close().await?;
+            return Ok(HashMap::from([
+                (CMD.to_string(), TaskArgValue::Str(query_cmd.to_string())),
+                (CMD_STATUS.to_string(), TaskArgValue::Number(-1)),
+                (
+                    CMD_OUTPUT.to_string(),
+                    TaskArgValue::Str(err_msg.to_string()),
+                ),
+            ]));
         }
     }
 
@@ -255,15 +254,16 @@ impl MySQLProbe {
 #[derive(Clone, Debug)]
 pub struct RedisProbe {
     host: String,
+    port: u16,
 }
 
 impl RedisProbe {
-    pub fn new(host: String) -> Self {
-        Self { host }
+    pub fn new(host: String, port: u16) -> Self {
+        Self { host, port }
     }
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
         println!("Probe whether Redis is ready to be connected");
-        let url = format!("redis://{}/", self.host);
+        let url = format!("redis://{}:{}/", self.host, self.port);
         let client = redis::Client::open(url.clone())?;
         loop {
             match client.get_connection() {
@@ -477,7 +477,7 @@ impl TaskExecutor for MonographTxCtlTask {
                             let db_pwd = TaskArgValue::into_inner_value::<String>(
                                 task_arg.get(MONO_DB_PWD).unwrap().clone(),
                             );
-                            let mysql_port = self.config.deployment.port.mysql_port.unwrap();
+                            let mysql_port = self.config.deployment.cs_conn_port();
                             MySQLProbe::new(host_value, mysql_port, db_user, db_pwd)
                                 .probe(wait_secs)
                                 .await
@@ -489,7 +489,8 @@ impl TaskExecutor for MonographTxCtlTask {
                     }
                     Product::EloqKV => {
                         if wait_secs >= 0 {
-                            RedisProbe::new(host_value).probe(wait_secs).await
+                            let cs_port = self.config.deployment.cs_conn_port();
+                            RedisProbe::new(host_value, cs_port).probe(wait_secs).await
                         } else {
                             check_process_status
                         }
