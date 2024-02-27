@@ -8,6 +8,7 @@ use crate::config::config_base::{
     GRAFANA_FILE_KEY, MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY, MYSQL_EXPORTER_FILE_KEY,
     NODE_EXPORTER_FILE_KEY, PROMETHEUS_FILE_KEY,
 };
+use crate::config::deployment::Product;
 use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -77,9 +78,11 @@ impl MonographUploadBuilder {
             all_files_path.extend(log_start_path);
         }
 
-        let all_mysql_exporter_conf = config.gen_all_mysql_exporter_config().unwrap();
-        if let Some(mysql_exporter_conf) = all_mysql_exporter_conf {
-            all_files_path.extend(mysql_exporter_conf);
+        if config.product() == Product::EloqSQL {
+            let all_mysql_exporter_conf = config.gen_all_mysql_exporter_config().unwrap();
+            if let Some(mysql_exporter_conf) = all_mysql_exporter_conf {
+                all_files_path.extend(mysql_exporter_conf);
+            }
         }
 
         let all_db_host = config.get_host_as_map();
