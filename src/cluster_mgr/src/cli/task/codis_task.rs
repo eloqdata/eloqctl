@@ -45,7 +45,7 @@ impl CodisTask {
     }
 
     fn start_dashboard(config: &DeploymentConfig) -> Self {
-        let dir = Codis::dir(config.install_dir());
+        let dir = Codis::dir(&config.install_dir());
         let binary = format!("{dir}/codis-dashboard");
         let conf_path = format!("{dir}/dashboard.toml");
         let log_path = format!("{dir}/dashboard.log");
@@ -60,7 +60,7 @@ impl CodisTask {
     }
 
     fn stop_server(config: &DeploymentConfig, host: String, name: &str) -> Self {
-        let dir = Codis::dir(config.install_dir());
+        let dir = Codis::dir(&config.install_dir());
         let pid_path = format!("{dir}/{name}.pid");
         let command = format!("kill -2 $(cat {pid_path})");
         CodisTask {
@@ -72,7 +72,7 @@ impl CodisTask {
 
     fn start_proxy(config: &DeploymentConfig, host: String) -> Self {
         let codis_conf = config.deployment.codis.as_ref().unwrap();
-        let dir = Codis::dir(config.install_dir());
+        let dir = Codis::dir(&config.install_dir());
         let binary = format!("{dir}/codis-proxy");
         let conf_path = format!("{dir}/proxy.toml");
         let log_path = format!("{dir}/proxy.log");

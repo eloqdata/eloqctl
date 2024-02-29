@@ -115,17 +115,22 @@ impl Codis {
     pub fn download_url() -> String {
         format!("{}/codis/codis.tar.gz", RESOURCE_REPO)
     }
-    pub fn dir(install_dir: String) -> String {
+    pub fn dir(install_dir: &str) -> String {
         format!("{install_dir}/codis")
     }
-    pub fn dashboard_cfg(ins_dir: String, cass: &Cassandra) -> anyhow::Result<String> {
+    pub fn dashboard_cfg(config: &Deployment) -> anyhow::Result<String> {
+        let coord = config
+            .storage_service
+            .cassandra
+            .as_ref()
+            .expect("codis only support cassandra coordinator");
         let port = get_cassandra_port()?;
-        let addr = cass.host.iter().map(|ip| format!("{ip}:{port}")).join(",");
-        let cmd = format!(
-            "sed -i 's/127.0.0.1:9042/{addr}/g' {}/dashboard.toml",
-            Self::dir(ins_dir)
+        let addr = coord.host.iter().map(|ip| format!("{ip}:{port}")).join(",");
+        let cmds = format!(
+            "sed -i 's/coordinator_addr.*/coordinator_addr = \"{addr}\"/g ; s/coordinator_keyspace.*/coordinator_keyspace = \"{}\"/g' {}/dashboard.toml",
+            config.cluster_name, Self::dir(&config.install_dir())
         );
-        Ok(cmd)
+        Ok(cmds)
     }
 }
 
@@ -223,6 +228,10 @@ impl Deployment {
         }
     }
 
+    pub fn install_dir(&self) -> String {
+        format!("{}/{}", &self.install_dir, self.cluster_name)
+    }
+
     fn build_log_config(&self) -> HashMap<String, String> {
         let log_srv = self
             .log_service
@@ -304,6 +313,11 @@ impl Deployment {
                 Some(dynamodb.clone().endpoint),
             );
         }
+        mysql_ini.set(
+            CONFIG_MARIADB_SECTION,
+            "monograph_keyspace_name",
+            Some(self.cluster_name.clone()),
+        );
 
         mysql_ini.set(
             CONFIG_MARIADB_SECTION,
@@ -431,6 +445,11 @@ impl Deployment {
         if let Some(cassandra) = self.storage_service.cassandra.as_ref() {
             let cassandra_hosts = cassandra.host.join(",");
             redis_ini.set(CONFIG_SECTION_STORE, "cass_hosts", Some(cassandra_hosts));
+            redis_ini.set(
+                CONFIG_SECTION_STORE,
+                "cass_keyspace",
+                Some(self.cluster_name.clone()),
+            );
         } else if redis_ini.get(CONFIG_SECTION_STORE, "cass_hosts").is_none() {
             return Err(anyhow!("cassandra host is not confiured"));
         }

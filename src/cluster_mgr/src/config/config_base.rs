@@ -299,10 +299,7 @@ impl DeploymentConfig {
     }
 
     pub fn install_dir(&self) -> String {
-        format!(
-            "{}/{}",
-            &self.deployment.install_dir, self.deployment.cluster_name
-        )
+        self.deployment.install_dir()
     }
 
     pub fn client_conn(&self) -> String {

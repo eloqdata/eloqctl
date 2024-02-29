@@ -105,14 +105,9 @@ impl TaskGroup for DeploymentTaskGroup {
         executable.extend(upload_monitor_conf_tasks);
 
         if let Some(codis) = &config.deployment.codis {
-            let coord = config
-                .deployment
-                .storage_service
-                .cassandra
-                .as_ref()
-                .expect("codis only support cassandra coordinator");
+            let cmds = Codis::dashboard_cfg(&config.deployment)?;
             let codis = ExecCustomCommand::build_task_by_host(
-                Codis::dashboard_cfg(config.install_dir(), coord)?,
+                cmds,
                 &config,
                 vec![codis.dashboard.clone()],
                 Some("codis dashboard config".to_owned()),
