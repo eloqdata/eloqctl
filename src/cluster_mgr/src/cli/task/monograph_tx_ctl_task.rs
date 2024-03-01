@@ -61,7 +61,7 @@ macro_rules! mono_start_cmd {
     export LD_LIBRARY_PATH={}/{}/lib:$LD_LIBRARY_PATH; \
     export ASAN_OPTIONS=abort_on_error=1:detect_container_overflow=0:leak_check_at_exit=0; \
     export LD_PRELOAD={}/{}/lib/libmimalloc.so; \
-    {}/{}/redis_server --config={}/redis.ini > {}/{}/logs/redis_{}.log 2>&1 &"#,
+    {}/{}/redis_server --config={}/redis.ini --worker_polling_time_ms=100 --use_pthread_event_dispatcher=true > {}/{}/logs/redis_{}.log 2>&1 &"#,
                 $remote_install_home, REDIS_TX_SERVICE_DIR,
                 $remote_install_home, REDIS_TX_SERVICE_DIR,
                 $remote_install_home, REDIS_TX_SERVICE_DIR,
