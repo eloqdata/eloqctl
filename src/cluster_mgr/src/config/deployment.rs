@@ -540,32 +540,13 @@ impl Deployment {
         } else {
             if let Some(hw) = opt_hw {
                 assert!(hw.cpu > 0);
-                core_tx = (hw.cpu + 3) / 4;
+                core_tx = (hw.cpu + 4) / 5 * 4;
             } else {
-                core_tx = 1;
+                core_tx = 4;
             };
             my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_tx.to_string()));
         }
         assert!(core_tx > 0);
-
-        let key = "bthread_concurrency";
-        let mut core_bt = 0;
-        if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
-            core_bt = v.parse()?;
-            if core_bt == 0 || (opt_hw.is_some() && opt_hw.unwrap().cpu < core_bt) {
-                error!("invalid config {}={}for host {}", key, core_bt, host);
-            }
-        } else {
-            if let Some(hw) = opt_hw {
-                assert!(core_tx <= hw.cpu);
-                core_bt = hw.cpu - core_tx;
-            }
-            if core_bt == 0 {
-                core_bt = 1;
-            }
-            my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_bt.to_string()));
-        }
-        assert!(core_bt > 0);
 
         let key = "event_dispatcher_num";
         if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
@@ -574,7 +555,7 @@ impl Deployment {
                 error!("invalid config {}={} for host {}", key, core_io, host);
             }
         } else {
-            let core_io = (core_bt + 5) / 6;
+            let core_io = (core_tx + 7) / 8;
             my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_io.to_string()));
         }
 
