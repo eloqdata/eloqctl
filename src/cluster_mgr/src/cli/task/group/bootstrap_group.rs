@@ -90,6 +90,12 @@ impl TaskGroup for InstallDBTaskGroup {
             executable.extend(rm_log_data_task_instance);
         }
 
+        if config.deployment.codis.is_some() {
+            let upload_codis_task = upload_tasks(UploadTaskBuilderType::Codis, &config);
+            barrier.push(upload_codis_task.len());
+            executable.extend(upload_codis_task);
+        }
+
         Ok(TaskExecutionContext {
             task_group: cmd_args.as_ref().to_string(),
             barrier: Some(barrier),

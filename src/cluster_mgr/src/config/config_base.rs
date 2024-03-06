@@ -1,6 +1,6 @@
 use crate::cli::{ssh, upload_dir, upload_host_dir};
 use crate::config::connection::Connection;
-use crate::config::deployment::{Deployment, Hardware, Product};
+use crate::config::deployment::{Codis, Deployment, Hardware, Product};
 use crate::config::log_service::LogProcessKey;
 use crate::config::{
     config_path_string, config_template, DeploymentPackage, StorageProvider, CONFIG_PATH_DIR,
@@ -18,8 +18,6 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use tracing::{error, info};
-
-use super::deployment::Codis;
 
 pub const MONOGRAPH_TX_SERVICE_DIR: &str = "monograph-tx-service-release";
 pub const REDIS_TX_SERVICE_DIR: &str = "monograph_redis";

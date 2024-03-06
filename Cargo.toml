@@ -1,9 +1,5 @@
 [workspace]
-members = [
-    "src/cluster_mgr",
-    "src/devtools",
-    "src/rest_api"
-]
+members = ["src/cluster_mgr", "src/devtools", "src/rest_api"]
 
 resolver = "2"
 

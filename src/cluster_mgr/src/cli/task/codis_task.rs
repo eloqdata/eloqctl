@@ -5,7 +5,9 @@ use super::task_base::{
 };
 use crate::{
     cli::ssh::{SSHCommandOption, SSHSession},
-    config::{config_base::DeploymentConfig, deployment::Codis},
+    config::{
+        config_base::DeploymentConfig, deployment::Codis, CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF,
+    },
 };
 use indexmap::IndexMap;
 
@@ -47,7 +49,7 @@ impl CodisTask {
     fn start_dashboard(config: &DeploymentConfig) -> Self {
         let dir = Codis::dir(&config.install_dir());
         let binary = format!("{dir}/codis-dashboard");
-        let conf_path = format!("{dir}/dashboard.toml");
+        let conf_path = format!("{dir}/{CODIS_DASHBOARD_CNF}");
         let log_path = format!("{dir}/dashboard.log");
         let pid_path = format!("{dir}/dashboard.pid");
         let damon_path = format!("{dir}/dashboard.out");
@@ -74,7 +76,7 @@ impl CodisTask {
         let codis_conf = config.deployment.codis.as_ref().unwrap();
         let dir = Codis::dir(&config.install_dir());
         let binary = format!("{dir}/codis-proxy");
-        let conf_path = format!("{dir}/proxy.toml");
+        let conf_path = format!("{dir}/{CODIS_PROXY_CNF}");
         let log_path = format!("{dir}/proxy.log");
         let pid_path = format!("{dir}/proxy.pid");
         let damon_path = format!("{dir}/proxy.out");

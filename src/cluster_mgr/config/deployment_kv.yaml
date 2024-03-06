@@ -10,9 +10,6 @@ deployment:
   install_dir: "/data/opt"
   port:
     cs_conn: 6379
-    monograph_port:
-      start: 8000
-      end: 8009
   log_service:
     nodes:
       - host: 127.0.0.1

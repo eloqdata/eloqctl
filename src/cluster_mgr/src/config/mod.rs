@@ -23,6 +23,8 @@ pub mod storage_service_config;
 pub const MONOGRAPH_CONF_TEMPLATE: &str = "my_template.cnf";
 pub const MONOGRAPH_CONF_DYNAMO_TEMPLATE: &str = "my_template_dynamo.cnf";
 pub const REDIS_CONF_TEMPLATE: &str = "redis_template.ini";
+pub const CODIS_PROXY_CNF: &str = "codis_proxy.toml";
+pub const CODIS_DASHBOARD_CNF: &str = "codis_dashboard.toml";
 
 pub const START_LOG_TEMPLATE: &str = "start_tx_log.template";
 pub const MONOGRAPH_INSTALL_TEMPLATE: &str = "monograph_install_db.template";

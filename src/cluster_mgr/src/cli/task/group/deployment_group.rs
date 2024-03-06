@@ -7,7 +7,6 @@ use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::CommandArgs;
 use crate::config::config_base::{DeploymentConfig, DEPLOYMENT_CHECK_SUCCESS_TASK};
-use crate::config::deployment::Codis;
 use crate::state::state_mgr::STATE_MGR;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -90,7 +89,7 @@ impl TaskGroup for DeploymentTaskGroup {
         );
         let upload_monitor_conf_tasks = upload_tasks(UploadTaskBuilderType::MonitorConf, &config);
 
-        let mut barrier = Some(vec![
+        let barrier = Some(vec![
             mkdir_remote_dir.len(),
             copy_or_download_task_instances.len(),
             db_upload_task.len(),
@@ -103,20 +102,6 @@ impl TaskGroup for DeploymentTaskGroup {
         executable.extend(db_upload_task);
         executable.extend(unpack_task);
         executable.extend(upload_monitor_conf_tasks);
-
-        if let Some(codis) = &config.deployment.codis {
-            let cmds = Codis::dashboard_cfg(&config.deployment)?;
-            let codis = ExecCustomCommand::build_task_by_host(
-                cmds,
-                &config,
-                vec![codis.dashboard.clone()],
-                Some("codis dashboard config".to_owned()),
-            );
-            assert!(codis.len() == 1);
-            barrier.as_mut().unwrap().push(codis.len());
-            executable.extend(codis);
-        }
-
         Ok(TaskExecutionContext {
             task_group: cmd_ref,
             barrier,

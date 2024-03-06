@@ -9,9 +9,10 @@ use crate::config::storage_service_config::{Cassandra, StorageService};
 use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
     config_template, get_cassandra_port, load_yaml_config_template, DownloadUrl,
-    CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CONFIG_MARIADB_SECTION,
-    CONFIG_SECTION_CLUSTER, CONFIG_SECTION_LOCAL, CONFIG_SECTION_STORE, JVM_SETTING_HOLDER,
-    MONOGRAPH_CONF_DYNAMO_TEMPLATE, MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO,
+    CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CODIS_DASHBOARD_CNF,
+    CODIS_PROXY_CNF, CONFIG_MARIADB_SECTION, CONFIG_SECTION_CLUSTER, CONFIG_SECTION_LOCAL,
+    CONFIG_SECTION_STORE, JVM_SETTING_HOLDER, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
+    MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO,
 };
 use anyhow::{anyhow, Ok};
 use configparser::ini::Ini;
@@ -25,6 +26,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
+use std::str::FromStr;
 use strum_macros::Display;
 use tracing::{error, warn};
 
@@ -63,13 +65,15 @@ macro_rules! download_urls {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Port {
     pub cs_conn: Option<u16>,
-    pub monograph_port: MonographPort,
+    pub monograph_port: Option<MonographPort>,
 }
 
 impl Port {
     pub fn contains(&self, p: u16) -> bool {
-        if p >= self.monograph_port.start && p <= self.monograph_port.end {
-            return true;
+        if let Some(mono_port) = &self.monograph_port {
+            if p >= mono_port.start && p <= mono_port.end {
+                return true;
+            }
         }
         if let Some(mysql_port) = self.cs_conn {
             if mysql_port == p {
@@ -380,7 +384,7 @@ impl Deployment {
             Some(format!("/tmp/mysql{}.sock", self.cs_conn_port())),
         );
 
-        let use_port = self.port.monograph_port.start;
+        let use_port = self.port.monograph_port.as_ref().unwrap().start;
         let monograph_hosts = &self.tx_service.host;
         if set_ip_list {
             let ip_list = monograph_hosts
@@ -403,7 +407,7 @@ impl Deployment {
         tx_host: Option<String>,
         install_dir: String,
     ) -> anyhow::Result<PathBuf> {
-        let port = self.port.monograph_port.start;
+        let port = self.port.monograph_port.as_ref().unwrap().start;
         let is_host = tx_host.is_some();
         let mut my_ini = self.build_monograph_config(is_host, install_dir)?;
 
@@ -540,7 +544,7 @@ impl Deployment {
         } else {
             if let Some(hw) = opt_hw {
                 assert!(hw.cpu > 0);
-                core_tx = (hw.cpu + 4) / 5 * 4;
+                core_tx = (hw.cpu * 4 + 4) / 5;
             } else {
                 core_tx = 4;
             };
@@ -571,6 +575,64 @@ impl Deployment {
 
         my_ini.write(db_config_location.as_path())?;
         Ok(db_config_location)
+    }
+
+    // generate proxy config file
+    pub fn codis_proxy_config(&self) -> anyhow::Result<PathBuf> {
+        let temp = fs::read_to_string(config_template(CODIS_PROXY_CNF)?)?;
+        let mut cnf = toml::Table::from_str(&temp)?;
+        cnf.insert(
+            "product_name".to_owned(),
+            toml::Value::String(self.cluster_name.clone()),
+        );
+        // calculate backend_primary_parallel
+        let tx_hosts = &self.tx_service.host;
+        let ncpu = tx_hosts
+            .iter()
+            .map(|host| {
+                if let Some(hw) = self.get_hardware(host) {
+                    hw.cpu
+                } else {
+                    4
+                }
+            })
+            .sum::<u16>()
+            / tx_hosts.len() as u16;
+        cnf.insert(
+            "backend_primary_parallel".to_owned(),
+            toml::Value::Integer(ncpu as i64),
+        );
+        // write toml
+        let path_proxy = upload_dir().join(CODIS_PROXY_CNF);
+        fs::File::create(path_proxy.as_path())?.write_all(cnf.to_string().as_bytes())?;
+        Ok(path_proxy)
+    }
+
+    // generate dashboard config file
+    pub fn codis_dashboard_config(&self) -> anyhow::Result<PathBuf> {
+        let temp = fs::read_to_string(config_template(CODIS_DASHBOARD_CNF)?)?;
+        let mut cnf = toml::Table::from_str(&temp)?;
+        cnf.insert(
+            "product_name".to_owned(),
+            toml::Value::String(self.cluster_name.clone()),
+        );
+        let coord = self
+            .storage_service
+            .cassandra
+            .as_ref()
+            .expect("codis only support cassandra coordinator");
+        let port = get_cassandra_port()?;
+        let addr = coord.host.iter().map(|ip| format!("{ip}:{port}")).join(",");
+        let keyspace = self.get_redis_keyspace()?;
+        cnf.insert("coordinator_addr".to_owned(), toml::Value::String(addr));
+        cnf.insert(
+            "coordinator_keyspace".to_owned(),
+            toml::Value::String(keyspace),
+        );
+        // write toml
+        let path_dashb = upload_dir().join(CODIS_DASHBOARD_CNF);
+        fs::File::create(path_dashb.as_path())?.write_all(cnf.to_string().as_bytes())?;
+        Ok(path_dashb)
     }
 
     pub fn monograph_download_links(&self) -> anyhow::Result<HashMap<String, DownloadUrl>> {

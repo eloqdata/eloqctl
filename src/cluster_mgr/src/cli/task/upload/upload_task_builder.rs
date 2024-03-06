@@ -1,5 +1,6 @@
 use crate::cli::task::task_base::{TaskArgValue, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::upload::cass_conf_upload_builder::CassConfUploadBuilder;
+use crate::cli::task::upload::codis_upload::CodisUpload;
 use crate::cli::task::upload::data_dir_upload_builder::DataDirUploadBuilder;
 use crate::cli::task::upload::monitor_upload_builder::*;
 use crate::cli::task::upload::monograph_upload_builder::MonographUploadBuilder;
@@ -61,6 +62,7 @@ pub enum UploadTaskBuilderType {
     MonographAll,
     MonitorConf,
     MonographConf,
+    Codis,
 }
 
 #[macro_export]
@@ -80,6 +82,7 @@ pub fn upload_tasks(
         UploadTaskBuilderType::MonographAll => MonographUploadBuilder {}.build(conf),
         UploadTaskBuilderType::MonitorConf => MonitorInfraConfUploadBuilder {}.build(conf),
         UploadTaskBuilderType::MonographConf => TxConfUpload {}.build(conf),
+        UploadTaskBuilderType::Codis => CodisUpload {}.build(conf),
     }
 }
 

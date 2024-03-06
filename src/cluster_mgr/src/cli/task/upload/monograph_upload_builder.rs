@@ -97,14 +97,14 @@ impl MonographUploadBuilder {
         }
         let dest_file = config.install_dir();
         tx_hosts_cloned
-            .iter()
+            .into_iter()
             .map(|host| {
-                let source_files = list_files_by_host(host, config.product()).join(" ");
+                let source_files = list_files_by_host(&host, config.product()).join(" ");
                 UploadFile {
                     source: source_files,
                     dest: dest_file.clone(),
                     extension: "bash,cnf".to_string(),
-                    host: host.to_string(),
+                    host,
                     copy_dir: false,
                 }
             })
@@ -112,23 +112,19 @@ impl MonographUploadBuilder {
             .collect_vec()
     }
 
-    fn upload_files_grouping_by_host(
-        &self,
-        upload_files: Vec<UploadFile>,
-        dest_file: String,
-    ) -> Vec<UploadFile> {
+    fn upload_group_by_dest(&self, upload_files: Vec<UploadFile>) -> Vec<UploadFile> {
         upload_files
-            .iter()
-            .into_group_map_by(|upload_file| upload_file.host.clone())
             .into_iter()
-            .map(|(host, upload_files)| {
+            .into_group_map_by(|upload_file| (upload_file.host.clone(), upload_file.dest.clone()))
+            .into_iter()
+            .map(|((host, dest), upload_files)| {
                 let source = upload_files
-                    .iter()
+                    .into_iter()
                     .map(|upload| upload.source.clone())
                     .join(" ");
                 UploadFile {
                     source,
-                    dest: dest_file.clone(),
+                    dest,
                     extension: "bash,cnf,gz".to_string(),
                     host,
                     copy_dir: false,
@@ -147,8 +143,7 @@ impl UploadTaskBuilder for MonographUploadBuilder {
 
         upload_files.extend(upload_tar_files);
 
-        let dest = config.install_dir();
-        let final_files = self.upload_files_grouping_by_host(upload_files, dest);
+        let final_files = self.upload_group_by_dest(upload_files);
         let source_host = get_source_host(None);
         final_files
             .iter()
