@@ -534,31 +534,23 @@ impl Deployment {
         if opt_hw.is_none() {
             warn!("hardware information for {host} is missing");
         }
+        const MIN_CORE_TX: u16 = 4;
         let key = "core_number";
-        let core_tx;
+        let mut core_tx = MIN_CORE_TX;
         if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
             core_tx = v.parse()?;
-            if core_tx == 0 || (opt_hw.is_some() && opt_hw.unwrap().cpu < core_tx) {
-                error!("invalid config {}={} for host {}", key, core_tx, host);
-            }
-        } else {
-            if let Some(hw) = opt_hw {
-                assert!(hw.cpu > 0);
-                core_tx = (hw.cpu * 4 + 4) / 5;
-            } else {
-                core_tx = 4;
-            };
-            my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_tx.to_string()));
+        } else if let Some(hw) = opt_hw {
+            assert!(hw.cpu > 0);
+            core_tx = (hw.cpu * 4 + 4) / 5;
         }
-        assert!(core_tx > 0);
+        if core_tx < MIN_CORE_TX {
+            warn!("bad config {}={} for {} {:?}", key, core_tx, host, opt_hw);
+            core_tx = MIN_CORE_TX;
+        }
+        my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_tx.to_string()));
 
         let key = "event_dispatcher_num";
-        if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
-            let core_io = v.parse()?;
-            if core_io == 0 || (opt_hw.is_some() && opt_hw.unwrap().cpu < core_io) {
-                error!("invalid config {}={} for host {}", key, core_io, host);
-            }
-        } else {
+        if my_ini.get(CONFIG_SECTION_LOCAL, key).is_none() {
             let core_io = (core_tx + 7) / 8;
             my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_io.to_string()));
         }
