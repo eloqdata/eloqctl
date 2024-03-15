@@ -136,23 +136,16 @@ impl TaskExecutor for UnpackFileTask {
             task_input.get(UNPACKED_NAME).unwrap().clone(),
         );
         let install_dir = self.config.install_dir();
-        let unpack_pair = if unpacked_name.contains(MONOGRAPH_TX_SERVICE_DIR) {
+        let mut unpack_cmd = if unpacked_name.contains(MONOGRAPH_TX_SERVICE_DIR) {
             let target_dir = format!("{install_dir}/{unpacked_name}");
-            (
-                format!(r#"mkdir -p {target_dir} && tar -zxvf {remote_tar} -C {target_dir}"#,),
-                target_dir,
-            )
+            format!(r#"mkdir -p {target_dir} && tar -zxvf {remote_tar} -C {target_dir}"#,)
         } else {
             let target_dir = format!("{install_dir}/{unpacked_name}");
-            (
-                format!(
-                    r#"mkdir -p {target_dir}; tar -zxvf {remote_tar} -C {target_dir} --strip-components 1 --overwrite"#,
-                ),
-                target_dir,
+            format!(
+                r#"mkdir -p {target_dir}; tar -zxvf {remote_tar} -C {target_dir} --strip-components 1 --overwrite"#,
             )
         };
-        let unpack_cmd = unpack_pair.0;
-        // let unpack_and_remove_raw_file = format!("{unpack_cmd};rm -rf {remote_tar}");
+        unpack_cmd = format!("{unpack_cmd} && rm -rf {remote_tar}");
         info!("UnpackFileTask cmd={unpack_cmd}");
         let task_rs = ssh_session
             .command(unpack_cmd.as_str(), SSHCommandOption::None)

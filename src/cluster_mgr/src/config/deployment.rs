@@ -28,7 +28,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
 use strum_macros::Display;
-use tracing::{error, warn};
+use tracing::warn;
 
 const GC_SETTING_CMS: &str = "
 -XX:+UseConcMarkSweepGC

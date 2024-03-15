@@ -155,16 +155,21 @@ impl SSHSession {
     }
 
     pub async fn used_tcp_ports(&self) -> anyhow::Result<Vec<u16>> {
-        let used = self
+        let output = self
             .execute("ss -tnl | awk 'NR>1 {print $4}' | awk -F':' '{print $NF}'")
             .await?
-            .split('\n')
-            .unique()
-            .map(|s| {
-                let port = s.parse::<u16>().expect("can't parse port number");
-                info!("socket {}:{} is already used", self.host, port);
-                port
+            .replace('\n', ",");
+        info!("socket {}:{} is already used", self.host, output);
+        let used = output
+            .split(',')
+            .filter_map(|s| match s.parse::<u16>() {
+                Ok(port) => Some(port),
+                Err(err) => {
+                    warn!("can't parse port number {s}: {err}");
+                    None
+                }
             })
+            .unique()
             .collect();
         Ok(used)
     }

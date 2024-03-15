@@ -9,9 +9,6 @@ deployment:
   version: "latest"
   install_dir: "/tmp"
   port:
-    monograph_port:
-      start: 8000
-      end: 8009
   log_service:
     nodes:
       - host: 127.0.0.1
