@@ -72,6 +72,19 @@ impl StorageService {
             None
         }
     }
+
+    pub fn pretty_name(&self) -> String {
+        let mut name = self.provider().unwrap().to_string();
+        if let Some(rocks) = &self.rocksdb {
+            name = match rocks {
+                RocksDB::Local => name,
+                RocksDB::S3(_) => format!("{name}_s3"),
+                RocksDB::GCS(_) => format!("{name}_gcs"),
+            }
+        }
+        name
+    }
+
     pub fn gen_cassandra_env(
         &self,
         install_dir: String,

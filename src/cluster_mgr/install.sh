@@ -1,6 +1,6 @@
 #!/bin/sh
 
-repo='https://d44nokjo5ywh8.cloudfront.net'
+repo='https://d143xau9fe26d8.cloudfront.net'
 if [ -n "$MONO_MIRRORS" ]; then
     repo=$MONO_MIRRORS
 fi
@@ -37,7 +37,7 @@ bin_dir=$CLUSTER_MGR_HOME
 mkdir -p "$bin_dir"
 
 install_binary() {
-    curl "$repo/mono-waiter/waiter-cluster-mgr-${LINUX_ID}${VERSION_ID}.tar.gz?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqwaiter.tar.gz" || return 1
+    curl "$repo/eloq-waiter/${LINUX_ID}${VERSION_ID}/nightly/waiter-cluster-mgr.tar.gz?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqwaiter.tar.gz" || return 1
     tar -zxf "/tmp/eloqwaiter.tar.gz" -C "$CLUSTER_MGR_HOME" --strip-components 1 --overwrite || return 1
     rm "/tmp/eloqwaiter.tar.gz"
     return 0

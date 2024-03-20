@@ -24,6 +24,7 @@ deployment:
       - 127.0.0.1
   storage_service:
     cassandra:
+      # download_url: "https://d143xau9fe26d8.cloudfront.net/others/apache-cassandra-4.1.3-bin.tar.gz"
       download_url: "https://dlcdn.apache.org/cassandra/4.1.3/apache-cassandra-4.1.3-bin.tar.gz"
       storage_cluster: "mono-cass-cluster"
       host:

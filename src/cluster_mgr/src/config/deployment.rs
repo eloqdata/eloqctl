@@ -162,42 +162,45 @@ impl Deployment {
     pub fn image_by_version(&mut self) {
         if self.version.is_none() || self.version.as_ref().unwrap().to_lowercase() == "latest" {
             self.version = Some("latest".to_owned());
+        } else if self.version.as_ref().unwrap().to_lowercase() == "nightly" {
+            self.version = Some("nightly".to_owned());
         } else {
             let re = Regex::new(r"(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)").unwrap();
             if !re.is_match(self.version.as_ref().unwrap()) {
                 panic!("Invalid version {}", self.version.as_ref().unwrap());
             }
         }
+        let mut prefix = PathBuf::from(RESOURCE_REPO);
+        let os_name = sysinfo::System::name().unwrap().to_lowercase();
+        let os_version = sysinfo::System::os_version().unwrap().replace('.', "");
+        let os_pretty = format!("{os_name}{os_version}");
+        let store = self.storage_service.pretty_name();
         let version = self.version.as_ref().unwrap();
         match self.product() {
             Product::EloqSQL => {
+                prefix.push("eloqsql");
+                prefix.push(os_pretty);
+                prefix.push(store);
+                prefix.push(version);
+                let prefix = prefix.as_path().to_str().unwrap();
                 if self.tx_image.is_none() {
-                    let store = self.storage_service.provider().unwrap().to_string();
-                    self.tx_image = Some(format!(
-                        "{}/main_tagged_range_ubuntu2004/{}/{}/monographdb-tx-release-bin.tar.gz",
-                        RESOURCE_REPO, store, version
-                    ));
+                    self.tx_image = Some(format!("{prefix}/eloqsql-tx-release-bin.tar.gz"));
                 }
                 if self.log_image.is_none() && self.log_service.is_some() {
-                    let store = self.storage_service.provider().unwrap().to_string();
-                    self.log_image = Some(format!(
-                        "{}/main_tagged_range_ubuntu2004/{}/{}/monographdb-log-release-bin.tar.gz",
-                        RESOURCE_REPO, store, version
-                    ));
+                    self.log_image = Some(format!("{prefix}/eloqsql-log-release-bin.tar.gz"));
                 }
             }
             Product::EloqKV => {
+                prefix.push("eloqkv");
+                prefix.push(os_pretty);
+                prefix.push(store);
+                prefix.push(version);
+                let prefix = prefix.as_path().to_str().unwrap();
                 if self.tx_image.is_none() {
-                    self.tx_image = Some(format!(
-                        "{}/mono-release-ci-redis/monograph_redis.tar.gz",
-                        RESOURCE_REPO
-                    ));
+                    self.tx_image = Some(format!("{prefix}/eloqkv-tx-release-bin.tar.gz"));
                 }
                 if self.log_image.is_none() && self.log_service.is_some() {
-                    self.log_image = Some(format!(
-                        "{}/mono-release-ci-redis/log_service.tar.gz",
-                        RESOURCE_REPO
-                    ));
+                    self.log_image = Some(format!("{prefix}/eloqkv-log-release-bin.tar.gz"));
                 }
             }
         }
