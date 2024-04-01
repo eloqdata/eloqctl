@@ -1,15 +1,15 @@
 connection:
-  username: "ubuntu"
+  username: "monouser"
   auth_type: "keypair"
   auth:
-    keypair: "/home/ubuntu/.ssh/ed25519_mono"
+    keypair: "/home/monouser/.ssh/id_rsa"
 deployment:
+  cluster_name: "eloqsql-cluster"
   product: "EloqSQL"
   version: "latest"
-  cluster_name: "mono-poc"
-  install_dir: "/data/opt"
+  install_dir: "/home/monouser/eloq"
   port:
-    cs_conn: 3300
+    cs_conn: 3316
     monograph_port:
       start: 8000
       end: 8009
@@ -18,18 +18,15 @@ deployment:
       - host: 127.0.0.1
         port: 9000
         data_dir:
-          - "/data1/opt/log_data"
-          - "/data2/opt/log_data"
-          - "/data3/opt/log_data"
+          - "/home/monouser/eloq/disk_sql"
     replica: 1
   tx_service:
     host:
       - 127.0.0.1
   storage_service:
     cassandra:
-      # download_url: "https://d143xau9fe26d8.cloudfront.net/others/apache-cassandra-4.1.3-bin.tar.gz"
-      download_url: "https://dlcdn.apache.org/cassandra/4.1.3/apache-cassandra-4.1.3-bin.tar.gz"
-      storage_cluster: "mono-cass-cluster"
+      download_url: "https://d143xau9fe26d8.cloudfront.net/others/apache-cassandra-4.1.3-bin.tar.gz"
+      storage_cluster: "eloqsql-cluster"
       host:
         - 127.0.0.1
   monitor:
@@ -38,17 +35,17 @@ deployment:
       path: "/mono_metrics"
       port: 18081
     prometheus:
-      download_url: "https://github.com/prometheus/prometheus/releases/download/v2.42.0/prometheus-2.42.0.linux-amd64.tar.gz"
+      download_url: "https://d143xau9fe26d8.cloudfront.net/others/prometheus-2.42.0.linux-amd64.tar.gz"
       port: 9500
       host: "127.0.0.1"
     grafana:
-      download_url: "https://dl.grafana.com/oss/release/grafana-9.3.6.linux-amd64.tar.gz"
+      download_url: "https://d143xau9fe26d8.cloudfront.net/others/grafana-9.3.6.linux-amd64.tar.gz"
       port: 3301
       host: "127.0.0.1"
-    node_exporter: "https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz"
+    node_exporter: "https://d143xau9fe26d8.cloudfront.net/others/node_exporter-1.5.0.linux-amd64.tar.gz"
     node_exporter_port: 9200
-    mysql_exporter: "https://github.com/prometheus/mysqld_exporter/releases/download/v0.14.0/mysqld_exporter-0.14.0.linux-amd64.tar.gz"
+    mysql_exporter: "https://d143xau9fe26d8.cloudfront.net/others/mysqld_exporter-0.14.0.linux-amd64.tar.gz"
     mysql_exporter_port: 9300
     cassandra_collector:
-      mcac_agent: "https://github.com/datastax/metric-collector-for-apache-cassandra/releases/download/v0.3.4/datastax-mcac-agent-0.3.4-4.1-beta1.tar.gz"
+      mcac_agent: "https://d143xau9fe26d8.cloudfront.net/others/datastax-mcac-agent-0.3.4-4.1-beta1.tar.gz"
       mcac_port: 9103
