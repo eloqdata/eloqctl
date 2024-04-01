@@ -171,7 +171,7 @@ impl Deployment {
             }
         }
         let mut prefix = PathBuf::from(RESOURCE_REPO);
-        let os_name = sysinfo::System::name().unwrap().to_lowercase();
+        let os_name = sysinfo::System::distribution_id();
         let os_version = sysinfo::System::os_version().unwrap().replace('.', "");
         let os_pretty = format!("{os_name}{os_version}");
         let arch = match sysinfo::System::cpu_arch().unwrap().as_str() {
