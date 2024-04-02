@@ -31,6 +31,17 @@ impl CmdPrinter {
         self.data.borrow_mut().push(row);
     }
 
+    pub(crate) fn simple_print(&self) {
+        for row in self.data.borrow().clone() {
+            println!("--------------------------");
+            println!(
+                "TaskID: {}\n{}\n{}; {}",
+                row.task_id, row.cmd, row.cmd_status, row.cmd_output
+            )
+        }
+    }
+
+    #[allow(dead_code)]
     pub(crate) fn table_print(&self) {
         let table_header_format = tabled::format::Format::new(|s| s.blue().to_string());
         let mut table = Table::new(self.data.borrow().clone());

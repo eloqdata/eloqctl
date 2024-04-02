@@ -10,9 +10,9 @@ use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
     config_template, get_cassandra_port, load_yaml_config_template, DownloadUrl, StorageProvider,
     CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CODIS_DASHBOARD_CNF,
-    CODIS_PROXY_CNF, CONFIG_MARIADB_SECTION, CONFIG_SECTION_CLUSTER, CONFIG_SECTION_LOCAL,
-    CONFIG_SECTION_STORE, JVM_SETTING_HOLDER, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
-    MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO,
+    CODIS_PROXY_CNF, CONFIG_MARIADB_SECTION, JVM_SETTING_HOLDER, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
+    MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO, SECTION_CLUSTER, SECTION_LOCAL,
+    SECTION_STORE, SET_FOR_ME,
 };
 use anyhow::anyhow;
 use configparser::ini::Ini;
@@ -60,6 +60,20 @@ macro_rules! download_urls {
         $(
           $download_link.insert($url_key.to_string(), DownloadUrl::from_url_str($url_value.as_str()).unwrap());
         )*
+    };
+}
+
+macro_rules! set_by_user {
+    ($opt_val:expr, $T:ty) => {
+        if let Some(v) = $opt_val {
+            if v == SET_FOR_ME {
+                None
+            } else {
+                Some(v.parse::<$T>()?)
+            }
+        } else {
+            None
+        }
     };
 }
 
@@ -268,7 +282,7 @@ impl Deployment {
         }
         let mut my_ini_local = Ini::new();
         let _config_map_rs = my_ini_local.load(my_local).unwrap();
-        if let Some(keyspace) = my_ini_local.get(CONFIG_SECTION_STORE, "cass_keyspace") {
+        if let Some(keyspace) = my_ini_local.get(SECTION_STORE, "cass_keyspace") {
             Ok(keyspace)
         } else {
             Ok("mono_redis".to_string())
@@ -441,34 +455,30 @@ impl Deployment {
         if opt_hw.is_none() {
             warn!("hardware information for {host} is missing");
         }
+
         let key = "thread_pool_size";
-        if my_ini.get(CONFIG_MARIADB_SECTION, key).is_none() {
-            let mut v;
+        let val = set_by_user!(my_ini.get(CONFIG_MARIADB_SECTION, key), u16);
+        if val.is_none() {
+            let mut v = 1;
             if let Some(hw) = opt_hw {
-                v = (hw.cpu * 3) / 8;
-                if v == 0 {
-                    v = 1;
-                }
-            } else {
-                v = 1;
+                v = v.max((hw.cpu * 3) / 8);
             }
             my_ini.set(CONFIG_MARIADB_SECTION, key, Some(v.to_string()));
         }
+
         let key = "monograph_core_num";
-        if my_ini.get(CONFIG_MARIADB_SECTION, key).is_none() {
-            let mut v;
+        let val = set_by_user!(my_ini.get(CONFIG_MARIADB_SECTION, key), u16);
+        if val.is_none() {
+            let mut v = 1;
             if let Some(hw) = opt_hw {
-                v = (hw.cpu * 3) / 8;
-                if v == 0 {
-                    v = 1;
-                }
-            } else {
-                v = 1;
+                v = v.max((hw.cpu * 3) / 8);
             }
             my_ini.set(CONFIG_MARIADB_SECTION, key, Some(v.to_string()));
         }
+
         let key = "monograph_node_memory_limit_mb";
-        if my_ini.get(CONFIG_MARIADB_SECTION, key).is_none() {
+        let val = set_by_user!(my_ini.get(CONFIG_MARIADB_SECTION, key), u32);
+        if val.is_none() {
             let v = if let Some(hw) = opt_hw {
                 (hw.memory * 6) / 10
             } else {
@@ -494,63 +504,63 @@ impl Deployment {
                     .unwrap()
                     .host
                     .join(",");
-                redis_ini.set(CONFIG_SECTION_STORE, "cass_hosts", Some(cassandra_hosts));
+                redis_ini.set(SECTION_STORE, "cass_hosts", Some(cassandra_hosts));
             }
             StorageProvider::DynamoDB => panic!("not supported"),
             StorageProvider::RocksDB => match self.storage_service.rocksdb.clone().unwrap() {
                 RocksDB::Local => {}
                 RocksDB::S3(s3) => {
-                    redis_ini.set(CONFIG_SECTION_STORE, "aws_access_key_id", Some(s3.aws_id));
-                    redis_ini.set(CONFIG_SECTION_STORE, "aws_secret_key", Some(s3.aws_secret));
+                    redis_ini.set(SECTION_STORE, "aws_access_key_id", Some(s3.aws_id));
+                    redis_ini.set(SECTION_STORE, "aws_secret_key", Some(s3.aws_secret));
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_cloud_region",
                         Some(s3.region),
                     );
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_cloud_bucket_name",
                         Some(s3.bucket_name),
                     );
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_cloud_bucket_prefix",
                         Some(s3.bucket_prefix),
                     );
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_target_file_size_base",
                         Some(s3.target_file_size_base),
                     );
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_cloud_sst_file_cache_size",
                         Some(s3.sst_file_cache_size),
                     );
                 }
                 RocksDB::GCS(gcs) => {
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_cloud_region",
                         Some(gcs.region),
                     );
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_cloud_bucket_name",
                         Some(gcs.bucket_name),
                     );
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_cloud_bucket_prefix",
                         Some(gcs.bucket_prefix),
                     );
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_target_file_size_base",
                         Some(gcs.target_file_size_base),
                     );
                     redis_ini.set(
-                        CONFIG_SECTION_STORE,
+                        SECTION_STORE,
                         "kv_store_rocksdb_cloud_sst_file_cache_size",
                         Some(gcs.sst_file_cache_size),
                     );
@@ -564,10 +574,10 @@ impl Deployment {
                 .iter()
                 .map(|host| format!("{}:{}", host.clone(), use_port))
                 .join(",");
-            redis_ini.set(CONFIG_SECTION_CLUSTER, "ip_port_list", Some(ip_list));
+            redis_ini.set(SECTION_CLUSTER, "ip_port_list", Some(ip_list));
         } else {
             redis_ini.set(
-                CONFIG_SECTION_CLUSTER,
+                SECTION_CLUSTER,
                 "ip_port_list",
                 Some(format!("{}:{}", "127.0.0.1", use_port)),
             );
@@ -577,7 +587,7 @@ impl Deployment {
 
     pub fn gen_redis_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
         let is_host = tx_host.is_some();
-        let mut my_ini = self.build_redis_config(is_host)?;
+        let mut ini = self.build_redis_config(is_host)?;
         let (host, db_config_location) = if let Some(host) = tx_host {
             (host.clone(), upload_host_dir(&host).join("redis.ini"))
         } else {
@@ -590,52 +600,47 @@ impl Deployment {
             self.build_log_config()
                 .into_iter()
                 .for_each(|(key, conf_val)| {
-                    my_ini.set(CONFIG_SECTION_CLUSTER, &key, Some(conf_val));
+                    ini.set(SECTION_CLUSTER, &key, Some(conf_val));
                 });
         }
-        my_ini.set(CONFIG_SECTION_LOCAL, "ip", Some(host.clone()));
-        my_ini.set(
-            CONFIG_SECTION_LOCAL,
-            "port",
-            Some(self.cs_conn_port().to_string()),
-        );
+        ini.set(SECTION_LOCAL, "ip", Some(host.clone()));
+        ini.set(SECTION_LOCAL, "port", Some(self.cs_conn_port().to_string()));
 
         let opt_hw = self.get_hardware(&host);
         if opt_hw.is_none() {
             warn!("hardware information for {host} is missing");
         }
-        const MIN_CORE_TX: u16 = 1;
         let key = "core_number";
-        let mut core_tx = MIN_CORE_TX;
-        if let Some(v) = my_ini.get(CONFIG_SECTION_LOCAL, key) {
-            core_tx = v.parse()?;
-        } else if let Some(hw) = opt_hw {
-            assert!(hw.cpu > 0);
-            core_tx = (hw.cpu * 4 + 4) / 5;
+        let mut core_tx = 1; // minimal value
+        if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
+            core_tx = val;
+        } else {
+            if let Some(hw) = opt_hw {
+                assert!(hw.cpu > 0);
+                core_tx = core_tx.max((hw.cpu * 4) / 5);
+            }
+            ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
         }
-        if core_tx < MIN_CORE_TX {
-            warn!("bad config {}={} for {} {:?}", key, core_tx, host, opt_hw);
-            core_tx = MIN_CORE_TX;
-        }
-        my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_tx.to_string()));
 
         let key = "event_dispatcher_num";
-        if my_ini.get(CONFIG_SECTION_LOCAL, key).is_none() {
+        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
+        if val.is_none() {
             let core_io = (core_tx + 7) / 8;
-            my_ini.set(CONFIG_SECTION_LOCAL, key, Some(core_io.to_string()));
+            ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
         }
 
         let key = "node_memory_limit_mb";
-        if my_ini.get(CONFIG_SECTION_LOCAL, key).is_none() {
+        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
+        if val.is_none() {
             let v = if let Some(hw) = opt_hw {
                 (hw.memory * 4) / 5
             } else {
                 GB
             };
-            my_ini.set(CONFIG_SECTION_LOCAL, key, Some(v.to_string()));
+            ini.set(SECTION_LOCAL, key, Some(v.to_string()));
         }
 
-        my_ini.write(db_config_location.as_path())?;
+        ini.write(db_config_location.as_path())?;
         Ok(db_config_location)
     }
 
