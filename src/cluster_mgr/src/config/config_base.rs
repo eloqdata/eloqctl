@@ -514,7 +514,7 @@ impl DeploymentConfig {
     pub fn load(path: Option<String>) -> anyhow::Result<Self> {
         let path_string = config_path_string(path)?;
         info!("DeploymentConfig load file from {}", path_string);
-        let config_rs = DeploymentConfig::read_config_from_file(path_string);
+        let config_rs = DeploymentConfig::read_config_from_file(path_string.clone());
         if let Ok(mut config) = config_rs {
             config.deployment.image_by_version();
             Ok(config)
@@ -524,7 +524,7 @@ impl DeploymentConfig {
                 "DeploymentConfig load error cause by {:?}",
                 config_err.as_str()
             );
-            Err(anyhow!(config_err))
+            Err(anyhow!("{path_string}: {config_err}"))
         }
     }
 

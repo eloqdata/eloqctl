@@ -91,7 +91,7 @@ impl CommandExecutor {
             CommandArgs::Deploy { topology_file }
             | CommandArgs::Upgrade { topology_file }
             | CommandArgs::Launch { topology_file } => {
-                let mut config = DeploymentConfig::load(Some(topology_file)).unwrap();
+                let mut config = DeploymentConfig::load(Some(topology_file))?;
                 config.scan_hardware().await?;
                 self.save_deployment_config(&config, cmd.as_ref().eq("upgrade"))
                     .await?;
@@ -104,7 +104,7 @@ impl CommandExecutor {
                     env::var(CONFIG_PATH_DIR)?,
                     product.to_string()
                 );
-                let mut config = DeploymentConfig::load(Some(topology)).unwrap();
+                let mut config = DeploymentConfig::load(Some(topology))?;
                 config.connection.username = whoami::username();
                 config.connection.auth.keypair = Some(format!("{}/ed25519", env::var(HOME_DIR)?));
                 config.deployment.install_dir = env::var(HOME_DIR)?;

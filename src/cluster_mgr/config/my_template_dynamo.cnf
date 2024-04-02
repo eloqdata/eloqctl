@@ -1,33 +1,38 @@
 [mariadb]
 plugin_maturity=experimental
-datadir=_INSTALL_DIR/datafarm
-lc_messages_dir=_INSTALL_DIR/share
-plugin_dir=_INSTALL_DIR/plugin
+datadir=${OVERRIDE}
+lc_messages_dir=${OVERRIDE}
+plugin_dir=${OVERRIDE}
 max_connections=2000
 core_file
 skip-log-bin
-port=3300
+port=${OVERRIDE}
 performance_schema=OFF
-socket=/tmp/mysqld3300.sock
+socket=${OVERRIDE}
 plugin_load_add=ha_monograph
 thread_handling=pool-of-threads
+thread_pool_size=${SET_FOR_ME}
 thread_pool_max_threads=4
 thread_pool_dedicated_listener=1
 # monograph engine specific parameter.
 monograph
-monograph_local_ip=127.0.0.1:5000
-monograph_ip_list=127.0.0.1:5000
+monograph_local_ip=${OVERRIDE}
+monograph_ip_list=${OVERRIDE}
 #monograph_metrics_port=18081
 monograph_enable_mvcc=off
 transaction_isolation=READ-COMMITTED
 monograph_cc_protocol=OCC
 monograph_keyspace_name=mono
+monograph_txlog_service_list=${OVERRIDE}
+monograph_txlog_group_replica_num=${OVERRIDE}
+monograph_core_num=${SET_FOR_ME}
+monograph_node_memory_limit_mb=${SET_FOR_ME}
 
 monograph_kv_storage=dynamo
-monograph_dynamodb_region=_REGION
-monograph_dynamodb_endpoint=_ENDPOINT
-monograph_aws_access_key_id=_AK_ID
-monograph_aws_secret_key=_SK_ID
+monograph_dynamodb_region=${OVERRIDE}
+monograph_dynamodb_endpoint=${OVERRIDE}
+monograph_aws_access_key_id=${OVERRIDE}
+monograph_aws_secret_key=${OVERRIDE}
 
 
 

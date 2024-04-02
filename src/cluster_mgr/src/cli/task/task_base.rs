@@ -378,7 +378,7 @@ impl TaskMgr {
                                 }
                             },
                         );
-                        table_printer.table_print();
+                        table_printer.simple_print();
                     }
                 }
                 TaskResultEnum::Error(err_msg) => {
