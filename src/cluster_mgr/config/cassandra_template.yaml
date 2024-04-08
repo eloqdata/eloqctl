@@ -7,7 +7,7 @@
 
 # The name of the cluster. This is mainly used to prevent machines in
 # one logical cluster from joining another.
-cluster_name: 'Test Cluster'
+cluster_name: "Test Cluster"
 
 # This defines the number of tokens randomly assigned to this node on the ring
 # The more tokens, relative to other nodes, the larger the proportion of data
@@ -376,7 +376,7 @@ prepared_statements_cache_size:
 #
 # Default value is empty to make it "auto" (min(5% of Heap (in MiB), 100MiB)). Set to 0 to disable key cache.
 # Min unit: MiB
-key_cache_size:
+key_cache_size: 2000MiB
 
 # Duration in seconds after which Cassandra should
 # save the key cache. Caches are saved to saved_caches_directory as
@@ -1127,7 +1127,6 @@ request_timeout: 10000ms
 # internode_application_receive_queue_reserve_endpoint_capacity: 128MiB
 # internode_application_receive_queue_reserve_global_capacity: 512MiB
 
-
 # How long before a node logs slow queries. Select queries that take longer than
 # this timeout to execute, will generate an aggregated log message, so that slow queries
 # can be identified. Set this value to zero to disable slow query logging.
@@ -1448,7 +1447,6 @@ transparent_data_encryption_options:
           store_type: JCEKS
           key_password: cassandra
 
-
 #####################
 # SAFETY THRESHOLDS #
 #####################
@@ -1566,7 +1564,6 @@ audit_logging_options:
   # archive_command:
   # max_archive_retries: 10
 
-
   # default options for full query logging - these can be overridden from command line when executing
   # nodetool enablefullquerylog
   # full_query_logging_options:
@@ -1643,7 +1640,6 @@ transient_replication_enabled: false
 # Enables the used of 'ALTER ... DROP COMPACT STORAGE' statements on this node.
 # 'ALTER ... DROP COMPACT STORAGE' is considered experimental and is not recommended for production use.
 drop_compact_storage_enabled: false
-
 # Whether or not USE <keyspace> is allowed. This is enabled by default to avoid failure on upgrade.
 #use_statements_enabled: true
 
