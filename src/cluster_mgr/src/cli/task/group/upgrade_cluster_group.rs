@@ -1,4 +1,6 @@
+use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::group::{TaskGroup, UpgradeClusterTaskGroup};
+use crate::cli::task::local_copy_task::LocalCopyTask;
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::MonographTxCtlTask;
@@ -28,6 +30,10 @@ impl TaskGroup for UpgradeClusterTaskGroup {
         if has_log_srv {
             stop_monograph.extend(MonographLogCtlTask::from_config(stop_cmd, &config));
         }
+
+        let mut download_task = DownloadTask::from_config(&config)?;
+        download_task.extend(LocalCopyTask::form_config(&config)?);
+
         let mut upload_monograph_tasks = IndexMap::new();
         upload_monograph_tasks.extend(upload_tasks(UploadTaskBuilderType::MonographAll, &config));
         upload_monograph_tasks.extend(upload_tasks(UploadTaskBuilderType::MonitorConf, &config));
@@ -44,13 +50,14 @@ impl TaskGroup for UpgradeClusterTaskGroup {
 
         let barrier = vec![
             stop_monograph.len(),
+            download_task.len(),
             upload_monograph_tasks.len(),
             unpack_tasks.len(),
             start_all_tasks.len(),
         ];
         let mut executable = IndexMap::new();
-
         executable.extend(stop_monograph);
+        executable.extend(download_task);
         executable.extend(upload_monograph_tasks);
         executable.extend(unpack_tasks);
         executable.extend(start_all_tasks);
