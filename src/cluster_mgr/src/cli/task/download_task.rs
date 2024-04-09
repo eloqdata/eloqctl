@@ -2,7 +2,7 @@ use crate::cli::task::task_base::CmdErr::DownloadErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::cli::{download_dir, file_process_progress, CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::cli::{file_process_progress, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::DeploymentConfig;
 use crate::config::deployment::Codis;
 use crate::config::DownloadUrl;
@@ -71,36 +71,29 @@ impl DownloadTask {
         }
 
         let mpg_bar = MultiProgress::new();
-        let download_dir = download_dir();
         let local_ip = local_ip_address::local_ip()?.to_string();
         let download_tasks = download_url_vec
             .into_iter()
-            .map(|download_url| {
-                let download_file_name = DownloadUrl::from_url_str(download_url.as_str())
-                    .unwrap()
-                    .file_name();
+            .map(|source| {
+                let d_url = DownloadUrl::from_url_str(source.as_str()).unwrap();
+                let download_dir = d_url.cache_dir().unwrap();
+                let filename = d_url.file_name();
                 let task_id = TaskId {
                     cmd: "deploy".to_string(),
-                    task: format!("{download_file_name}_download"),
+                    task: format!("{filename}_download"),
                     host: local_ip.to_string(),
                 };
                 let pb = mpg_bar.add(file_process_progress(
-                    format!("DOWNLOAD [{download_file_name}]"),
+                    format!("DOWNLOAD [{filename}]"),
                     "#>-",
                 ));
                 (
                     task_id.clone(),
                     TaskInstance {
                         task_input: HashMap::from([
-                            (DOWNLOAD_URL.to_string(), TaskArgValue::Str(download_url)),
-                            (
-                                DOWNLOAD_FILE_NAME.to_string(),
-                                TaskArgValue::Str(download_file_name),
-                            ),
-                            (
-                                DOWNLOAD_PATH.to_string(),
-                                TaskArgValue::Str(download_dir.to_str().unwrap().to_string()),
-                            ),
+                            (DOWNLOAD_URL.to_string(), TaskArgValue::Str(source)),
+                            (DOWNLOAD_FILE_NAME.to_string(), TaskArgValue::Str(filename)),
+                            (DOWNLOAD_PATH.to_string(), TaskArgValue::Str(download_dir)),
                         ]),
                         task: Box::new(DownloadTask::new(task_id, pb)),
                         task_host: TaskHost::Local,
@@ -130,7 +123,7 @@ impl TaskExecutor for DownloadTask {
         println!("{} execute.\n", self.task_id.pretty_string());
         let download_url =
             TaskArgValue::into_inner_value::<String>(task_input.get(DOWNLOAD_URL).unwrap().clone());
-        let download_file_name = TaskArgValue::into_inner_value::<String>(
+        let filename = TaskArgValue::into_inner_value::<String>(
             task_input.get(DOWNLOAD_FILE_NAME).unwrap().clone(),
         );
         let download_path = PathBuf::from(TaskArgValue::into_inner_value::<String>(
@@ -146,7 +139,7 @@ impl TaskExecutor for DownloadTask {
                 create_download_path_rs.err().unwrap().to_string()
             )));
         }
-        let local_file_path = download_path.join(download_file_name.clone());
+        let local_file_path = download_path.join(&filename);
         if local_file_path.exists() {
             info!(
                 "The local file {:?} exists. please delete it if you want to re-download it first.",
@@ -214,7 +207,7 @@ impl TaskExecutor for DownloadTask {
             return Err(anyhow!(DownloadErr(download_url, err.to_string())));
         }
         self.pg_bar
-            .finish_with_message(format!("{download_file_name} download compete"));
+            .finish_with_message(format!("{filename} download compete"));
 
         let mut download_result = HashMap::new();
         download_result.insert(

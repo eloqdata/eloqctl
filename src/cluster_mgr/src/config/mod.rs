@@ -51,7 +51,7 @@ pub const GRAFANA_CONFIG_FILE: &str = "defaults.ini";
 pub const CREATE_MONITOR_USER_SQL_FILE: &str = "create_monitor_user.sql";
 pub const MYSQL_EXPORTER_CLIENT_CONFIG: &str = "mysql_exporter.cnf";
 
-pub const RESOURCE_REPO: &str = "https://d143xau9fe26d8.cloudfront.net";
+pub const RESOURCE_REPO: &str = "d143xau9fe26d8.cloudfront.net";
 
 #[macro_export]
 macro_rules! gen_db_script {
@@ -106,8 +106,8 @@ pub enum StorageProvider {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum DownloadUrl {
-    Local(String),
-    Remote(String),
+    Local(Url),
+    Remote(Url),
 }
 
 impl DownloadUrl {
@@ -119,13 +119,28 @@ impl DownloadUrl {
     }
 
     pub fn file_name(&self) -> String {
-        let url_string = match self {
-            DownloadUrl::Local(local_url) => local_url.to_string(),
-            DownloadUrl::Remote(remote_url) => remote_url.to_string(),
+        let url = match self {
+            DownloadUrl::Local(local_url) => local_url,
+            DownloadUrl::Remote(remote_url) => remote_url,
         };
-        let url = Url::parse(url_string.as_str()).unwrap();
-        let path_segments = url.path_segments().unwrap();
-        path_segments.last().unwrap().to_string()
+        url.path_segments().unwrap().last().unwrap().to_string()
+    }
+
+    pub fn cache_dir(&self) -> anyhow::Result<String> {
+        let mut dir = crate::cli::download_dir();
+        match self {
+            DownloadUrl::Local(_) => {}
+            DownloadUrl::Remote(url) => {
+                if url.domain() == Some(RESOURCE_REPO) {
+                    let mut seg = url.path_segments().unwrap();
+                    let _filename = seg.next_back();
+                    while let Some(d) = seg.next() {
+                        dir.push(d);
+                    }
+                }
+            }
+        }
+        Ok(dir.to_str().unwrap().to_string())
     }
 
     pub fn get_url(&self) -> String {
@@ -147,8 +162,8 @@ impl DownloadUrl {
             let url = url_rs.unwrap();
             let schema = url.scheme().to_lowercase();
             match schema.as_str() {
-                "file" => Ok(DownloadUrl::Local(url_str.to_string())),
-                "http" | "https" => Ok(DownloadUrl::Remote(url_str.to_string())),
+                "file" => Ok(DownloadUrl::Local(url)),
+                "http" | "https" => Ok(DownloadUrl::Remote(url)),
                 _ => {
                     panic!(
                         "The url schema is incorrect. For now only support file or http. {url_str}",

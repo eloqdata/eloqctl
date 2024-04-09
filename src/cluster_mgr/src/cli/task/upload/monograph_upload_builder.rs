@@ -1,4 +1,3 @@
-use crate::cli::download_dir;
 use crate::cli::task::task_base::{TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, list_files_by_host, UploadTaskBuilder,
@@ -17,17 +16,15 @@ pub struct MonographUploadBuilder;
 
 impl MonographUploadBuilder {
     fn monograph_tar_upload_file(&self, config: &DeploymentConfig) -> Vec<UploadFile> {
-        let deployment_ref = &config.deployment;
-        let download_dir_path = download_dir();
-        let download_dir = download_dir_path.to_str().unwrap();
-        let monograph_download_links = deployment_ref.all_download_links().unwrap();
-
         let tx_hosts = config.get_host_list(DeploymentPackage::MonographTx);
         let log_hosts = config.get_host_list(DeploymentPackage::MonographLog);
         let storage_hosts = config.get_host_list(DeploymentPackage::Storage);
         let codis_hosts = config.get_host_list(DeploymentPackage::Codis);
         let install_dir = config.install_dir();
-        monograph_download_links
+        config
+            .deployment
+            .all_download_links()
+            .unwrap()
             .iter()
             .map(|(file_key, download_url)| {
                 let dest_hosts = match file_key.as_str() {
@@ -55,7 +52,7 @@ impl MonographUploadBuilder {
                 hosts
                     .iter()
                     .map(|host| {
-                        let source = format!("{}/{}", download_dir, url.file_name());
+                        let source = format!("{}/{}", url.cache_dir().unwrap(), url.file_name());
                         UploadFile {
                             source,
                             dest: install_dir.clone(),

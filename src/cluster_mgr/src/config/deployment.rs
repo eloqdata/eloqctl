@@ -132,7 +132,7 @@ pub struct Codis {
 
 impl Codis {
     pub fn download_url() -> String {
-        format!("{}/codis/codis.tar.gz", RESOURCE_REPO)
+        format!("https://{RESOURCE_REPO}/codis/codis.tar.gz")
     }
     pub fn dir(install_dir: &str) -> String {
         format!("{install_dir}/codis")
@@ -184,7 +184,7 @@ impl Deployment {
                 panic!("Invalid version {}", self.version.as_ref().unwrap());
             }
         }
-        let mut prefix = PathBuf::from(RESOURCE_REPO);
+        let mut prefix = PathBuf::from(format!("https://{RESOURCE_REPO}"));
         let os_name = sysinfo::System::distribution_id();
         let os_version = sysinfo::System::os_version().unwrap().replace('.', "");
         let os_pretty = format!("{os_name}{os_version}");
