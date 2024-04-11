@@ -37,14 +37,14 @@ bin_dir=$CLUSTER_MGR_HOME
 mkdir -p "$bin_dir"
 
 install_binary() {
-    curl "$repo/eloq-waiter/${LINUX_ID}${VERSION_ID}/nightly/waiter-cluster-mgr.tar.gz?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqwaiter.tar.gz" || return 1
+    curl "$repo/waiter/waiter-${LINUX_ID}${VERSION_ID}-${arch}.tar.gz?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqwaiter.tar.gz" || return 1
     tar -zxf "/tmp/eloqwaiter.tar.gz" -C "$CLUSTER_MGR_HOME" --strip-components 1 --overwrite || return 1
     rm "/tmp/eloqwaiter.tar.gz"
     return 0
 }
 
 if ! install_binary; then
-    echo "Failed to download and/or extract cluster-mgr archive."
+    echo "Failed to download and/or extract eloqwaiter archive."
     exit 1
 fi
 
