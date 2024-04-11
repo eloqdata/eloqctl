@@ -8,7 +8,7 @@ use crate::config::{
 };
 use crate::config::{ConfigErr, DownloadUrl};
 use crate::gen_db_misc_files;
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ use std::env::current_exe;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::{error, info};
 
 pub const MONOGRAPH_TX_SERVICE_DIR: &str = "monograph-tx-service-release";
@@ -515,18 +515,15 @@ impl DeploymentConfig {
     pub fn load(path: Option<String>) -> anyhow::Result<Self> {
         let path_string = config_path_string(path)?;
         info!("DeploymentConfig load file from {}", path_string);
-        let config_rs = DeploymentConfig::read_config_from_file(path_string.clone());
-        if let Ok(mut config) = config_rs {
-            config.deployment.image_by_version();
-            Ok(config)
-        } else {
-            let config_err = config_rs.err().unwrap().to_string();
-            error!(
-                "DeploymentConfig load error cause by {:?}",
-                config_err.as_str()
-            );
-            Err(anyhow!("{path_string}: {config_err}"))
+        let mut config = DeploymentConfig::read_config_from_file(path_string.clone())
+            .map_err(|err| anyhow!("{path_string}: {err}"))?;
+        if let Some(sshkey) = &config.connection.auth.keypair {
+            if !Path::new(sshkey).exists() {
+                bail!("ssh key {sshkey} not exist");
+            }
         }
+        config.deployment.image_by_version()?;
+        Ok(config)
     }
 
     /// By default, the directory where cluster_mgr is located includes config dir.

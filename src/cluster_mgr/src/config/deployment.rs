@@ -14,7 +14,7 @@ use crate::config::{
     MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO, SECTION_CLUSTER, SECTION_LOCAL,
     SECTION_STORE, SET_FOR_ME,
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, bail, Result};
 use configparser::ini::Ini;
 use core::panic;
 use indexmap::IndexMap;
@@ -173,7 +173,7 @@ pub struct Deployment {
 
 impl Deployment {
     // Populate tx_image and log_image according to version number
-    pub fn image_by_version(&mut self) {
+    pub fn image_by_version(&mut self) -> Result<()> {
         if self.version.is_none() || self.version.as_ref().unwrap().to_lowercase() == "latest" {
             self.version = Some("latest".to_owned());
         } else if self.version.as_ref().unwrap().to_lowercase() == "nightly" {
@@ -188,10 +188,11 @@ impl Deployment {
         let os_name = sysinfo::System::distribution_id();
         let os_version = sysinfo::System::os_version().unwrap().replace('.', "");
         let os_pretty = format!("{os_name}{os_version}");
-        let arch = match sysinfo::System::cpu_arch().unwrap().as_str() {
+        let arch = sysinfo::System::cpu_arch().unwrap();
+        let arch = match arch.as_str() {
             "aarch64" | "arm64" => "arm64",
             "x86" | "x86_64" | "amd64" => "amd64",
-            _ => unreachable!(),
+            _ => bail!("unsupported cpu arch {arch}"),
         };
         let store = self.storage_service.pretty_name();
         let version = self.version.as_ref().unwrap();
@@ -223,6 +224,7 @@ impl Deployment {
                 }
             }
         }
+        Ok(())
     }
 
     pub fn get_tx_image(&self) -> String {
