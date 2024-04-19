@@ -9,6 +9,7 @@ deployment:
   version: "latest"
   install_dir: "${CLUSTER_MGR_HOME}"
   port:
+    cs_conn: 3316
     monograph_port:
       start: 8000
       end: 8009
