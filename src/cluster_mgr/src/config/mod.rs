@@ -1,6 +1,7 @@
 use crate::config::ConfigErr::DownloadUrlFormatErr;
 use anyhow::anyhow;
 use itertools::Itertools;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_yaml::Value;
 use std::collections::HashMap;
@@ -51,7 +52,8 @@ pub const GRAFANA_CONFIG_FILE: &str = "defaults.ini";
 pub const CREATE_MONITOR_USER_SQL_FILE: &str = "create_monitor_user.sql";
 pub const MYSQL_EXPORTER_CLIENT_CONFIG: &str = "mysql_exporter.cnf";
 
-pub const RESOURCE_REPO: &str = "d143xau9fe26d8.cloudfront.net";
+pub const CLOUDFRONT: &str = "d143xau9fe26d8.cloudfront.net";
+pub static DOWNLOAD_SRC: Lazy<String> = Lazy::new(|| format!("https://{CLOUDFRONT}"));
 
 #[macro_export]
 macro_rules! gen_db_script {
@@ -94,14 +96,14 @@ pub const SECTION_LOCAL: &str = "local";
 pub const SECTION_CLUSTER: &str = "cluster";
 pub const SECTION_STORE: &str = "store";
 
-#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display, clap::ValueEnum)]
 pub enum StorageProvider {
     #[strum(serialize = "cassandra")]
     Cassandra,
     #[strum(serialize = "dynamodb")]
-    DynamoDB,
+    Dynamo,
     #[strum(serialize = "rocksdb")]
-    RocksDB,
+    Rocks,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -131,7 +133,7 @@ impl DownloadUrl {
         match self {
             DownloadUrl::Local(_) => {}
             DownloadUrl::Remote(url) => {
-                if url.domain() == Some(RESOURCE_REPO) {
+                if url.domain() == Some(CLOUDFRONT) {
                     let mut seg = url.path_segments().unwrap();
                     let _filename = seg.next_back();
                     while let Some(d) = seg.next() {

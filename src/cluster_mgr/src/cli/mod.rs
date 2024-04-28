@@ -1,4 +1,4 @@
-use crate::config::{deployment::Product, CONFIG_PATH_DIR};
+use crate::config::{deployment::Product, StorageProvider, CONFIG_PATH_DIR};
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -183,6 +183,8 @@ pub enum CommandArgs {
     Demo {
         #[arg(short, long, value_name = "Product")]
         product: Product,
+        #[arg(short, long, default_value = "cassandra")]
+        store: StorageProvider,
     },
 }
 

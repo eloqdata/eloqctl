@@ -473,14 +473,13 @@ impl DeploymentConfig {
     pub fn load(path: Option<String>) -> anyhow::Result<Self> {
         let path_string = config_path_string(path)?;
         info!("DeploymentConfig load file from {}", path_string);
-        let mut config = DeploymentConfig::read_config_from_file(path_string.clone())
+        let config = DeploymentConfig::read_config_from_file(path_string.clone())
             .map_err(|err| anyhow!("{path_string}: {err}"))?;
         if let Some(sshkey) = &config.connection.auth.keypair {
             if !Path::new(sshkey).exists() {
                 bail!("ssh key {sshkey} not exist");
             }
         }
-        config.deployment.image_by_version()?;
         Ok(config)
     }
 

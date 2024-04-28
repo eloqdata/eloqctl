@@ -10,9 +10,9 @@ use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
     config_template, get_cassandra_port, load_yaml_config_template, DeploymentPackage, DownloadUrl,
     StorageProvider, CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE,
-    CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF, CONFIG_MARIADB_SECTION, JVM_SETTING_HOLDER,
-    MONOGRAPH_CONF_DYNAMO_TEMPLATE, MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, RESOURCE_REPO,
-    SECTION_CLUSTER, SECTION_LOCAL, SECTION_STORE, SET_FOR_ME,
+    CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF, CONFIG_MARIADB_SECTION, DOWNLOAD_SRC, JVM_SETTING_HOLDER,
+    MONOGRAPH_CONF_DYNAMO_TEMPLATE, MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, SECTION_CLUSTER,
+    SECTION_LOCAL, SECTION_STORE, SET_FOR_ME,
 };
 use anyhow::{anyhow, bail, Result};
 use configparser::ini::Ini;
@@ -141,7 +141,7 @@ pub struct Codis {
 
 impl Codis {
     pub fn download_url() -> String {
-        format!("https://{RESOURCE_REPO}/codis/codis.tar.gz")
+        format!("{}/codis/codis.tar.gz", DOWNLOAD_SRC.as_str())
     }
     pub fn dir(install_dir: &str) -> String {
         format!("{install_dir}/codis")
@@ -193,7 +193,7 @@ impl Deployment {
                 panic!("Invalid version {}", self.version.as_ref().unwrap());
             }
         }
-        let mut prefix = PathBuf::from(format!("https://{RESOURCE_REPO}"));
+        let mut prefix = PathBuf::from(DOWNLOAD_SRC.as_str());
         let os_name = sysinfo::System::distribution_id();
         let os_version = sysinfo::System::os_version().unwrap().replace('.', "");
         let os_pretty = format!("{os_name}{os_version}");
@@ -514,8 +514,8 @@ impl Deployment {
                     .join(",");
                 redis_ini.set(SECTION_STORE, "cass_hosts", Some(cassandra_hosts));
             }
-            StorageProvider::DynamoDB => panic!("not supported"),
-            StorageProvider::RocksDB => match self.storage_service.rocksdb.clone().unwrap() {
+            StorageProvider::Dynamo => panic!("not supported"),
+            StorageProvider::Rocks => match self.storage_service.rocksdb.clone().unwrap() {
                 RocksDB::Local => {}
                 RocksDB::S3(s3) => {
                     redis_ini.set(SECTION_STORE, "aws_access_key_id", Some(s3.aws_id));
