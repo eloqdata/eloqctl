@@ -318,9 +318,9 @@ impl MonographTxCtlTask {
         match cmd_arg.clone() {
             CommandArgs::Stop {
                 cluster: _,
-                ref force,
+                force,
                 all: _,
-            } => is_force_stop = force.is_some() && force.as_ref().unwrap().as_str() == "true",
+            } => is_force_stop = force,
             CommandArgs::Status {
                 cluster: _,
                 user,

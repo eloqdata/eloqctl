@@ -38,8 +38,8 @@ impl TaskGroup for RemoveTaskGroup {
                 .tasks(
                     CommandArgs::Stop {
                         cluster: cluster.clone(),
-                        force: Some("true".to_string()),
-                        all: Some("true".to_string()),
+                        force: true,
+                        all: true,
                     },
                     config.clone(),
                 )

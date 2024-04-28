@@ -101,8 +101,7 @@ impl LogCtlCmd {
                         all: _,
                     } => {
                         let ps_log_info = ps_cmd_part;
-                        let is_force = force.is_some();
-                        let stop_cmd_string = if is_force {
+                        let stop_cmd_string = if *force {
                             format!("{ps_log_info} | xargs kill -9")
                         } else {
                             format!("{ps_log_info} | xargs kill")

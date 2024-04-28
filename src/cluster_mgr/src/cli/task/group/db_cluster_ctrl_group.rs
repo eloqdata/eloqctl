@@ -21,8 +21,8 @@ impl TaskGroup for CtrlDBTaskGroup {
             CommandArgs::Stop {
                 cluster: _,
                 force: _,
-                all: Some(stop_all),
-            } => stop_all.to_lowercase().eq("true"),
+                all,
+            } => all,
             _ => false,
         };
 
@@ -46,8 +46,8 @@ impl TaskGroup for CtrlDBTaskGroup {
                 vec![
                     CommandArgs::Stop {
                         cluster: cluster_name.clone(),
-                        force: Some("false".to_string()),
-                        all: None,
+                        force: false,
+                        all: false,
                     },
                     CommandArgs::Start {
                         cluster: cluster_name.to_string(),

@@ -60,8 +60,8 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> CommandArgs
         },
         "stop" => CommandArgs::Stop {
             cluster: cluster.unwrap(),
-            force: Some("false".to_string()),
-            all: None,
+            force: false,
+            all: false,
         },
         "deploy" => CommandArgs::Deploy {
             topology_file: "_NONE".to_string(),

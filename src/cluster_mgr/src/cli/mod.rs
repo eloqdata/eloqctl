@@ -56,18 +56,16 @@ pub enum CommandArgs {
         cluster: String,
     },
     #[command(
-        long_about = "Stop the MonographDB cluster(TxService LogService Storage). with the specified cluster name.\n
-./cluster_mgr stop --cluster $CLUSTER_NAME --force true|false  --all true|false
-    "
+        long_about = "Stop the MonographDB cluster(TxService LogService Storage). with the specified cluster name"
     )]
     #[strum(serialize = "stop")]
     Stop {
         #[arg(long, value_name = "CLUSTER NAME")]
         cluster: String,
-        #[arg(short, long, value_name = "FORCE STOP")]
-        force: Option<String>,
-        #[arg(short, long, value_name = "STOP ALL")]
-        all: Option<String>,
+        #[arg(short, long, default_value_t = false)]
+        force: bool,
+        #[arg(short, long, default_value_t = false)]
+        all: bool,
     },
     #[command(
         long_about = "Restart the MonographDB cluster with the specified cluster name.\n./cluster_mgr restart --cluster $CLUSTER_NAME
@@ -119,7 +117,7 @@ pub enum CommandArgs {
     )]
     #[strum(serialize = "check")]
     Check {
-        #[arg(long, value_name = "CLUSTER TOPOLOGY FILE")]
+        #[arg(long)]
         topology_file: String,
     },
     #[command(
@@ -155,14 +153,14 @@ pub enum CommandArgs {
     },
     #[command(
         long_about = "Update the configuration file and restart the tx service (the default value of restart is true). \
-        Note: Please edit config/my_template.cnf first\n ./cluster_mgr update-conf --cluster $CLUSTER_NAME --restart true | false"
+        Note: Please edit config/my_template.cnf first\n ./cluster_mgr update-conf --cluster $CLUSTER_NAME"
     )]
     #[strum(serialize = "update-conf")]
     UpdateConf {
         #[arg(short, long, value_name = "CLUSTER NAME")]
         cluster: String,
-        #[arg(long, value_name = "Whether to restart the TX service.TURE|FALSE ")]
-        restart: Option<String>,
+        #[arg(long, default_value_t = false)]
+        restart: bool,
     },
     #[command(
         long_about = "Launch a cluster quickly.\ncluster_mgr launch --topology-file  ${PWD}/config/deployment.yaml"

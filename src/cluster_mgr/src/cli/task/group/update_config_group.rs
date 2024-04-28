@@ -18,13 +18,7 @@ impl TaskGroup for UpdateConfigTaskGroup {
             CommandArgs::UpdateConf {
                 cluster: _,
                 restart,
-            } => {
-                if let Some(restart_cmd) = restart {
-                    restart_cmd.to_lowercase().eq("true")
-                } else {
-                    true
-                }
-            }
+            } => restart,
             _ => unreachable!(),
         };
         let mut executable = IndexMap::new();
@@ -36,8 +30,8 @@ impl TaskGroup for UpdateConfigTaskGroup {
             let stop_tx_task = MonographTxCtlTask::from_config(
                 CommandArgs::Stop {
                     cluster: cluster_name.clone(),
-                    force: None,
-                    all: None,
+                    force: false,
+                    all: false,
                 },
                 &config,
             );
