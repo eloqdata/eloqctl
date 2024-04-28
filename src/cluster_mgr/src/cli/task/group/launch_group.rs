@@ -17,7 +17,7 @@ impl TaskGroup for LaunchTaskGroup {
     ) -> anyhow::Result<TaskExecutionContext> {
         let topo_file = match cmd_arg.clone() {
             CommandArgs::Launch { topology_file } => topology_file,
-            CommandArgs::Demo { product } => {
+            CommandArgs::Demo { product, store: _ } => {
                 format!(
                     "{}/demo-{}.yaml",
                     env::var(CONFIG_PATH_DIR)?,

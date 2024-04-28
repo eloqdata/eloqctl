@@ -1,7 +1,8 @@
 use crate::cli::task::task_base::TaskMgr;
 use crate::cli::CommandArgs;
 use crate::config::config_base::DeploymentConfig;
-use crate::config::CONFIG_PATH_DIR;
+use crate::config::storage_service_config::{Cassandra, RocksDB};
+use crate::config::{StorageProvider, CONFIG_PATH_DIR, DOWNLOAD_SRC};
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
 use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, STATE_MGR};
@@ -92,19 +93,35 @@ impl CommandExecutor {
             | CommandArgs::Upgrade { topology_file }
             | CommandArgs::Launch { topology_file } => {
                 let mut config = DeploymentConfig::load(Some(topology_file))?;
+                config.deployment.image_by_version()?;
                 config.scan_hardware().await?;
                 self.save_deployment_config(&config, cmd.as_ref().eq("upgrade"))
                     .await?;
                 info!("CmdExecutor Save DeploymentConfig successfully.");
                 Ok(config)
             }
-            CommandArgs::Demo { product } => {
-                let topology = format!(
-                    "{}/demo-{}.yaml",
-                    env::var(CONFIG_PATH_DIR)?,
-                    product.to_string()
-                );
-                let config = DeploymentConfig::load(Some(topology))?;
+            CommandArgs::Demo { product, store } => {
+                let dir = env::var(CONFIG_PATH_DIR)?;
+                let topology = format!("{dir}/demo-{product}.yaml");
+                let mut config = DeploymentConfig::load(Some(topology))?;
+                match store {
+                    StorageProvider::Cassandra => {
+                        let download_url = format!(
+                            "{}/others/apache-cassandra-4.1.3-bin.tar.gz",
+                            DOWNLOAD_SRC.as_str()
+                        );
+                        config.deployment.storage_service.cassandra = Some(Cassandra {
+                            host: vec!["127.0.0.1".to_owned()],
+                            download_url,
+                            storage_cluster: None,
+                        });
+                    }
+                    StorageProvider::Dynamo => unimplemented!(),
+                    StorageProvider::Rocks => {
+                        config.deployment.storage_service.rocksdb = Some(RocksDB::Local);
+                    }
+                }
+                config.deployment.image_by_version()?;
                 self.save_deployment_config(&config, false).await?;
                 Ok(config)
             }
@@ -178,7 +195,11 @@ impl CommandExecutor {
         println!(r#"all tasks complete.task_size={}"#, rs.len());
 
         match cmd {
-            CommandArgs::Launch { topology_file: _ } | CommandArgs::Demo { product: _ } => {
+            CommandArgs::Launch { topology_file: _ }
+            | CommandArgs::Demo {
+                product: _,
+                store: _,
+            } => {
                 println!("Launch cluster finished, Enjoy!");
                 println!("Connect to server: \n\t{}", config.client_conn());
                 if let Some(moni) = &config.deployment.monitor {
