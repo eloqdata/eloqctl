@@ -11,7 +11,7 @@ if [[ "$ID" == "centos" ]]; then
     sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_ecdsa_key -N ''
     sudo /usr/sbin/sshd
 elif [[ "$ID" == "ubuntu" ]]; then
-    sudo apt update && DEBIAN_FRONTEND=noninteractive sudo apt install -y sudo openssh-server
+    sudo apt update && DEBIAN_FRONTEND=noninteractive sudo apt install -y sudo openssh-server iproute2
     sudo service ssh start
 fi
 sudo chown -R mono ${PWD}
@@ -67,7 +67,7 @@ cat ${HOME}/.ssh/id_rsa.pub >>${HOME}/.ssh/authorized_keys
 
 cluster_mgr launch --topology-file ${CLUSTER_MGR_HOME}/config/deployment_sql.yaml
 export PATH="${BASE_PATH}:${HOME}/eloq/eloqsql-cluster/monograph-tx-service-release/install/bin"
-cluster_mgr status --cluster eloqsql-cluster --wait 0
+cluster_mgr status --cluster eloqsql-cluster --wait 5
 mariadb -S /tmp/mysql3316.sock --execute "SHOW DATABASES"
 mariadb -S /tmp/mysql3316.sock --execute "CREATE DATABASE test"
 mariadb -S /tmp/mysql3316.sock --execute "CREATE TABLE test.t1(id INT PRIMARY KEY, c VARCHAR(10))"
@@ -102,7 +102,7 @@ sed -i "s|127.0.0.1|${MY_IP}|g" ${CLUSTER_MGR_HOME}/config/deployment_kv.yaml
 
 cluster_mgr launch --topology-file ${CLUSTER_MGR_HOME}/config/deployment_sql.yaml
 export PATH="${BASE_PATH}:${HOME}/eloq/eloqsql-cluster/monograph-tx-service-release/install/bin"
-cluster_mgr status --cluster eloqsql-cluster --wait 0
+cluster_mgr status --cluster eloqsql-cluster --wait 5
 mariadb -S /tmp/mysql3316.sock --execute "SHOW DATABASES"
 mariadb -S /tmp/mysql3316.sock --execute "CREATE DATABASE test"
 mariadb -S /tmp/mysql3316.sock --execute "CREATE TABLE test.t1(id INT PRIMARY KEY, c VARCHAR(10))"
