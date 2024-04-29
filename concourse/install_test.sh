@@ -95,3 +95,34 @@ cluster_mgr remove --cluster demo-kv-rocksdb
 cluster_mgr remove --cluster eloqsql-cluster
 cluster_mgr remove --cluster eloqkv-cluster
 cluster_mgr list
+
+MY_IP=$(ip -4 addr | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | sed -n '2p')
+sed -i "s|127.0.0.1|${MY_IP}|g" ${CLUSTER_MGR_HOME}/config/deployment_sql.yaml
+sed -i "s|127.0.0.1|${MY_IP}|g" ${CLUSTER_MGR_HOME}/config/deployment_kv.yaml
+
+cluster_mgr launch --topology-file ${CLUSTER_MGR_HOME}/config/deployment_sql.yaml
+export PATH="${BASE_PATH}:${HOME}/eloq/eloqsql-cluster/monograph-tx-service-release/install/bin"
+cluster_mgr status --cluster eloqsql-cluster --wait 0
+mariadb -S /tmp/mysql3316.sock --execute "SHOW DATABASES"
+mariadb -S /tmp/mysql3316.sock --execute "CREATE DATABASE test"
+mariadb -S /tmp/mysql3316.sock --execute "CREATE TABLE test.t1(id INT PRIMARY KEY, c VARCHAR(10))"
+mariadb -S /tmp/mysql3316.sock --execute "INSERT INTO test.t1 VALUES(1,'a'),(2,'b'),(3,'c')"
+mariadb -S /tmp/mysql3316.sock --execute "SELECT * FROM test.t1"
+cluster_mgr monitor --command stop --cluster eloqsql-cluster
+cluster_mgr stop --cluster eloqsql-cluster --all
+cluster_mgr inspect --cluster eloqsql-cluster
+
+cluster_mgr launch --topology-file ${CLUSTER_MGR_HOME}/config/deployment_kv.yaml
+export PATH="${BASE_PATH}:${HOME}/eloq/eloqkv-cluster/monograph_redis"
+cluster_mgr status --cluster eloqkv-cluster --wait 5
+redis_cli -server ${MY_IP}:6389 incr mycounter
+redis_cli -server ${MY_IP}:6389 get mycounter
+redis_cli -server ${MY_IP}:6389 incr mycounter
+redis_cli -server ${MY_IP}:6389 get mycounter
+cluster_mgr monitor --command stop --cluster eloqkv-cluster
+cluster_mgr stop --cluster eloqkv-cluster --all
+cluster_mgr inspect --cluster eloqkv-cluster
+
+cluster_mgr list
+cluster_mgr remove --cluster eloqsql-cluster
+cluster_mgr remove --cluster eloqkv-cluster

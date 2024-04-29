@@ -436,13 +436,35 @@ impl Deployment {
         let port = self.port.monograph_port.as_ref().unwrap().start;
         let is_host = tx_host.is_some();
         let mut my_ini = self.build_monograph_config(is_host, install_dir)?;
-
-        let (host, db_config_location) = if let Some(host) = tx_host {
+        let (host, cnf_path) = if let Some(host) = tx_host {
             (host.clone(), upload_host_dir(&host).join("my.cnf"))
         } else {
-            ("127.0.0.1".to_string(), upload_dir().join("my_local.cnf"))
+            my_ini.set(
+                CONFIG_MARIADB_SECTION,
+                "monograph_local_ip",
+                Some(format!("127.0.0.1:{port}")),
+            );
+            my_ini.set(
+                CONFIG_MARIADB_SECTION,
+                "thread_pool_size",
+                Some("1".to_owned()),
+            );
+            my_ini.set(
+                CONFIG_MARIADB_SECTION,
+                "monograph_core_num",
+                Some("1".to_owned()),
+            );
+            my_ini.set(
+                CONFIG_MARIADB_SECTION,
+                "monograph_node_memory_limit_mb",
+                Some("512".to_owned()),
+            );
+            let cnf_path = upload_dir().join("my_local.cnf");
+            my_ini.write(&cnf_path)?;
+            return Ok(cnf_path);
         };
-        if is_host && self.log_service.is_some() {
+
+        if self.log_service.is_some() {
             self.build_log_config()
                 .into_iter()
                 .for_each(|(key, conf_val)| {
@@ -494,8 +516,8 @@ impl Deployment {
             assert!(limit > 0);
             my_ini.set(CONFIG_MARIADB_SECTION, key, Some(limit.to_string()));
         }
-        my_ini.write(db_config_location.as_path())?;
-        Ok(db_config_location)
+        my_ini.write(cnf_path.as_path())?;
+        Ok(cnf_path)
     }
 
     pub fn build_redis_config(&self, set_ip_list: bool) -> anyhow::Result<Ini> {
@@ -596,15 +618,23 @@ impl Deployment {
     pub fn gen_redis_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
         let is_host = tx_host.is_some();
         let mut ini = self.build_redis_config(is_host)?;
-        let (host, db_config_location) = if let Some(host) = tx_host {
+        let (host, cnf_path) = if let Some(host) = tx_host {
             (host.clone(), upload_host_dir(&host).join("redis.ini"))
         } else {
-            (
-                "127.0.0.1".to_string(),
-                upload_dir().join("redis_local.ini"),
-            )
+            ini.set(SECTION_LOCAL, "ip", Some("127.0.0.1".to_owned()));
+            ini.set(SECTION_LOCAL, "port", Some(self.cs_conn_port().to_string()));
+            ini.set(SECTION_LOCAL, "core_number", Some("1".to_owned()));
+            ini.set(SECTION_LOCAL, "event_dispatcher_num", Some("1".to_owned()));
+            ini.set(
+                SECTION_LOCAL,
+                "node_memory_limit_mb",
+                Some("512".to_owned()),
+            );
+            let cnf_path = upload_dir().join("redis_local.ini");
+            ini.write(cnf_path.as_path())?;
+            return Ok(cnf_path);
         };
-        if is_host && self.log_service.is_some() {
+        if self.log_service.is_some() {
             self.build_log_config()
                 .into_iter()
                 .for_each(|(key, conf_val)| {
@@ -653,8 +683,8 @@ impl Deployment {
             ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
         }
 
-        ini.write(db_config_location.as_path())?;
-        Ok(db_config_location)
+        ini.write(cnf_path.as_path())?;
+        Ok(cnf_path)
     }
 
     // generate proxy config file

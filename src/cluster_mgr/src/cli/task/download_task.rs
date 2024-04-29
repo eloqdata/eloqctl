@@ -17,7 +17,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 pub(crate) const DOWNLOAD_URL: &str = "download_url";
 pub(crate) const DOWNLOAD_FILE_NAME: &str = "download_file_name";
@@ -161,7 +161,7 @@ impl TaskExecutor for DownloadTask {
         if save_path.exists() {
             // TODO(zhanghao): It would be better to check file SHA
             if file_len == fs::metadata(&save_path).unwrap().len() {
-                warn!("local file cache {:?} found.", save_path);
+                info!("local file cache {:?} found.", save_path);
                 return Ok(None);
             }
         }
