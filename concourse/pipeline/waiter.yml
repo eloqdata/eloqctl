@@ -1,0 +1,77 @@
+jobs:
+  - name: test-ubuntu2004
+    serial: true
+    plan:
+      - get: waiter_src
+      - get: image_ubuntu2004
+      - task: install-test
+        image: image_ubuntu2004
+        file: waiter_src/concourse/install_test.yml
+
+  - name: test-ubuntu1804
+    serial: true
+    plan:
+      - get: waiter_src
+      - get: image_ubuntu1804
+      - task: install-test
+        image: image_ubuntu1804
+        file: waiter_src/concourse/install_test.yml
+
+  - name: test-centos8
+    serial: true
+    plan:
+      - get: waiter_src
+      - get: image_centos8
+      - task: install-test
+        image: image_centos8
+        file: waiter_src/concourse/install_test.yml
+
+  - name: test-centos7
+    serial: true
+    plan:
+      - get: waiter_src
+      - get: image_centos7
+      - task: install-test
+        image: image_centos7
+        file: waiter_src/concourse/install_test.yml
+
+resources:
+  - name: waiter_src
+    type: git
+    icon: github
+    source:
+      branch: main
+      uri: git@github.com:monographdb/monograph_waiter.git
+      private_key: ((git-key))
+
+  - name: image_ubuntu2004
+    type: registry-image
+    source:
+      username: monographdb
+      password: Mono_cz158#
+      repository: monographdb/monograph-dev-ci-ubuntu2004
+      tag: latest
+
+  - name: image_ubuntu1804
+    type: registry-image
+    source:
+      username: monographdb
+      password: Mono_cz158#
+      repository: monographdb/monograph-dev-ci-ubuntu1804
+      tag: latest
+
+  - name: image_centos8
+    type: registry-image
+    source:
+      username: monographdb
+      password: Mono_cz158#
+      repository: monographdb/monograph-dev-ci-centos8
+      tag: latest
+
+  - name: image_centos7
+    type: registry-image
+    source:
+      username: monographdb
+      password: Mono_cz158#
+      repository: monographdb/monograph-dev-ci-centos7
+      tag: latest

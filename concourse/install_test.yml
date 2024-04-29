@@ -1,0 +1,9 @@
+platform: linux
+image_resource:
+  type: registry-image
+inputs:
+  - name: waiter_src
+run:
+  path: /bin/bash
+  args:
+    - waiter_src/concourse/install_test.sh
