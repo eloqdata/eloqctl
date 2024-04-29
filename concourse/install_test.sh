@@ -112,6 +112,8 @@ cluster_mgr monitor --command stop --cluster eloqsql-cluster
 cluster_mgr stop --cluster eloqsql-cluster --all
 cluster_mgr inspect --cluster eloqsql-cluster
 
+sleep 5
+
 cluster_mgr launch --topology-file ${CLUSTER_MGR_HOME}/config/deployment_kv.yaml
 export PATH="${BASE_PATH}:${HOME}/eloq/eloqkv-cluster/monograph_redis"
 cluster_mgr status --cluster eloqkv-cluster --wait 5
