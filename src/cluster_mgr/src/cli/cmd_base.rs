@@ -101,7 +101,11 @@ impl CommandExecutor {
                 info!("CmdExecutor Save DeploymentConfig successfully.");
                 Ok(config)
             }
-            CommandArgs::Demo { product, store } => {
+            CommandArgs::Demo {
+                product,
+                store,
+                version,
+            } => {
                 let dir = env::var(CONFIG_PATH_DIR)?;
                 let topology = format!("{dir}/demo-{product}.yaml");
                 let mut config = DeploymentConfig::load(Some(topology))?;
@@ -122,6 +126,7 @@ impl CommandExecutor {
                         config.deployment.storage_service.rocksdb = Some(RocksDB::Local);
                     }
                 }
+                config.deployment.version.replace(version);
                 config.deployment.set_image()?;
                 // add kv-store name to cluster name suffix
                 let name_suffix = format!("-{store}");
@@ -227,6 +232,7 @@ impl CommandExecutor {
             | CommandArgs::Demo {
                 product: _,
                 store: _,
+                version: _,
             } => {
                 println!("Launch cluster finished, Enjoy!");
                 println!("Connect to server: \n\t{}", config.client_conn());

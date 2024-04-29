@@ -1,6 +1,6 @@
 use crate::cli::task::group::{
-    CtrlDBTaskGroup, DeploymentTaskGroup, InstallDBTaskGroup, InstallRuntimeDepsTaskGroup,
-    LaunchTaskGroup, MonitorCtlTaskGroup, TaskGroup,
+    CheckTaskGroup, CtrlDBTaskGroup, DeploymentTaskGroup, InstallDBTaskGroup,
+    InstallRuntimeDepsTaskGroup, LaunchTaskGroup, MonitorCtlTaskGroup, TaskGroup,
 };
 use crate::cli::task::task_base::{merge_execution, TaskExecutionContext};
 use crate::cli::CommandArgs;
@@ -17,18 +17,26 @@ impl TaskGroup for LaunchTaskGroup {
     ) -> anyhow::Result<TaskExecutionContext> {
         let topo_file = match cmd_arg.clone() {
             CommandArgs::Launch { topology_file } => topology_file,
-            CommandArgs::Demo { product, store: _ } => {
-                format!(
-                    "{}/demo-{}.yaml",
-                    env::var(CONFIG_PATH_DIR)?,
-                    product.to_string()
-                )
+            CommandArgs::Demo {
+                product,
+                store: _,
+                version: _,
+            } => {
+                format!("{}/demo-{product}.yaml", env::var(CONFIG_PATH_DIR)?)
             }
             _ => {
                 unreachable!()
             }
         };
         let (barrier, executable) = merge_execution(vec![
+            CheckTaskGroup
+                .tasks(
+                    CommandArgs::Check {
+                        topology_file: topo_file.clone(),
+                    },
+                    config.clone(),
+                )
+                .await?,
             InstallRuntimeDepsTaskGroup
                 .tasks(
                     CommandArgs::RunDeps {

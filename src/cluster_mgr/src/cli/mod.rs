@@ -183,6 +183,8 @@ pub enum CommandArgs {
         product: Product,
         #[arg(short, long, default_value = "cassandra")]
         store: StorageProvider,
+        #[arg(short, long, default_value = "latest")]
+        version: String,
     },
     #[command(long_about = "List created clusters")]
     #[strum(serialize = "list")]
