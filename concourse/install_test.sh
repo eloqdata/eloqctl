@@ -24,7 +24,7 @@ export PATH="$PATH:$CLUSTER_MGR_HOME"
 BASE_PATH=${PATH}
 
 # test eloq-sql
-cluster_mgr demo --product eloq-sql
+cluster_mgr demo --product eloq-sql --version nightly
 export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-sql-cassandra/monograph-tx-service-release/install/bin"
 cluster_mgr status --cluster demo-sql-cassandra --wait 5
 mariadb -S /tmp/mysql3316.sock --execute "SHOW DATABASES"
@@ -41,7 +41,7 @@ mariadb -S /tmp/mysql3316.sock --execute "SELECT * FROM test.t1"
 cluster_mgr stop --cluster demo-sql-cassandra --all
 
 # test eloq-kv
-cluster_mgr demo --product eloq-kv
+cluster_mgr demo --product eloq-kv --version nightly
 export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-kv-cassandra/monograph_redis"
 cluster_mgr status --cluster demo-kv-cassandra --wait 5
 redis_cli -server 127.0.0.1:6389 incr mycounter
