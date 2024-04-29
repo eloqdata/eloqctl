@@ -41,6 +41,7 @@ mariadb -S /tmp/mysql3316.sock --execute "SELECT * FROM test.t1"
 cluster_mgr stop --cluster demo-sql-cassandra --all
 
 # test eloq-kv
+sleep 10
 cluster_mgr demo --product eloq-kv --version nightly
 export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-kv-cassandra/monograph_redis"
 cluster_mgr status --cluster demo-kv-cassandra --wait 5
@@ -52,6 +53,7 @@ cluster_mgr monitor --command stop --cluster demo-kv-cassandra
 cluster_mgr list
 cluster_mgr stop --cluster demo-kv-cassandra --all
 
+sleep 10
 cluster_mgr demo --product eloq-kv --store rocks
 export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-kv-rocksdb/monograph_redis"
 cluster_mgr status --cluster demo-kv-rocksdb --wait 5
@@ -65,6 +67,7 @@ cluster_mgr stop --cluster demo-kv-rocksdb --all
 
 cat ${HOME}/.ssh/id_rsa.pub >>${HOME}/.ssh/authorized_keys
 
+sleep 10
 cluster_mgr launch --topology-file ${CLUSTER_MGR_HOME}/config/deployment_sql.yaml
 export PATH="${BASE_PATH}:${HOME}/eloq/eloqsql-cluster/monograph-tx-service-release/install/bin"
 cluster_mgr status --cluster eloqsql-cluster --wait 5
@@ -77,6 +80,7 @@ cluster_mgr monitor --command stop --cluster eloqsql-cluster
 cluster_mgr stop --cluster eloqsql-cluster --all
 cluster_mgr inspect --cluster eloqsql-cluster
 
+sleep 10
 cluster_mgr launch --topology-file ${CLUSTER_MGR_HOME}/config/deployment_kv.yaml
 export PATH="${BASE_PATH}:${HOME}/eloq/eloqkv-cluster/monograph_redis"
 cluster_mgr status --cluster eloqkv-cluster --wait 5
@@ -100,6 +104,7 @@ MY_IP=$(ip -4 addr | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | sed -n '2p')
 sed -i "s|127.0.0.1|${MY_IP}|g" ${CLUSTER_MGR_HOME}/config/deployment_sql.yaml
 sed -i "s|127.0.0.1|${MY_IP}|g" ${CLUSTER_MGR_HOME}/config/deployment_kv.yaml
 
+sleep 10
 cluster_mgr launch --topology-file ${CLUSTER_MGR_HOME}/config/deployment_sql.yaml
 export PATH="${BASE_PATH}:${HOME}/eloq/eloqsql-cluster/monograph-tx-service-release/install/bin"
 cluster_mgr status --cluster eloqsql-cluster --wait 5
@@ -112,8 +117,7 @@ cluster_mgr monitor --command stop --cluster eloqsql-cluster
 cluster_mgr stop --cluster eloqsql-cluster --all
 cluster_mgr inspect --cluster eloqsql-cluster
 
-sleep 5
-
+sleep 10
 cluster_mgr launch --topology-file ${CLUSTER_MGR_HOME}/config/deployment_kv.yaml
 export PATH="${BASE_PATH}:${HOME}/eloq/eloqkv-cluster/monograph_redis"
 cluster_mgr status --cluster eloqkv-cluster --wait 5
