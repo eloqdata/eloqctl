@@ -94,7 +94,7 @@ impl CommandExecutor {
             | CommandArgs::Upgrade { topology_file }
             | CommandArgs::Launch { topology_file } => {
                 let mut config = DeploymentConfig::load(Some(topology_file))?;
-                config.deployment.image_by_version()?;
+                config.deployment.set_image()?;
                 config.scan_hardware().await?;
                 self.save_deployment_config(&config, cmd.as_ref().eq("upgrade"))
                     .await?;
@@ -122,7 +122,23 @@ impl CommandExecutor {
                         config.deployment.storage_service.rocksdb = Some(RocksDB::Local);
                     }
                 }
-                config.deployment.image_by_version()?;
+                config.deployment.set_image()?;
+                // add kv-store name to cluster name suffix
+                let name_suffix = format!("-{store}");
+                config.deployment.cluster_name.push_str(&name_suffix);
+                // add an unique number (pid) to WAL directory
+                config
+                    .deployment
+                    .log_service
+                    .as_mut()
+                    .unwrap()
+                    .nodes
+                    .first_mut()
+                    .unwrap()
+                    .data_dir
+                    .first_mut()
+                    .unwrap()
+                    .push_str(std::process::id().to_string().as_str());
                 self.save_deployment_config(&config, false).await?;
                 Ok(config)
             }

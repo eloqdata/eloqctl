@@ -182,7 +182,7 @@ pub struct Deployment {
 
 impl Deployment {
     // Populate tx_image and log_image according to version number
-    pub fn image_by_version(&mut self) -> Result<()> {
+    pub fn set_image(&mut self) -> Result<()> {
         if self.version.is_none() || self.version.as_ref().unwrap().to_lowercase() == "latest" {
             self.version = Some("latest".to_owned());
         } else if self.version.as_ref().unwrap().to_lowercase() == "nightly" {

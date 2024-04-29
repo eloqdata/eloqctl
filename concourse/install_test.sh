@@ -25,32 +25,43 @@ BASE_PATH=${PATH}
 
 # test eloq-sql
 cluster_mgr demo --product eloq-sql
-export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-sql/monograph-tx-service-release/install/bin"
-cluster_mgr status --cluster demo-sql --wait 5
+export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-sql-cassandra/monograph-tx-service-release/install/bin"
+cluster_mgr status --cluster demo-sql-cassandra --wait 5
 mariadb -S /tmp/mysql3316.sock --execute "SHOW DATABASES"
 mariadb -S /tmp/mysql3316.sock --execute "CREATE DATABASE test"
 mariadb -S /tmp/mysql3316.sock --execute "CREATE TABLE test.t1(id INT PRIMARY KEY, c VARCHAR(10))"
 mariadb -S /tmp/mysql3316.sock --execute "INSERT INTO test.t1 VALUES(1,'a'),(2,'b'),(3,'c')"
 mariadb -S /tmp/mysql3316.sock --execute "SELECT * FROM test.t1"
-cluster_mgr monitor --command stop --cluster demo-sql
-cluster_mgr stop --cluster demo-sql
-cluster_mgr update-conf --cluster demo-sql
-cluster_mgr start --cluster demo-sql
-cluster_mgr status --cluster demo-sql --wait 5
+cluster_mgr monitor --command stop --cluster demo-sql-cassandra
+cluster_mgr stop --cluster demo-sql-cassandra
+cluster_mgr update-conf --cluster demo-sql-cassandra
+cluster_mgr start --cluster demo-sql-cassandra
+cluster_mgr status --cluster demo-sql-cassandra --wait 5
 mariadb -S /tmp/mysql3316.sock --execute "SELECT * FROM test.t1"
-cluster_mgr stop --cluster demo-sql --all
+cluster_mgr stop --cluster demo-sql-cassandra --all
 
 # test eloq-kv
 cluster_mgr demo --product eloq-kv
-export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-kv/monograph_redis"
-cluster_mgr status --cluster demo-kv --wait 5
+export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-kv-cassandra/monograph_redis"
+cluster_mgr status --cluster demo-kv-cassandra --wait 5
 redis_cli -server 127.0.0.1:6389 incr mycounter
 redis_cli -server 127.0.0.1:6389 get mycounter
 redis_cli -server 127.0.0.1:6389 incr mycounter
 redis_cli -server 127.0.0.1:6389 get mycounter
-cluster_mgr monitor --command stop --cluster demo-kv
+cluster_mgr monitor --command stop --cluster demo-kv-cassandra
 cluster_mgr list
-cluster_mgr stop --cluster demo-kv --all
+cluster_mgr stop --cluster demo-kv-cassandra --all
+
+cluster_mgr demo --product eloq-kv --store rocks
+export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-kv-rocksdb/monograph_redis"
+cluster_mgr status --cluster demo-kv-rocksdb --wait 5
+redis_cli -server 127.0.0.1:6389 incr mycounter
+redis_cli -server 127.0.0.1:6389 get mycounter
+redis_cli -server 127.0.0.1:6389 incr mycounter
+redis_cli -server 127.0.0.1:6389 get mycounter
+cluster_mgr monitor --command stop --cluster demo-kv-rocksdb
+cluster_mgr list
+cluster_mgr stop --cluster demo-kv-rocksdb --all
 
 cat ${HOME}/.ssh/id_rsa.pub >>${HOME}/.ssh/authorized_keys
 
@@ -78,8 +89,9 @@ cluster_mgr stop --cluster eloqkv-cluster --all
 cluster_mgr inspect --cluster eloqkv-cluster
 
 cluster_mgr list
-cluster_mgr remove --cluster demo-sql
-cluster_mgr remove --cluster demo-kv
+cluster_mgr remove --cluster demo-sql-cassandra
+cluster_mgr remove --cluster demo-kv-cassandra
+cluster_mgr remove --cluster demo-kv-rocksdb
 cluster_mgr remove --cluster eloqsql-cluster
 cluster_mgr remove --cluster eloqkv-cluster
 cluster_mgr list
