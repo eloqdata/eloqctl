@@ -133,7 +133,7 @@ impl TaskExecutor for RuntimeDepsInstallation {
                 } => hosts,
             };
             anyhow::bail!(
-                "install dependency failed on {host}, code={code}:\n{}\n{out}",
+                "install dependency failed on {host}, code={code}: {}: {out}",
                 self.install_dep_cmd
             )
         }
