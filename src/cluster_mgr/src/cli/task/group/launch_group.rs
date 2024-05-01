@@ -15,20 +15,25 @@ impl TaskGroup for LaunchTaskGroup {
         cmd_arg: CommandArgs,
         config: DeploymentConfig,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let topo_file = match cmd_arg.clone() {
-            CommandArgs::Launch { topology_file } => topology_file,
+        let (skip_deps, topo_file) = match cmd_arg.clone() {
+            CommandArgs::Launch {
+                topology_file,
+                skip_deps,
+            } => (skip_deps, topology_file),
             CommandArgs::Demo {
                 product,
                 store: _,
                 version: _,
+                skip_deps,
             } => {
-                format!("{}/demo-{product}.yaml", env::var(CONFIG_PATH_DIR)?)
+                let topo = format!("{}/demo-{product}.yaml", env::var(CONFIG_PATH_DIR)?);
+                (skip_deps, topo)
             }
             _ => {
                 unreachable!()
             }
         };
-        let (barrier, executable) = merge_execution(vec![
+        let mut exe_ctx = vec![
             CheckTaskGroup
                 .tasks(
                     CommandArgs::Check {
@@ -89,7 +94,11 @@ impl TaskGroup for LaunchTaskGroup {
                     config.clone(),
                 )
                 .await?,
-        ]);
+        ];
+        if skip_deps {
+            exe_ctx.remove(1);
+        }
+        let (barrier, executable) = merge_execution(exe_ctx);
 
         Ok(TaskExecutionContext {
             task_group: cmd_arg.as_ref().to_string(),

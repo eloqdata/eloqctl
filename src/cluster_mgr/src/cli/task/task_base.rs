@@ -413,14 +413,18 @@ impl TaskMgr {
         cmd_args: CommandArgs,
         config: DeploymentConfig,
     ) -> anyhow::Result<Vec<TaskResultPair>> {
-        let tasks_execution = self.task_context(cmd_args, &config).await?;
+        let tasks_execution = self.task_context(cmd_args.clone(), &config).await?;
         info!(
             "TaskMgr start current tasks={} barrier={:?}",
             tasks_execution.executable.len(),
             tasks_execution.barrier
         );
+        let err_brk = match cmd_args {
+            CommandArgs::Remove { cluster: _ } => false,
+            _ => true,
+        };
         self.task_controller
-            .run_all_tasks(tasks_execution, config)
+            .run_all_tasks(tasks_execution, config, err_brk)
             .await
     }
 }
