@@ -1,5 +1,8 @@
 use crate::cli::task::task_base::{TaskId, TaskInstance};
-use crate::cli::task::upload::upload_task_builder::{build_task_instance, UploadTaskBuilder};
+use crate::cli::task::upload::upload_task_builder::{
+    build_task_instance, get_source_host, UploadTaskBuilder,
+};
+use crate::cli::upload_dir;
 use crate::config::config_base::{DeploymentConfig, UploadFile};
 use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
@@ -14,9 +17,9 @@ impl UploadTaskBuilder for DataDirUploadBuilder {
         }
         let deployment_ref = &config.deployment;
         let bootstrap_host = deployment_ref.bootstrap_host();
-
+        let local = get_source_host(None);
         let install_dir = config.install_dir();
-        let datafarm = format!("{install_dir}/datafarm");
+        let datafarm = upload_dir().join("datafarm").to_string_lossy().to_string();
         deployment_ref
             .tx_service
             .host
@@ -31,7 +34,7 @@ impl UploadTaskBuilder for DataDirUploadBuilder {
             })
             .map(|upload_file| {
                 build_task_instance(
-                    bootstrap_host.clone(),
+                    local.clone(),
                     upload_file,
                     config,
                     "install",

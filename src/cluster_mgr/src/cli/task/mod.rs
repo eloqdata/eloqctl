@@ -2,6 +2,7 @@ mod cassandra_ctl_task;
 mod cassandra_op_task;
 mod check_task;
 mod codis_task;
+pub mod copy_task;
 mod download_task;
 mod exec_custom_cmd;
 mod group;
