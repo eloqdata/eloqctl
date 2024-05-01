@@ -228,7 +228,7 @@ impl CassandraCtlTask {
         ssh_conn: SSHSession,
         task_host: TaskHost,
     ) -> anyhow::Result<ExecutionValue> {
-        let java_home = ssh_conn.execute(JAVA_HOME).await?;
+        let java_home = ssh_conn.execute(JAVA_HOME).await?.1;
         let conn_user = task_host.ssh_conn_tuple().0;
         let cassandra_home = self.cassandra_home();
         let cassandra_process =

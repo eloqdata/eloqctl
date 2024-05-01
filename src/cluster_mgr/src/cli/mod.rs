@@ -169,6 +169,8 @@ pub enum CommandArgs {
     Launch {
         #[arg(short, long, value_name = "CLUSTER TOPOLOGY FILE")]
         topology_file: String,
+        #[arg(short, long, default_value_t = false)]
+        skip_deps: bool,
     },
     #[command(long_about = "Remove cluster.\ncluster_mgr remove --cluster $CLUSTER_NAME")]
     #[strum(serialize = "remove")]
@@ -185,6 +187,8 @@ pub enum CommandArgs {
         store: StorageProvider,
         #[arg(short, long, default_value = "latest")]
         version: String,
+        #[arg(short, long, default_value_t = false)]
+        skip_deps: bool,
     },
     #[command(long_about = "List created clusters")]
     #[strum(serialize = "list")]

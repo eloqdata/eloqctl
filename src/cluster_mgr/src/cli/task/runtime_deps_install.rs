@@ -1,10 +1,8 @@
-use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::ssh::SSHSession;
 use crate::cli::task::task_base::{
-    CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
+    ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
 use crate::config::config_base::DeploymentConfig;
-use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -118,20 +116,27 @@ impl TaskExecutor for RuntimeDepsInstallation {
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         println!("{} execute.\n", self.task_id.pretty_string());
-        let ssh_session =
-            SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
-                .await?;
-        let install_dep_cmd_rs = ssh_session
-            .command(self.install_dep_cmd.clone().as_str(), CollectOutput)
-            .await?;
-
-        ssh_session.close().await?;
-        task_return_value!(
-            install_dep_cmd_rs,
-            |status_code: i32| -> CmdErr {
-                CmdErr::ExecUserCmdErr(self.install_dep_cmd.clone(), status_code.to_string())
-            },
-            "RuntimeDepsInstallation"
+        let ssh_session = SSHSession::from_task_host(
+            task_host.clone(),
+            self.config.connection.ssh_auth_key().unwrap(),
         )
+        .await?;
+        let (code, out) = ssh_session.execute(&self.install_dep_cmd).await?;
+        ssh_session.close().await?;
+        if code != 0 {
+            let host = match task_host {
+                TaskHost::Local => "127.0.0.1".to_owned(),
+                TaskHost::Remote {
+                    user: _,
+                    port: _,
+                    hosts,
+                } => hosts,
+            };
+            anyhow::bail!(
+                "install dependency failed on {host}, code={code}:\n{}\n{out}",
+                self.install_dep_cmd
+            )
+        }
+        Ok(None)
     }
 }

@@ -92,7 +92,10 @@ impl CommandExecutor {
         match cmd.clone() {
             CommandArgs::Deploy { topology_file }
             | CommandArgs::Upgrade { topology_file }
-            | CommandArgs::Launch { topology_file } => {
+            | CommandArgs::Launch {
+                topology_file,
+                skip_deps: _,
+            } => {
                 let mut config = DeploymentConfig::load(Some(topology_file))?;
                 config.deployment.set_image()?;
                 config.scan_hardware().await?;
@@ -105,6 +108,7 @@ impl CommandExecutor {
                 product,
                 store,
                 version,
+                skip_deps: _,
             } => {
                 let dir = env::var(CONFIG_PATH_DIR)?;
                 let topology = format!("{dir}/demo-{product}.yaml");
@@ -228,11 +232,15 @@ impl CommandExecutor {
 
         // After all tasks finished
         match cmd {
-            CommandArgs::Launch { topology_file: _ }
+            CommandArgs::Launch {
+                topology_file: _,
+                skip_deps: _,
+            }
             | CommandArgs::Demo {
                 product: _,
                 store: _,
                 version: _,
+                skip_deps: _,
             } => {
                 println!("Launch cluster finished, Enjoy!");
                 println!("Connect to server: \n\t{}", config.client_conn());

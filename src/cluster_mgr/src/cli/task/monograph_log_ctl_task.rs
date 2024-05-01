@@ -88,7 +88,10 @@ impl LogCtlCmd {
                 );
                 let log_cmd = match &cmd_arg {
                     CommandArgs::Start { cluster: _ }
-                    | CommandArgs::Launch { topology_file: _ } => LogCtlCmd::Start(log_start_cmd),
+                    | CommandArgs::Launch {
+                        topology_file: _,
+                        skip_deps: _,
+                    } => LogCtlCmd::Start(log_start_cmd),
                     CommandArgs::Status {
                         cluster: _,
                         user: _,

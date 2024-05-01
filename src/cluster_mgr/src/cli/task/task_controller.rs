@@ -155,6 +155,7 @@ impl TaskController {
         &'static self,
         task_execution_context: TaskExecutionContext,
         config: DeploymentConfig,
+        err_brk: bool,
     ) -> anyhow::Result<Vec<TaskResultPair>> {
         let task_group_string = task_execution_context.clone().task_group;
         let split = TaskController::split_task(&task_execution_context);
@@ -163,11 +164,13 @@ impl TaskController {
             let rs = self
                 .run_task_split(task_group_string.clone(), task_split, config.clone())
                 .await?;
-            rs.iter().for_each(|pair| {
-                if !pair.result.is_success() {
-                    panic!("failed task found")
-                }
-            });
+            if err_brk {
+                rs.iter().for_each(|pair| {
+                    if !pair.result.is_success() {
+                        panic!("failed task found")
+                    }
+                });
+            }
             task_result_vec.push(rs);
         }
         self.tx.send(TaskResultPair {

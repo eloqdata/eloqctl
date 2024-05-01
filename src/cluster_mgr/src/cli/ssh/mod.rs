@@ -143,21 +143,22 @@ impl SSHSession {
         Ok(cmd_res)
     }
 
-    pub async fn execute(&self, command: &str) -> anyhow::Result<String> {
+    pub async fn execute(&self, command: &str) -> anyhow::Result<(i32, String)> {
         let ret = self
             .command(command, SSHCommandOption::CollectOutput)
             .await?;
-        if TaskArgValue::into_inner_value::<i32>(ret.get(CMD_STATUS).unwrap().clone()) != 0 {
-            bail!("SSH command failed");
-        }
-        let output = TaskArgValue::into_inner_value::<String>(ret.get(CMD_OUTPUT).unwrap().clone());
-        Ok(output.trim().to_owned())
+        let code = TaskArgValue::into_inner_value::<i32>(ret.get(CMD_STATUS).unwrap().clone());
+        let output = TaskArgValue::into_inner_value::<String>(ret.get(CMD_OUTPUT).unwrap().clone())
+            .trim()
+            .to_owned();
+        Ok((code, output))
     }
 
     pub async fn used_tcp_ports(&self) -> anyhow::Result<Vec<u16>> {
         let output = self
             .execute("ss -tnl | awk 'NR>1 {print $4}' | awk -F':' '{print $NF}'")
             .await?
+            .1
             .replace('\n', ",");
         info!("socket {}:{} is already used", self.host, output);
         let used = output
@@ -192,7 +193,7 @@ impl SSHSession {
             let c = content.to_owned();
             let join = tokio::task::spawn(async move {
                 let sess = Self::from_task_host(task_host, key_path).await?;
-                let output = sess.execute(&c).await?;
+                let output = sess.execute(&c).await?.1;
                 sess.close().await?;
                 anyhow::Ok((host, output))
             });
