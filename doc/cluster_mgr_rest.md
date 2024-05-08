@@ -1,7 +1,7 @@
 ## Start REST API Server
 
 ```shell
-cd ${PATH}/mono_cluster_mgr_rest_dest
+cd ${PATH}/EloqWaiterRest
 ./rest_api --config ${PWD}/config --port $PORT --addr 0.0.0.0
 ```
 

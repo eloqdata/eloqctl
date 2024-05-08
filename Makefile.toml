@@ -1,7 +1,7 @@
 [tasks.rustc-version-nightly]
 toolchain = "nightly-2022-12-12"
 command = "rustc"
-args = [ "--version" ]
+args = ["--version"]
 
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
@@ -39,24 +39,6 @@ dependencies = ["format"]
 command = "cargo"
 args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
 
-[tasks.rest_api_pkg]
-script = '''
-#!/bin/bash
-MONO_CLI_MGR_REST_API="mono_cluster_mgr_rest_dest"
-WORKING_DIR=${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
-PROJECT_DIR=${CARGO_MAKE_CURRENT_TASK_INITIAL_MAKEFILE_DIRECTORY}
-TARGET="$WORKING_DIR"/target/release/rest_api
-CLUSTER_MGR_RELEASE="$WORKING_DIR"/target/release/cluster_mgr
-function build_rest_pkg() {
-   mkdir -p "$MONO_CLI_MGR_REST_API" && mkdir -p "$MONO_CLI_MGR_REST_API"/config
-   cp -r ${PROJECT_DIR}/src/cluster_mgr/config/* "$MONO_CLI_MGR_REST_API/config"
-   cp "$TARGET" "$MONO_CLI_MGR_REST_API"
-   cp "$CLUSTER_MGR_RELEASE" "$MONO_CLI_MGR_REST_API"
-}
-build_rest_pkg
-'''
-dependencies = ["cluster_mgr_build", "rest_api_build"]
-
 [tasks.devtools_pkg]
 script = '''
 #!/bin/bash
@@ -73,17 +55,35 @@ build_package
 '''
 dependencies = ["devtools_build"]
 
+[tasks.rest_api_pkg]
+script = '''
+#!/bin/bash
+WORKING_DIR=${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
+PROJECT_DIR=${CARGO_MAKE_CURRENT_TASK_INITIAL_MAKEFILE_DIRECTORY}
+TARGET="$WORKING_DIR"/target/release/rest_api
+CLUSTER_MGR_RELEASE="$WORKING_DIR"/target/release/cluster_mgr
+function build_rest_pkg() {
+   mkdir -p EloqWaiterRest/config
+   bash version.sh EloqWaiterRest
+   cp -r ${PROJECT_DIR}/src/cluster_mgr/config/* EloqWaiterRest/config
+   cp "$TARGET" EloqWaiterRest/
+   cp "$CLUSTER_MGR_RELEASE" EloqWaiterRest/
+}
+build_rest_pkg
+'''
+dependencies = ["cluster_mgr_build", "rest_api_build"]
+
 [tasks.cluster_mgr_pkg]
 script = '''
 #!/bin/bash
 WORKSPACE_DIR="${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}"
-CLUSTER_MGR_RELEASE="$WORKSPACE_DIR"/target/release/cluster_mgr
-CLUSTER_MGR_DIST_DIR=mono_cluster_mgr_dist
+CLUSTER_MGR_RELEASE=${WORKSPACE_DIR}/target/release/cluster_mgr
 function build_cluster_mgr() {
-  echo "cluster_mgr_pkg.workspace"$WORKSPACE_DIR
-  mkdir -p "$CLUSTER_MGR_DIST_DIR" && mkdir -p "$CLUSTER_MGR_DIST_DIR"/config
-  cp -r $WORKSPACE_DIR/src/cluster_mgr/config/* "$CLUSTER_MGR_DIST_DIR/config"
-  cp "$CLUSTER_MGR_RELEASE" "$CLUSTER_MGR_DIST_DIR"
+  echo "cluster_mgr_pkg.workspace = ${WORKSPACE_DIR}"
+  mkdir -p EloqWaiter/config
+  bash version.sh EloqWaiter
+  cp -r ${WORKSPACE_DIR}/src/cluster_mgr/config/* EloqWaiter/config/
+  cp "$CLUSTER_MGR_RELEASE" EloqWaiter/
 }
 build_cluster_mgr
 '''

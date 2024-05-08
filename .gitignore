@@ -4,9 +4,8 @@
 # Visual Studio Code
 .vscode/
 .devcontainer/
-mono_waiter_dist/
-mono_cluster_mgr_dist/
-mono_cluster_mgr_rest_dest/
+EloqWaiter/
+EloqWaiterRest/
 mono_devtools_dist/
 *.bash
 #*.json
