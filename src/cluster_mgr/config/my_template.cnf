@@ -17,6 +17,7 @@ thread_pool_dedicated_listener=1
 # monograph engine specific parameter.
 monograph
 monograph_kv_storage=cass
+#monograph_keyspace_name=waiter
 monograph_cass_user=cassandra
 monograph_cass_password=cassandra
 monograph_local_ip=${OVERRIDE}

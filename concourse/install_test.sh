@@ -4,7 +4,7 @@ set -exo pipefail
 # prepare environment
 source /etc/os-release
 if [[ "$ID" == "centos" ]]; then
-    sudo yum install -y epel-release && sudo yum update -y && sudo yum install -y sudo openssh-server
+    sudo yum install -y epel-release && sudo yum update -y && sudo yum install -y sudo openssh-server iproute
     sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -N ''
     sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_dsa_key -N ''
     sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_ed25519_key -N ''
@@ -136,11 +136,13 @@ cluster_mgr list
 cluster_mgr remove --cluster eloqsql-cluster
 cluster_mgr remove --cluster eloqkv-cluster
 
-echo ">>> Test debug version"
+echo ">>> Test external cassandra"
 CASSANDRA_ADDR="172.31.41.177"
+sed -i "s|#monograph_keyspace_name|monograph_keyspace_name|" ${CLUSTER_MGR_HOME}/config/my_template.cnf
+sed -i "s|#cass_keyspace|cass_keyspace|" ${CLUSTER_MGR_HOME}/config/redis_template.ini
 
 sleep 15
-cluster_mgr demo --product eloq-sql --version debug --skip-deps --ext-cass ${CASSANDRA_ADDR}
+cluster_mgr demo --product eloq-sql --skip-deps --ext-cass ${CASSANDRA_ADDR}
 export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-sql-cassandra/monograph-tx-service-release/install/bin"
 cluster_mgr status --cluster demo-sql-cassandra --wait 5
 mariadb -S /tmp/mysql3316.sock --execute "SHOW DATABASES"
@@ -149,7 +151,7 @@ cluster_mgr stop --cluster demo-sql-cassandra --all
 cluster_mgr remove --cluster demo-sql-cassandra
 
 sleep 15
-cluster_mgr demo --product eloq-kv --version debug --skip-deps --ext-cass ${CASSANDRA_ADDR}
+cluster_mgr demo --product eloq-kv --skip-deps --ext-cass ${CASSANDRA_ADDR}
 export PATH="${BASE_PATH}:${CLUSTER_MGR_HOME}/demo-kv-cassandra/monograph_redis"
 cluster_mgr status --cluster demo-kv-cassandra --wait 5
 redis_cli -server 127.0.0.1:6389 incr mycounter
