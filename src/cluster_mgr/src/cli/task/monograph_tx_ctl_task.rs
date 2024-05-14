@@ -167,40 +167,32 @@ impl MySQLProbe {
         };
         let host = &self.host;
         let port = self.mysql_port;
-        let mysql_conn_url = format!("mysql://{user_pwd}@{host}:{port}/mysql");
+        let url = format!("mysql://{user_pwd}@{host}:{port}/mysql");
         loop {
-            let mono_conn_rs = sqlx::mysql::MySqlConnection::connect(mysql_conn_url.as_str()).await;
+            let mono_conn_rs = sqlx::mysql::MySqlConnection::connect(url.as_str()).await;
             if let Err(err) = mono_conn_rs {
                 if let sqlx::Error::Io(ref e) = err {
                     if io::ErrorKind::ConnectionRefused == e.kind() {
                         maybe_continue_probe!(wait_secs);
                     }
                 }
-                error!(
-                    "established database connection failure url={},err_msg={:?}",
-                    mysql_conn_url, err
-                );
+                error!("EloqSQL connect failed {}: {:?}", url, err);
                 return Ok(HashMap::from([
                     (
                         CMD.to_string(),
-                        TaskArgValue::Str(format!("Dial MonographDB={mysql_conn_url}")),
+                        TaskArgValue::Str(format!("Dial MonographDB={url}")),
                     ),
                     (CMD_STATUS.to_string(), TaskArgValue::Number(-1)),
                     (CMD_OUTPUT.to_string(), TaskArgValue::Str(err.to_string())),
                 ]));
             }
-
-            info!(
-                "MonographDetector established database connection successfully user={},host={}",
-                self.user, self.password
-            );
-            let mut mono_conn = mono_conn_rs.unwrap();
-            let query_cmd = "select date_format(now(), '%Y-%m-%d %T') as now_date";
-            let query_rs = mono_conn.fetch_one(query_cmd).await;
+            let mut conn = mono_conn_rs.unwrap();
+            let query_cmd = "SHOW DATABASES";
+            let query_rs = conn.fetch_one(query_cmd).await;
             if let Ok(row) = query_rs {
                 let now_date: String = row.get(0);
                 info!("MonographDB status is normal {}", now_date);
-                mono_conn.close().await?;
+                conn.close().await?;
                 return Ok(HashMap::from([
                     (CMD.to_string(), TaskArgValue::Str(query_cmd.to_string())),
                     (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
@@ -208,12 +200,9 @@ impl MySQLProbe {
                 ]));
             }
             let err_msg = query_rs.err().unwrap().to_string();
-            error!(
-                "Cannot connect to MonographDB on {}, err_msg={}",
-                host, err_msg
-            );
+            error!("Cannot connect to EloqSQL @{}: {}", host, err_msg);
             maybe_continue_probe!(wait_secs);
-            mono_conn.close().await?;
+            conn.close().await?;
             return Ok(HashMap::from([
                 (CMD.to_string(), TaskArgValue::Str(query_cmd.to_string())),
                 (CMD_STATUS.to_string(), TaskArgValue::Number(-1)),
@@ -232,7 +221,7 @@ impl MySQLProbe {
     ) -> anyhow::Result<ExecutionValue> {
         println!("Probe whether MonographDB is ready to be connected locally");
         let mut cmd = config.client_conn();
-        cmd.push_str(" --execute 'SELECT 1'");
+        cmd.push_str(" --execute 'SHOW DATABASES'");
         loop {
             let ret = ssh_sess.command(&cmd, CollectOutput).await?;
             let code = TaskArgValue::into_inner_value::<i32>(ret.get(CMD_STATUS).unwrap().clone());
