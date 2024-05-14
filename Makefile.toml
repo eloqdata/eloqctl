@@ -63,9 +63,9 @@ PROJECT_DIR=${CARGO_MAKE_CURRENT_TASK_INITIAL_MAKEFILE_DIRECTORY}
 TARGET="$WORKING_DIR"/target/release/rest_api
 CLUSTER_MGR_RELEASE="$WORKING_DIR"/target/release/cluster_mgr
 function build_rest_pkg() {
-   mkdir -p EloqWaiterRest/config
+   mkdir EloqWaiterRest
    bash version.sh EloqWaiterRest
-   cp -r ${PROJECT_DIR}/src/cluster_mgr/config/* EloqWaiterRest/config
+   cp -r ${PROJECT_DIR}/src/cluster_mgr/config EloqWaiterRest/
    cp "$TARGET" EloqWaiterRest/
    cp "$CLUSTER_MGR_RELEASE" EloqWaiterRest/
 }
@@ -80,9 +80,10 @@ WORKSPACE_DIR="${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}"
 CLUSTER_MGR_RELEASE=${WORKSPACE_DIR}/target/release/cluster_mgr
 function build_cluster_mgr() {
   echo "cluster_mgr_pkg.workspace = ${WORKSPACE_DIR}"
-  mkdir -p EloqWaiter/config
+  mkdir EloqWaiter
   bash version.sh EloqWaiter
-  cp -r ${WORKSPACE_DIR}/src/cluster_mgr/config/* EloqWaiter/config/
+  cp -r ${WORKSPACE_DIR}/src/cluster_mgr/config EloqWaiter/
+  cp -r ${WORKSPACE_DIR}/tests EloqWaiter/
   cp "$CLUSTER_MGR_RELEASE" EloqWaiter/
 }
 build_cluster_mgr
