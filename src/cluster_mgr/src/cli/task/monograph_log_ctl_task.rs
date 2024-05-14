@@ -15,7 +15,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::future::Future;
-use tracing::info;
+use tracing::{debug, info};
 
 const CLUSTER_COMMAND_STR: &str = "cluster_cmd";
 const FIND_LOG_PROCESS_CMD: &str = r"ps uxwe -u _USER | grep '_LOG_BIN_CMD' | grep '_STORAGE_PATH' | grep -v grep | awk '{print _COLUMN}'";
@@ -329,7 +329,7 @@ impl TaskExecutor for MonographLogCtlTask {
     ) -> anyhow::Result<Option<ExecutionValue>> {
         let cluster_mgr_cmd = task_arg.get(CLUSTER_COMMAND_STR).unwrap();
         let cluster_cmd_string = cluster_mgr_cmd.clone().into_inner_value::<String>();
-        println!("{} execute.\n", self.task_id.pretty_string());
+        debug!("execute {}", self.task_id.pretty_string());
         let ssh_session =
             SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
                 .await?;

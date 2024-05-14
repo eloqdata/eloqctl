@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use std::{io, process};
 use strum_macros::AsRefStr;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 #[derive(Clone, Debug, Eq, PartialEq, AsRefStr)]
 pub enum TxCtlCmd {
@@ -159,7 +159,7 @@ impl MySQLProbe {
     }
 
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
-        println!("Probe whether MonographDB is ready to be connected");
+        info!("Probe whether EloqSQL is ready to be connected");
         let user_pwd = if self.password.eq("_NONE") {
             self.user.clone()
         } else {
@@ -219,7 +219,7 @@ impl MySQLProbe {
         ssh_sess: &SSHSession,
         mut wait_secs: i32,
     ) -> anyhow::Result<ExecutionValue> {
-        println!("Probe whether MonographDB is ready to be connected locally");
+        info!("Probe whether EloqSQL is ready to be connected locally");
         let mut cmd = config.client_conn();
         cmd.push_str(" --execute 'SHOW DATABASES'");
         loop {
@@ -244,7 +244,7 @@ impl RedisProbe {
         Self { host, port }
     }
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
-        println!("Probe whether Redis is ready to be connected");
+        info!("Probe whether Redis is ready to be connected");
         let url = format!("redis://{}:{}/", self.host, self.port);
         let client = redis::Client::open(url.clone())?;
         loop {
@@ -435,7 +435,7 @@ impl TaskExecutor for MonographTxCtlTask {
         task_host: TaskHost,
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        println!("{} execute.\n", self.task_id.pretty_string());
+        debug!("execute {}", self.task_id.pretty_string());
         let ssh_session =
             SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
                 .await?;

@@ -1,3 +1,5 @@
+use tracing::debug;
+
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::ssh::SSHSession;
 use crate::cli::task::task_base::CmdErr;
@@ -30,7 +32,7 @@ impl TaskExecutor for UploadTask {
         _task_host: TaskHost,
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        println!("{} execute.\n", self.task_id.pretty_string());
+        debug!("execute {}", self.task_id.pretty_string());
         let scp_command_opt = task_arg.get(SCP_COMMAND);
         assert!(scp_command_opt.is_some());
         let scp_command_value = scp_command_opt.unwrap();

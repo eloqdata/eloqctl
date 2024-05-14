@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tracing::error;
+use tracing::{debug, error};
 
 const SOURCE_DIR: &str = "_source_dir";
 const DEST_DIR: &str = "_dest_dir";
@@ -79,7 +79,7 @@ impl TaskExecutor for LocalCopyTask {
     ) -> anyhow::Result<Option<ExecutionValue>> {
         let source_dir_op = task_arg.get(SOURCE_DIR);
         assert!(source_dir_op.is_some());
-        println!("{} execute.\n", self.task_id.pretty_string());
+        debug!("execute {}", self.task_id.pretty_string());
         let source_dir_string =
             TaskArgValue::into_inner_value::<String>(source_dir_op.unwrap().clone());
         let source_path = PathBuf::from(source_dir_string.as_str());

@@ -18,7 +18,7 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::time::Duration;
 use strum_macros::AsRefStr;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use users::{get_current_gid, get_current_uid};
 
 pub(crate) const CASSANDRA_CMD_STR: &str = "cassandra_cmd";
@@ -353,7 +353,7 @@ impl TaskExecutor for CassandraCtlTask {
             self.config.connection.ssh_auth_key().unwrap(),
         )
         .await?;
-        println!("{} execute.\n", self.task_id.pretty_string());
+        debug!("execute {}", self.task_id.pretty_string());
         let cmd_str = TaskArgValue::into_inner_value::<String>(
             task_arg.get(CASSANDRA_CMD_STR).unwrap().clone(),
         );

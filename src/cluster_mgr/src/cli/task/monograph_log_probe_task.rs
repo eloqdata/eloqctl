@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time::timeout;
-use tracing::warn;
+use tracing::{debug, warn};
 
 // The timeout time of the probe, in seconds.
 const TIMEOUT: u64 = 60 * 5;
@@ -247,7 +247,7 @@ impl TaskExecutor for MonographLogProbeTask {
         _task_host: TaskHost,
         _task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        println!("{} execute.\n", self.task_id.pretty_string());
+        debug!("execute {}", self.task_id.pretty_string());
         let time_out = self.readiness.timeout_sec;
         let timeout_duration = Duration::from_secs(time_out);
         let action_result = timeout(timeout_duration, self.action()).await;
