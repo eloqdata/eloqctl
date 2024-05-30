@@ -81,27 +81,28 @@ impl MonitorInfraConfUploadBuilder {
             .gen_mcac_file_sd_config(cass_config_host_ref.clone())
             .unwrap(); // prometheus
         let log_hosts = all_host.get(&DeploymentPackage::MonographLog).unwrap();
-        let prometheus_conf = monitor
-            .gen_prometheus_config(HashMap::from([
-                (
-                    MONOGRAPH_TX_JOB_NAME.to_string(),
-                    monograph_tx_hosts.clone(),
-                ),
-                (
-                    MYSQL_EXPORTER_JOB_NAME.to_string(),
-                    monograph_tx_hosts.clone(),
-                ),
-                (
-                    NODE_EXPORTER_JOB_NAME.to_string(),
-                    [
-                        &monograph_tx_hosts[..],
-                        &log_hosts.clone()[..],
-                        &cass_config_host_ref[..],
-                    ]
-                    .concat(),
-                ),
-            ]))
-            .unwrap(); //prometheus config
+        let mut jobs = HashMap::from([
+            (
+                MONOGRAPH_TX_JOB_NAME.to_string(),
+                monograph_tx_hosts.clone(),
+            ),
+            (
+                NODE_EXPORTER_JOB_NAME.to_string(),
+                [
+                    &monograph_tx_hosts[..],
+                    &log_hosts.clone()[..],
+                    &cass_config_host_ref[..],
+                ]
+                .concat(),
+            ),
+        ]);
+        if monitor.mysql_exporter.is_some() {
+            jobs.insert(
+                MYSQL_EXPORTER_JOB_NAME.to_owned(),
+                monograph_tx_hosts.clone(),
+            );
+        }
+        let prometheus_conf = monitor.gen_prometheus_config(jobs).unwrap(); //prometheus config
         let prometheus_conf_files = if let Some(mcac) = mcac_config {
             vec![prometheus_conf, mcac]
         } else {

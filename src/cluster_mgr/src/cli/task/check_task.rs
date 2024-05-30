@@ -30,11 +30,13 @@ impl CheckTask {
                 }
             }
             if let Some(moni) = &self.config.deployment.monitor {
-                if moni.node_exporter_port == p {
+                if moni.node_exporter.port == p {
                     bail!("node exporter socket {}:{p} is already used", self.host);
                 }
-                if moni.mysql_exporter_port == p {
-                    bail!("mysql exporter socket {}:{p} is already used", self.host);
+                if let Some(myex) = &moni.mysql_exporter {
+                    if myex.port == p {
+                        bail!("mysql exporter socket {}:{p} is already used", self.host);
+                    }
                 }
             }
         }
@@ -56,7 +58,7 @@ impl CheckTask {
                 bail!("log-service socket {}:{p} is already used", self.host);
             }
             if let Some(moni) = &self.config.deployment.monitor {
-                if moni.node_exporter_port == p {
+                if moni.node_exporter.port == p {
                     bail!("node exporter socket {}:{p} is already used", self.host);
                 }
             }
@@ -78,7 +80,7 @@ impl CheckTask {
                 bail!("cassandra {name} socket {}:{p} is already used", self.host);
             }
             if let Some(moni) = &self.config.deployment.monitor {
-                if moni.node_exporter_port == p {
+                if moni.node_exporter.port == p {
                     bail!("node exporter socket {}:{p} is already used", self.host);
                 }
                 if let Some(cc) = &moni.cassandra_collector {
@@ -145,7 +147,7 @@ impl CheckTask {
                 bail!("codis socket {}:{p} is already used", self.host);
             }
             if let Some(moni) = &self.config.deployment.monitor {
-                if moni.node_exporter_port == p {
+                if moni.node_exporter.port == p {
                     bail!("node exporter socket {}:{p} is already used", self.host);
                 }
             }

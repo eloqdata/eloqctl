@@ -145,6 +145,11 @@ impl CommandExecutor {
                         deploy.storage_service.rocksdb = Some(RocksDB::Local);
                     }
                 }
+                if let Some(monitor) = &mut deploy.monitor {
+                    if store != StorageProvider::Cassandra {
+                        monitor.cassandra_collector = None
+                    }
+                }
                 deploy.version.replace(version);
                 deploy.set_image()?;
                 // add kv-store name to cluster name suffix

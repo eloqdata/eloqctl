@@ -95,18 +95,18 @@ impl MonitorComponentCommand {
             MonitorComponentCommand::NodeExporter {
                 home: node_exporter_home,
             } => {
-                let node_exporter_listen_port = monitor.node_exporter_port;
+                let port = monitor.node_exporter.port;
                 format!(
-                    r#"{node_exporter_home}/node_exporter --web.listen-address=:{node_exporter_listen_port} > /tmp/mono_node_exporter.log 2>&1 &"#
+                    r#"{node_exporter_home}/node_exporter --web.listen-address=:{port} > /tmp/mono_node_exporter.log 2>&1 &"#
                 )
             }
             MonitorComponentCommand::MySqlExporter {
                 home: mysql_exporter_home,
                 mysql_conf: my_conf,
             } => {
-                let mysql_exporter_listen_port = monitor.mysql_exporter_port;
+                let port = monitor.mysql_exporter.as_ref().unwrap().port;
                 format!(
-                    r#"{mysql_exporter_home}/mysqld_exporter --web.listen-address=:{mysql_exporter_listen_port} --config.my-cnf {my_conf} --log.level=info > /tmp/mono_mysql_exporter.log 2>&1 &"#
+                    r#"{mysql_exporter_home}/mysqld_exporter --web.listen-address=:{port} --config.my-cnf {my_conf} --log.level=info > /tmp/mono_mysql_exporter.log 2>&1 &"#
                 )
             }
             MonitorComponentCommand::Grafana { home: grafana_home } => {
@@ -187,8 +187,7 @@ impl MonitorCtlTask {
         config: &DeploymentConfig,
     ) -> IndexMap<TaskId, TaskInstance> {
         let cmd_str_ref = cmd_arg.as_ref();
-        let monitor = config.deployment.monitor.as_ref();
-        assert!(monitor.is_some());
+        let monitor = config.deployment.monitor.as_ref().unwrap();
         let install_dir = config.install_dir();
         let conn_user = &config.connection.username;
         let ssh_port = config.connection.ssh_port();
@@ -202,8 +201,9 @@ impl MonitorCtlTask {
                     || pkg_copy.eq(&DeploymentPackage::Storage)
             })
             .flat_map(|(pkg, hosts)| {
-                let mysql_expt =
-                    pkg.eq(&DeploymentPackage::MonographTx) && config.product() == Product::EloqSQL;
+                let mysql_expt = pkg.eq(&DeploymentPackage::MonographTx)
+                    && config.product() == Product::EloqSQL
+                    && monitor.mysql_exporter.is_some();
                 hosts
                     .iter()
                     .unique()

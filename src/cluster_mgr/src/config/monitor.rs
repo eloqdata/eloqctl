@@ -80,14 +80,18 @@ pub struct MonographMetrics {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct Exporter {
+    pub url: String,
+    pub port: u16,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Monitor {
     pub data_dir: Option<String>,
     pub prometheus: Prometheus,
     pub grafana: Grafana,
-    pub node_exporter: String,
-    pub node_exporter_port: u16,
-    pub mysql_exporter: String,
-    pub mysql_exporter_port: u16,
+    pub node_exporter: Exporter,
+    pub mysql_exporter: Option<Exporter>,
     pub cassandra_collector: Option<CassandraCollector>,
     pub monograph_metrics: Option<MonographMetrics>,
 }
@@ -103,9 +107,11 @@ impl Monitor {
         download_urls!(links,
             {PROMETHEUS_FILE_KEY, self.prometheus.download_url},
             {GRAFANA_FILE_KEY, self.grafana.download_url},
-            {NODE_EXPORTER_FILE_KEY, self.node_exporter},
-            {MYSQL_EXPORTER_FILE_KEY, self.mysql_exporter}
+            {NODE_EXPORTER_FILE_KEY, self.node_exporter.url},
         );
+        if let Some(myex) = &self.mysql_exporter {
+            download_urls!(links, {MYSQL_EXPORTER_FILE_KEY, myex.url});
+        }
         if let Some(mcac) = &self.cassandra_collector {
             download_urls!(links, {CASSANDRA_COLLECTOR_AGENT_FILE_KEY, mcac.mcac_agent});
         }
@@ -246,8 +252,7 @@ impl Monitor {
         &self,
         job_hosts: HashMap<String, Vec<String>>,
     ) -> anyhow::Result<PathBuf> {
-        let mysql_exporter_port = self.mysql_exporter_port;
-        let node_exporter_port = self.node_exporter_port;
+        let node_exporter_port = self.node_exporter.port;
         let monograph_metrics_opt = self.monograph_metrics.as_ref();
 
         let mut scrape_configs: Vec<Value> = vec![];
@@ -266,7 +271,8 @@ impl Monitor {
                     target_hosts.push(format!("{host}:{node_exporter_port}"));
                 }
                 MYSQL_EXPORTER_JOB_NAME => {
-                    target_hosts.push(format!("{host}:{mysql_exporter_port}"));
+                    let port = self.mysql_exporter.as_ref().unwrap().port;
+                    target_hosts.push(format!("{host}:{port}"));
                 }
                 _ => unreachable!(),
             });

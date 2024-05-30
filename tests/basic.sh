@@ -53,7 +53,7 @@ cluster_mgr stop eloqsql-cluster --all
 cluster_mgr inspect eloqsql-cluster
 
 sleep 15
-cluster_mgr launch ${CLUSTER_MGR_HOME}/config/examples/eloqkv_cassandra.yaml
+cluster_mgr launch ${CLUSTER_MGR_HOME}/config/examples/eloqkv_rocksdb.yaml
 CLIENT=$(cluster_mgr connect eloqkv-cluster)
 cluster_mgr status eloqkv-cluster --wait 5
 eval ${CLIENT} incr mycounter
