@@ -119,7 +119,7 @@ impl TaskExecutor for ExecCustomCommand {
         task_host: TaskHost,
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        debug!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.pretty_string());
         let ssh_session = ssh::SSHSession::from_task_host(
             task_host,
             self.config.connection.ssh_auth_key().unwrap(),

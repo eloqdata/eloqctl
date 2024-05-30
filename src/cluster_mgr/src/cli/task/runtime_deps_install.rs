@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::vec;
-use tracing::debug;
+use tracing::{debug, info};
 use users::get_current_uid;
 
 #[derive(Clone, Debug)]
@@ -116,7 +116,7 @@ impl TaskExecutor for RuntimeDepsInstallation {
         task_host: TaskHost,
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        debug!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.pretty_string());
         let ssh_session = SSHSession::from_task_host(
             task_host.clone(),
             self.config.connection.ssh_auth_key().unwrap(),

@@ -17,7 +17,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 pub(crate) const DOWNLOAD_URL: &str = "download_url";
 pub(crate) const DOWNLOAD_FILE_NAME: &str = "download_file_name";
@@ -132,7 +132,7 @@ impl TaskExecutor for DownloadTask {
         _task_host: TaskHost,
         task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        debug!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.pretty_string());
         let url =
             TaskArgValue::into_inner_value::<String>(task_input.get(DOWNLOAD_URL).unwrap().clone());
         let filename = TaskArgValue::into_inner_value::<String>(

@@ -348,7 +348,7 @@ impl TaskExecutor for CassandraCtlTask {
             self.config.connection.ssh_auth_key().unwrap(),
         )
         .await?;
-        debug!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.pretty_string());
         let cmd_str = TaskArgValue::into_inner_value::<String>(
             task_arg.get(CASSANDRA_CMD_STR).unwrap().clone(),
         );

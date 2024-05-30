@@ -329,7 +329,7 @@ impl TaskExecutor for MonographLogCtlTask {
     ) -> anyhow::Result<Option<ExecutionValue>> {
         let cluster_mgr_cmd = task_arg.get(CLUSTER_COMMAND_STR).unwrap();
         let cmd_string = cluster_mgr_cmd.clone().into_inner_value::<String>();
-        debug!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.pretty_string());
         let ssh_session =
             SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
                 .await?;

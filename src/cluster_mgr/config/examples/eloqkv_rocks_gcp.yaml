@@ -1,0 +1,47 @@
+connection:
+  username: "${USER}"
+  auth_type: "keypair"
+  auth:
+    keypair: "/home/${USER}/.ssh/id_rsa"
+deployment:
+  cluster_name: "eloqkv-cluster"
+  product: "EloqKV"
+  version: "latest"
+  install_dir: "/home/${USER}/eloq"
+  log_service:
+    nodes:
+      - host: 127.0.0.1
+        port: 9000
+        data_dir:
+          - "/home/${USER}/eloq/disk_wal_kv"
+    replica: 1
+  tx_service:
+    host: [127.0.0.1]
+    client_port: 6389
+  storage_service:
+    rocksdb: !GCP
+      region: "xxx"
+      bucket_name: "xxx"
+      bucket_prefix: "xxx"
+      target_file_size_base: "xxx"
+      sst_file_cache_size: "xxx"
+  monitor:
+    data_dir: ""
+    monograph_metrics:
+      path: "/mono_metrics"
+      port: 18081
+    prometheus:
+      download_url: "https://d143xau9fe26d8.cloudfront.net/others/prometheus-2.42.0.linux-amd64.tar.gz"
+      port: 9500
+      host: 127.0.0.1
+    grafana:
+      download_url: "https://d143xau9fe26d8.cloudfront.net/others/grafana-9.3.6.linux-amd64.tar.gz"
+      port: 3301
+      host: 127.0.0.1
+    node_exporter: "https://d143xau9fe26d8.cloudfront.net/others/node_exporter-1.5.0.linux-amd64.tar.gz"
+    node_exporter_port: 9200
+    mysql_exporter: "https://d143xau9fe26d8.cloudfront.net/others/mysqld_exporter-0.14.0.linux-amd64.tar.gz"
+    mysql_exporter_port: 9300
+    cassandra_collector:
+      mcac_agent: "https://d143xau9fe26d8.cloudfront.net/others/datastax-mcac-agent-0.3.4-4.1-beta1.tar.gz"
+      mcac_port: 9103

@@ -1,5 +1,3 @@
-use tracing::debug;
-
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::ssh::SSHSession;
 use crate::cli::task::task_base::CmdErr;
@@ -8,6 +6,7 @@ use crate::cli::task::upload::upload_task_builder::{SCP_COMMAND, SOURCE_IP};
 use crate::config::config_base::DeploymentConfig;
 use crate::task_return_value;
 use std::collections::HashMap;
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct UploadTask {
@@ -32,7 +31,7 @@ impl TaskExecutor for UploadTask {
         _task_host: TaskHost,
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        debug!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.pretty_string());
         let scp_command_opt = task_arg.get(SCP_COMMAND);
         assert!(scp_command_opt.is_some());
         let scp_command_value = scp_command_opt.unwrap();
