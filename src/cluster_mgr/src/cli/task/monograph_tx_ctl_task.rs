@@ -20,8 +20,8 @@ use indexmap::IndexMap;
 use redis::Commands;
 use sqlx::{Connection, Executor, Row};
 use std::collections::HashMap;
+use std::io;
 use std::time::Duration;
-use std::{io, process};
 use strum_macros::AsRefStr;
 use tracing::{debug, error, info, warn};
 
@@ -52,18 +52,17 @@ pub fn mono_start_cmd(ins_dir: &str, product: Product, debug: bool) -> String {
             Product::EloqKV => format!("export LD_PRELOAD={tx_dir}/lib/libmimalloc.so.2"),
         }
     };
+    let exp_log = format!("mkdir -p {tx_dir}/logs && export GLOG_log_dir={tx_dir}/logs && export GLOG_max_log_size=1024");
     match product {
         Product::EloqSQL => format!(
-            r#"mkdir -p {tx_dir}/logs && cd {tx_dir}/install && \
+            r#"{exp_log} && cd {tx_dir}/install && \
                 {head}; export LD_LIBRARY_PATH={tx_dir}/install/lib:$LD_LIBRARY_PATH; \
-                {tx_dir}/install/bin/mysqld --defaults-file={ins_dir}/my.cnf > {tx_dir}/logs/mysqld_start_{}.log 2>&1 &"#,
-            process::id()
+                {tx_dir}/install/bin/mysqld --defaults-file={ins_dir}/my.cnf > /dev/null 2>&1 &"#
         ),
         Product::EloqKV => format!(
-            r#"mkdir -p {tx_dir}/logs && cd {tx_dir} && \
+            r#"{exp_log} && cd {tx_dir} && \
                 {head}; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH; \    
-                {tx_dir}/redis_server --config={ins_dir}/redis.ini --graceful_quit_on_sigterm=true > {tx_dir}/logs/redis_{}.log 2>&1 &"#,
-            process::id()
+                {tx_dir}/redis_server --config={ins_dir}/redis.ini --graceful_quit_on_sigterm=true > /dev/null 2>&1 &"#
         ),
     }
 }

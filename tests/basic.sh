@@ -29,6 +29,9 @@ cluster_mgr monitor demo-kv-cassandra stop
 cluster_mgr list
 cluster_mgr stop demo-kv-cassandra --all
 
+cluster_mgr remove demo-sql-cassandra
+cluster_mgr remove demo-kv-cassandra
+
 sleep 15
 cluster_mgr demo eloq-kv --store rocks
 CLIENT=$(cluster_mgr connect demo-kv-rocksdb)
@@ -40,6 +43,7 @@ eval ${CLIENT} get mycounter
 cluster_mgr monitor demo-kv-rocksdb stop 
 cluster_mgr list
 cluster_mgr stop demo-kv-rocksdb --all
+cluster_mgr remove demo-kv-rocksdb
 
 echo ">>> Test Launch command"
 
@@ -65,9 +69,6 @@ cluster_mgr stop eloqkv-cluster --all
 cluster_mgr inspect eloqkv-cluster
 
 cluster_mgr list
-cluster_mgr remove demo-sql-cassandra
-cluster_mgr remove demo-kv-cassandra
-cluster_mgr remove demo-kv-rocksdb
 cluster_mgr remove eloqsql-cluster
 cluster_mgr remove eloqkv-cluster
 cluster_mgr list
