@@ -503,31 +503,31 @@ impl Deployment {
             warn!("hardware information for {host} is missing");
         }
 
-        let key = "thread_pool_size";
-        let val = set_by_user!(my_ini.get(CONFIG_MARIADB_SECTION, key), u16);
-        if val.is_none() {
-            let mut v = 1;
-            if let Some(hw) = opt_hw {
-                v = v.max((hw.cpu * 3) / 8);
-            }
-            my_ini.set(CONFIG_MARIADB_SECTION, key, Some(v.to_string()));
-        }
-
-        let key = "monograph_core_num";
-        let val = set_by_user!(my_ini.get(CONFIG_MARIADB_SECTION, key), u16);
-        if val.is_none() {
-            let mut v = 1;
-            if let Some(hw) = opt_hw {
-                v = v.max((hw.cpu * 3) / 8);
-            }
-            my_ini.set(CONFIG_MARIADB_SECTION, key, Some(v.to_string()));
-        }
-
         let union_cass = self
             .topology()
             .get(&host)
             .unwrap()
             .contains(&DeploymentPackage::Storage);
+
+        let mut core = 1;
+        if let Some(hw) = opt_hw {
+            if union_cass {
+                core = core.max((hw.cpu * 3) / 8);
+            } else {
+                core = core.max((hw.cpu * 3) / 4);
+            }
+        }
+        let key = "thread_pool_size";
+        let val = set_by_user!(my_ini.get(CONFIG_MARIADB_SECTION, key), u16);
+        if val.is_none() {
+            my_ini.set(CONFIG_MARIADB_SECTION, key, Some(core.to_string()));
+        }
+        let key = "monograph_core_num";
+        let val = set_by_user!(my_ini.get(CONFIG_MARIADB_SECTION, key), u16);
+        if val.is_none() {
+            my_ini.set(CONFIG_MARIADB_SECTION, key, Some(core.to_string()));
+        }
+
         let key = "monograph_node_memory_limit_mb";
         let val = set_by_user!(my_ini.get(CONFIG_MARIADB_SECTION, key), u32);
         if val.is_none() {
@@ -949,7 +949,7 @@ impl Deployment {
                             .contains(&DeploymentPackage::MonographTx);
                         let heap = if union { hw.memory / 4 } else { hw.memory / 2 }.min(64 * GB);
                         let h_xm = format!("-Xms{}M\n-Xmx{}M", heap, heap);
-                        if heap < 16 * GB {
+                        if heap < 8 * GB {
                             gc_setting = format!("{GC_SETTING_CMS}\n{h_xm}");
                         } else {
                             gc_setting = format!("{GC_SETTING_G1}\n{h_xm}");
