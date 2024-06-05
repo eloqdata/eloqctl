@@ -94,7 +94,7 @@ impl CommandExecutor {
                 skip_deps: _,
             } => {
                 let mut config = DeploymentConfig::load(Some(topology_file))?;
-                config.deployment.set_image()?;
+                config.deployment.set_image().await?;
                 config.scan_hardware().await?;
                 self.save_deployment_config(&config, cmd.as_ref().eq("upgrade"))
                     .await?;
@@ -151,7 +151,7 @@ impl CommandExecutor {
                     }
                 }
                 deploy.version.replace(version);
-                deploy.set_image()?;
+                deploy.set_image().await?;
                 // add kv-store name to cluster name suffix
                 let name_suffix = format!("-{store}");
                 deploy.cluster_name.push_str(&name_suffix);
