@@ -164,6 +164,10 @@ pub enum CommandArgs {
         skip_deps: bool,
         #[arg(long, default_value_t = false)]
         unlimited: bool,
+        #[arg(long, default_value_t = false)]
+        no_monitor: bool,
+        #[arg(long, default_value_t = false)]
+        union_wal: bool,
         #[arg(long, value_delimiter = ';', value_name = "CONTACT-POINTS")]
         ext_cass: Vec<String>,
         #[arg(long)]

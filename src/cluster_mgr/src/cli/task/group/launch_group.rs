@@ -26,6 +26,8 @@ impl TaskGroup for LaunchTaskGroup {
                 version: _,
                 skip_deps,
                 unlimited: _,
+                no_monitor: _,
+                union_wal: _,
                 ext_cass: _,
                 ext_cass_port: _,
                 ext_cass_user: _,
