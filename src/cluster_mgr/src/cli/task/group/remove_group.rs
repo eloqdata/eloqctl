@@ -122,10 +122,10 @@ impl TaskGroup for RemoveTaskGroup {
                     executable.insert(task_id, inst);
                 }
             }
-            StorageProvider::Dynamo => {
+            StorageProvider::Dynamodb => {
                 bail!("drop dynamodb keyspace is not implemented")
             }
-            StorageProvider::Rocks => {}
+            StorageProvider::Rocksdb => {}
         }
 
         Ok(TaskExecutionContext {

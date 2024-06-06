@@ -164,6 +164,10 @@ pub enum CommandArgs {
         skip_deps: bool,
         #[arg(long, default_value_t = false)]
         unlimited: bool,
+        #[arg(long, default_value_t = false)]
+        no_monitor: bool,
+        #[arg(long, default_value_t = false)]
+        union_wal: bool,
         #[arg(long, value_delimiter = ';', value_name = "CONTACT-POINTS")]
         ext_cass: Vec<String>,
         #[arg(long)]
@@ -176,6 +180,14 @@ pub enum CommandArgs {
     #[command(long_about = "List created clusters")]
     #[strum(serialize = "list")]
     List,
+    #[command(long_about = "List available versions")]
+    #[strum(serialize = "list-version")]
+    ListVersion {
+        #[arg(long)]
+        product: Option<Product>,
+        #[arg(long)]
+        store: Option<StorageProvider>,
+    },
     #[command(long_about = "Inspect cluster configuration")]
     #[strum(serialize = "inspect")]
     Inspect {

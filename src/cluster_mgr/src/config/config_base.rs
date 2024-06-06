@@ -566,6 +566,13 @@ pub struct DeployAbstract {
     user: String,
 }
 
+#[derive(tabled::Tabled, Clone, Debug)]
+pub struct VersionRow {
+    pub product: String,
+    pub store: String,
+    pub version: String,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::config::config_base::DeploymentConfig;

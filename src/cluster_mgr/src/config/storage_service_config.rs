@@ -115,9 +115,9 @@ impl StorageService {
         if self.cassandra.is_some() {
             Some(StorageProvider::Cassandra)
         } else if self.dynamodb.is_some() {
-            Some(StorageProvider::Dynamo)
+            Some(StorageProvider::Dynamodb)
         } else if self.rocksdb.is_some() {
-            Some(StorageProvider::Rocks)
+            Some(StorageProvider::Rocksdb)
         } else {
             None
         }

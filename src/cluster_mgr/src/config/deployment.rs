@@ -15,12 +15,11 @@ use crate::config::{
     MONOGRAPH_CONF_DYNAMO_TEMPLATE, MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, SECTION_CLUSTER,
     SECTION_LOCAL, SECTION_METRIC, SECTION_STORE, SET_FOR_ME,
 };
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 use configparser::ini::Ini;
 use core::panic;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::collections::HashMap;
@@ -29,7 +28,9 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
 use strum_macros::Display;
-use tracing::warn;
+use tokio_postgres::config::SslMode;
+use tokio_postgres::NoTls;
+use tracing::{error, warn};
 
 const GC_SETTING_CMS: &str = "
 -XX:+UseConcMarkSweepGC
@@ -130,6 +131,15 @@ pub enum Product {
     EloqKV,
 }
 
+impl Product {
+    pub fn name(&self) -> &str {
+        match self {
+            Product::EloqSQL => "eloqsql",
+            Product::EloqKV => "eloqkv",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Hardware {
     pub cpu: u16,
@@ -166,6 +176,12 @@ impl Codis {
     }
 }
 
+pub enum Version {
+    Tag([u32; 3]),
+    Nightly,
+    Debug,
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Deployment {
     pub product: Option<Product>,
@@ -182,56 +198,28 @@ pub struct Deployment {
     pub hardware: Option<HashMap<String, Hardware>>,
 }
 
+pub async fn pg_client() -> Result<tokio_postgres::Client> {
+    let (client, conn) = tokio_postgres::Config::new()
+        .user("postgres")
+        .password("eloq-pub-service-postgresql")
+        .host("18.177.72.104")
+        .port(5432)
+        .dbname("eloq_release")
+        .ssl_mode(SslMode::Prefer)
+        .connect(NoTls)
+        .await
+        .map_err(|e| anyhow!("connect postgres failed: {e}"))?;
+    // The connection object performs the actual communication with the database,
+    // so spawn it off to run on its own.
+    tokio::spawn(async move {
+        if let Err(e) = conn.await {
+            error!("connection error: {}", e);
+        }
+    });
+    Ok(client)
+}
+
 impl Deployment {
-    // Populate tx_image and log_image according to version number
-    pub fn set_image(&mut self) -> Result<()> {
-        if self.version.is_none() {
-            self.version = Some("latest".to_owned());
-        }
-        self.version.as_mut().unwrap().make_ascii_lowercase();
-        let ver = self.version.as_ref().unwrap();
-        if ver != "latest" && ver != "nightly" && ver != "debug" {
-            let re = Regex::new(r"(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)").unwrap();
-            if !re.is_match(ver) {
-                bail!("Invalid version {}", ver);
-            }
-        }
-
-        let mut prefix = PathBuf::from(DOWNLOAD_SRC.as_str());
-        let os_name = sysinfo::System::distribution_id();
-        let os_version = sysinfo::System::os_version().unwrap().replace('.', "");
-        let os_pretty = format!("{os_name}{os_version}");
-        let arch = sysinfo::System::cpu_arch().unwrap();
-        let arch = match arch.as_str() {
-            "aarch64" | "arm64" => "arm64",
-            "x86" | "x86_64" | "amd64" => "amd64",
-            _ => bail!("unsupported cpu arch {arch}"),
-        };
-        let store = self.storage_service.pretty_name();
-        let version = self.version.as_ref().unwrap();
-        let log_tarball = format!("log-service-{version}-{arch}.tar.gz");
-        let tx_tarball;
-        match self.product() {
-            Product::EloqSQL => {
-                prefix.push("eloqsql");
-                tx_tarball = format!("eloqsql-{version}-{arch}.tar.gz");
-            }
-            Product::EloqKV => {
-                prefix.push("eloqkv");
-                tx_tarball = format!("eloqkv-{version}-{arch}.tar.gz");
-            }
-        }
-        prefix.push(os_pretty);
-        let prefix = prefix.as_path().to_str().unwrap();
-        if self.tx_image.is_none() {
-            self.tx_image = Some(format!("{prefix}/{store}/{tx_tarball}"));
-        }
-        if self.log_image.is_none() && self.log_service.is_some() {
-            self.log_image = Some(format!("{prefix}/logservice/{log_tarball}"));
-        }
-        Ok(())
-    }
-
     pub fn get_tx_image(&self) -> String {
         self.tx_image.clone().unwrap()
     }
@@ -252,8 +240,17 @@ impl Deployment {
         }
     }
 
-    pub fn version(&self) -> &str {
+    pub fn version_str(&self) -> &str {
         self.version.as_ref().unwrap()
+    }
+
+    pub fn version(&self) -> Version {
+        let s = self.version.as_ref().unwrap().as_str();
+        match s {
+            "nightly" => Version::Nightly,
+            "debug" => Version::Debug,
+            _ => Version::Tag(parse_version(s)),
+        }
     }
 
     pub fn client_port(&self) -> u16 {
@@ -568,8 +565,8 @@ impl Deployment {
                     }
                 }
             }
-            StorageProvider::Dynamo => panic!("not supported"),
-            StorageProvider::Rocks => match self.storage_service.rocksdb.clone().unwrap() {
+            StorageProvider::Dynamodb => panic!("not supported"),
+            StorageProvider::Rocksdb => match self.storage_service.rocksdb.clone().unwrap() {
                 RocksDB::Local => {}
                 RocksDB::S3(s3) => {
                     redis_ini.set(SECTION_STORE, "aws_access_key_id", Some(s3.aws_id));
@@ -986,7 +983,7 @@ impl Deployment {
             Product::EloqSQL => format!("{}/{}", ins_dir, MONOGRAPH_TX_SERVICE_DIR),
             Product::EloqKV => format!("{}/{}", ins_dir, REDIS_TX_SERVICE_DIR),
         };
-        let head = if self.version() == "debug" {
+        let head = if let Version::Debug = self.version() {
             export_asan(&format!("{tx_dir}/logs/asan"))
         } else {
             match self.product() {
@@ -999,11 +996,12 @@ impl Deployment {
         let exp_log = format!("mkdir -p {tx_dir}/logs && export GLOG_log_dir={tx_dir}/logs && export GLOG_max_log_size=1024");
         match self.product() {
             Product::EloqSQL => {
-                let logout = if self.version() <= "0.4.1" {
-                    format!("{tx_dir}/logs/eloqsql.log")
-                } else {
-                    "/dev/null".to_owned()
-                };
+                let mut logout = "/dev/null".to_owned();
+                if let Version::Tag(nums) = self.version() {
+                    if nums <= parse_version("0.4.2") {
+                        logout = format!("{tx_dir}/logs/eloqsql.log")
+                    }
+                }
                 format!(
                     r#"{exp_log} && cd {tx_dir}/install && \
                         {head}; export LD_LIBRARY_PATH={tx_dir}/install/lib:$LD_LIBRARY_PATH; \
@@ -1011,11 +1009,12 @@ impl Deployment {
                 )
             }
             Product::EloqKV => {
-                let logout = if self.version() <= "1.0.8" {
-                    format!("{tx_dir}/logs/eloqkv.log")
-                } else {
-                    "/dev/null".to_owned()
-                };
+                let mut logout = "/dev/null".to_owned();
+                if let Version::Tag(nums) = self.version() {
+                    if nums <= parse_version("1.0.8") {
+                        logout = format!("{tx_dir}/logs/eloqkv.log")
+                    }
+                }
                 format!(
                     r#"{exp_log} && cd {tx_dir} && \
                     {head}; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH; \    
@@ -1024,6 +1023,14 @@ impl Deployment {
             }
         }
     }
+}
+
+pub fn parse_version(s: &str) -> [u32; 3] {
+    s.split('.')
+        .map(|e| e.parse::<u32>().unwrap())
+        .collect_vec()
+        .try_into()
+        .unwrap()
 }
 
 #[cfg(test)]
