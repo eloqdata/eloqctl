@@ -411,7 +411,7 @@ impl CommandExecutor {
         if ver != "nightly" && ver != "debug" {
             let re = Regex::new(r"(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)").unwrap();
             if !re.is_match(ver) {
-                error!("invalid version {}", ver);
+                warn!("invalid version {}", ver);
             }
         }
 
