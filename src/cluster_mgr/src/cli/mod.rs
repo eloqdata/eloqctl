@@ -123,7 +123,7 @@ pub enum CommandArgs {
     },
     #[command(
         long_about = "Update the configuration file and restart the tx service (the default value of restart is true). \
-        Note: Please edit config/my_template.cnf first\n ./cluster_mgr update-conf $CLUSTER_NAME"
+        Note: Please edit config/eloq**.cnf first\n ./cluster_mgr update-conf $CLUSTER_NAME"
     )]
     #[strum(serialize = "update-conf")]
     UpdateConf {

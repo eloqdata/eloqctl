@@ -1,6 +1,8 @@
 use crate::cli::{upload_dir, upload_host_dir};
 use crate::config::config_base::CASSANDRA_FILE_KEY;
-use crate::config::config_base::{export_asan, MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY};
+use crate::config::config_base::{
+    export_asan, LOG_SERVICE_HOME, MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY,
+};
 use crate::config::log_service::LogService;
 use crate::config::monitor::Monitor;
 use crate::config::storage_service_config::{Cassandra, RocksDB, StorageService};
@@ -8,9 +10,9 @@ use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
     config_template, load_yaml_config_template, DeploymentPackage, DownloadUrl, StorageProvider,
     CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CODIS_DASHBOARD_CNF,
-    CODIS_PROXY_CNF, DOWNLOAD_SRC, JVM_SETTING_HOLDER, MONOGRAPH_CONF_DYNAMO_TEMPLATE,
-    MONOGRAPH_CONF_TEMPLATE, REDIS_CONF_TEMPLATE, SECTION_CLUSTER, SECTION_LOCAL, SECTION_MARIADB,
-    SECTION_METRIC, SECTION_STORE, SET_FOR_ME,
+    CODIS_PROXY_CNF, DOWNLOAD_SRC, ELOQKV_TEMP, ELOQSQL_DYNAMO_TEMP, ELOQSQL_TEMP,
+    JVM_SETTING_HOLDER, SECTION_CLUSTER, SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC,
+    SECTION_STORE, SET_FOR_ME,
 };
 use anyhow::{anyhow, Result};
 use configparser::ini::Ini;
@@ -281,6 +283,18 @@ impl Deployment {
         format!("{}/{}", &self.install_dir(), self.product().home())
     }
 
+    pub fn log_srv_home(&self) -> String {
+        format!("{}/{LOG_SERVICE_HOME}", &self.install_dir())
+    }
+
+    pub fn tx_srv_ini(&self) -> String {
+        format!("{}/{}.ini", &self.tx_srv_home(), self.product().name())
+    }
+
+    pub fn tx_srv_logs(&self) -> String {
+        format!("{}/logs", &self.tx_srv_home())
+    }
+
     pub fn tx_srv_bin(&self) -> String {
         match self.product() {
             Product::EloqSQL => format!("{}/bin/mariadbd", &self.tx_srv_home()),
@@ -370,7 +384,7 @@ impl Deployment {
         let mut my_ini = Ini::new();
         if let Some(cass) = self.storage_service.cassandra.as_ref() {
             my_ini
-                .load(config_template(MONOGRAPH_CONF_TEMPLATE)?.as_path())
+                .load(config_template(ELOQSQL_TEMP)?.as_path())
                 .unwrap();
             let hosts = cass.host.join(",");
             my_ini.set(SECTION_MARIADB, "monograph_cass_hosts", Some(hosts));
@@ -390,7 +404,7 @@ impl Deployment {
             }
         } else {
             my_ini
-                .load(config_template(MONOGRAPH_CONF_DYNAMO_TEMPLATE)?.as_path())
+                .load(config_template(ELOQSQL_DYNAMO_TEMP)?.as_path())
                 .unwrap();
 
             let dynamodb = self.storage_service.dynamodb.as_ref().unwrap();
@@ -482,7 +496,7 @@ impl Deployment {
         let is_host = tx_host.is_some();
         let mut my_ini = self.build_eloqsql_config(is_host)?;
         let (host, cnf_path) = if let Some(host) = tx_host {
-            (host.clone(), upload_host_dir(&host).join("my.cnf"))
+            (host.clone(), upload_host_dir(&host).join("eloqsql.cnf"))
         } else {
             my_ini.set(
                 SECTION_MARIADB,
@@ -558,23 +572,21 @@ impl Deployment {
     }
 
     pub fn build_eloqkv_config(&self, set_ip_list: bool) -> anyhow::Result<Ini> {
-        let mut redis_ini = Ini::new();
-        redis_ini
-            .load(config_template(REDIS_CONF_TEMPLATE)?)
-            .unwrap();
+        let mut ini = Ini::new();
+        ini.load(config_template(ELOQKV_TEMP)?).unwrap();
         match self.storage_service.provider().unwrap() {
             StorageProvider::Cassandra => {
                 let cass = self.storage_service.cassandra.as_ref().unwrap();
                 let cassandra_hosts = cass.host.join(",");
-                redis_ini.set(SECTION_STORE, "cass_hosts", Some(cassandra_hosts));
+                ini.set(SECTION_STORE, "cass_hosts", Some(cassandra_hosts));
                 let port = cass.client_port()?;
-                redis_ini.set(SECTION_STORE, "cass_port", Some(port.to_string()));
+                ini.set(SECTION_STORE, "cass_port", Some(port.to_string()));
                 if let Some(conn) = cass.external() {
                     if let Some(user) = conn.user.clone() {
-                        redis_ini.set(SECTION_STORE, "cass_user", Some(user));
+                        ini.set(SECTION_STORE, "cass_user", Some(user));
                     }
                     if let Some(pwd) = conn.password.clone() {
-                        redis_ini.set(SECTION_STORE, "cass_password", Some(pwd));
+                        ini.set(SECTION_STORE, "cass_password", Some(pwd));
                     }
                 }
             }
@@ -582,56 +594,56 @@ impl Deployment {
             StorageProvider::Rocksdb => match self.storage_service.rocksdb.clone().unwrap() {
                 RocksDB::Local => {}
                 RocksDB::S3(s3) => {
-                    redis_ini.set(SECTION_STORE, "aws_access_key_id", Some(s3.aws_id));
-                    redis_ini.set(SECTION_STORE, "aws_secret_key", Some(s3.aws_secret));
-                    redis_ini.set(
+                    ini.set(SECTION_STORE, "aws_access_key_id", Some(s3.aws_id));
+                    ini.set(SECTION_STORE, "aws_secret_key", Some(s3.aws_secret));
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_cloud_region",
                         Some(s3.region),
                     );
-                    redis_ini.set(
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_cloud_bucket_name",
                         Some(s3.bucket_name),
                     );
-                    redis_ini.set(
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_cloud_bucket_prefix",
                         Some(s3.bucket_prefix),
                     );
-                    redis_ini.set(
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_target_file_size_base",
                         Some(s3.target_file_size_base),
                     );
-                    redis_ini.set(
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_cloud_sst_file_cache_size",
                         Some(s3.sst_file_cache_size),
                     );
                 }
                 RocksDB::GCS(gcs) => {
-                    redis_ini.set(
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_cloud_region",
                         Some(gcs.region),
                     );
-                    redis_ini.set(
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_cloud_bucket_name",
                         Some(gcs.bucket_name),
                     );
-                    redis_ini.set(
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_cloud_bucket_prefix",
                         Some(gcs.bucket_prefix),
                     );
-                    redis_ini.set(
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_target_file_size_base",
                         Some(gcs.target_file_size_base),
                     );
-                    redis_ini.set(
+                    ini.set(
                         SECTION_STORE,
                         "kv_store_rocksdb_cloud_sst_file_cache_size",
                         Some(gcs.sst_file_cache_size),
@@ -646,9 +658,9 @@ impl Deployment {
                 .iter()
                 .map(|host| format!("{}:{}", host.clone(), use_port))
                 .join(",");
-            redis_ini.set(SECTION_CLUSTER, "ip_port_list", Some(ip_list));
+            ini.set(SECTION_CLUSTER, "ip_port_list", Some(ip_list));
         } else {
-            redis_ini.set(
+            ini.set(
                 SECTION_CLUSTER,
                 "ip_port_list",
                 Some(format!("{}:{}", "127.0.0.1", use_port)),
@@ -660,19 +672,19 @@ impl Deployment {
         } else {
             false
         };
-        redis_ini.set(
+        ini.set(
             SECTION_METRIC,
             "enable_metrics",
             Some(enable_metric.to_string()),
         );
-        Ok(redis_ini.clone())
+        Ok(ini.clone())
     }
 
     pub fn gen_eloqkv_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
         let is_host = tx_host.is_some();
         let mut ini = self.build_eloqkv_config(is_host)?;
         let (host, cnf_path) = if let Some(host) = tx_host {
-            (host.clone(), upload_host_dir(&host).join("redis.ini"))
+            (host.clone(), upload_host_dir(&host).join("eloqkv.ini"))
         } else {
             ini.set(SECTION_LOCAL, "ip", Some("127.0.0.1".to_owned()));
             ini.set(SECTION_LOCAL, "port", Some(self.client_port().to_string()));
@@ -991,15 +1003,21 @@ impl Deployment {
     }
 
     pub fn tx_srv_start_cmd(&self) -> String {
-        let ins_dir = self.install_dir();
+        let tx_ini = self.tx_srv_ini();
         let tx_dir = self.tx_srv_home();
         let tx_bin = self.tx_srv_bin();
-        let head = if let Version::Debug = self.version() {
-            export_asan(&format!("{tx_dir}/logs/asan"))
+        let tx_logs = self.tx_srv_logs();
+        let glog = format!(
+            "mkdir -p {tx_logs} ; export GLOG_log_dir={tx_logs} ; export GLOG_max_log_size=1024"
+        );
+        let mut ld_lib = if let Version::Debug = self.version() {
+            export_asan(&format!("{tx_logs}/asan"))
         } else {
             format!("export LD_PRELOAD={tx_dir}/lib/libmimalloc.so.2")
         };
-        let exp_log = format!("mkdir -p {tx_dir}/logs && export GLOG_log_dir={tx_dir}/logs && export GLOG_max_log_size=1024");
+        ld_lib.push_str(&format!(
+            "; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH"
+        ));
         match self.product() {
             Product::EloqSQL => {
                 let mut logout = "/dev/null".to_owned();
@@ -1008,11 +1026,7 @@ impl Deployment {
                         logout = format!("{tx_dir}/logs/eloqsql.log")
                     }
                 }
-                format!(
-                    r#"{exp_log} && cd {tx_dir} && {head} ;\
-                        export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH; \
-                        {tx_bin} --defaults-file={ins_dir}/my.cnf > {logout} 2>&1 &"#
-                )
+                format!("{glog}; {ld_lib} ; {tx_bin} --defaults-file={tx_ini} > {logout} 2>&1 &")
             }
             Product::EloqKV => {
                 let mut logout = "/dev/null".to_owned();
@@ -1022,9 +1036,7 @@ impl Deployment {
                     }
                 }
                 format!(
-                    r#"{exp_log} && cd {tx_dir} && \
-                    {head}; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH; \    
-                    {tx_bin} --config={ins_dir}/redis.ini --graceful_quit_on_sigterm=true > {logout} 2>&1 &"#
+                    "{glog}; {ld_lib} ; {tx_bin} --config={tx_ini} --graceful_quit_on_sigterm=true > {logout} 2>&1 &"
                 )
             }
         }

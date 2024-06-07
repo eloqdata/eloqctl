@@ -132,7 +132,7 @@ impl MonographUploadBuilder {
 }
 
 impl UploadTaskBuilder for MonographUploadBuilder {
-    /// Upload installation package, MonographDB configuration file (my.cnf),
+    /// Upload installation package, MonographDB configuration file,
     /// MonographDB install script, install config to remote host.
     fn build(&self, config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
         let mut upload_files = self.build_monograph_misc_upload_file(config);

@@ -52,7 +52,7 @@ impl LogCtlCmd {
     where
         F: Fn(String, u16) -> bool + ?Sized,
     {
-        let log_home_dir_binding = config.log_home_dir();
+        let log_home_dir_binding = config.deployment.log_srv_home();
         let log_home = log_home_dir_binding.as_str();
 
         let home_dir = config.install_dir();

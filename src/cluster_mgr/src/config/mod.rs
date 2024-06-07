@@ -21,9 +21,9 @@ pub mod log_service;
 pub mod monitor;
 pub mod storage_service_config;
 
-pub const MONOGRAPH_CONF_TEMPLATE: &str = "my_template.cnf";
-pub const MONOGRAPH_CONF_DYNAMO_TEMPLATE: &str = "my_template_dynamo.cnf";
-pub const REDIS_CONF_TEMPLATE: &str = "redis_template.ini";
+pub const ELOQSQL_TEMP: &str = "eloqsql.ini";
+pub const ELOQSQL_DYNAMO_TEMP: &str = "eloqsql_dynamo.ini";
+pub const ELOQKV_TEMP: &str = "eloqkv.ini";
 pub const CODIS_PROXY_CNF: &str = "codis_proxy.toml";
 pub const CODIS_DASHBOARD_CNF: &str = "codis_dashboard.toml";
 

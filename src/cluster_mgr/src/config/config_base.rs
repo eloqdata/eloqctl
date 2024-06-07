@@ -1,6 +1,6 @@
 use crate::cli::{ssh, upload_dir, upload_host_dir, HOME_DIR};
 use crate::config::connection::Connection;
-use crate::config::deployment::{Codis, Deployment, Hardware, Product};
+use crate::config::deployment::{Codis, Deployment, Hardware, Product, Version};
 use crate::config::log_service::LogProcessKey;
 use crate::config::{
     config_path_string, config_template, DeploymentPackage, StorageProvider, CONFIG_PATH_DIR,
@@ -19,9 +19,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use tracing::{error, info};
 
-use super::deployment::Version;
-
-pub const LOG_SERVICE_HOME: &str = "LogService";
+pub const LOG_SERVICE_HOME: &str = "LogServer";
 
 pub const MONOGRAPH_FILE_KEY: &str = "monograph_tx";
 pub const MONOGRAPH_LOG_FILE_KEY: &str = "monograph_log";
@@ -232,11 +230,6 @@ impl DeploymentConfig {
         )
     }
 
-    pub fn log_home_dir(&self) -> String {
-        let cluster_install_dir = self.install_dir();
-        format!("{cluster_install_dir}/monograph-log-service-release")
-    }
-
     pub fn gen_log_start_script(&self) -> anyhow::Result<Option<Vec<PathBuf>>> {
         let log_cmd_map_opt = self.build_log_start_script()?;
         if let Some(log_scripts) = log_cmd_map_opt.as_ref() {
@@ -301,7 +294,7 @@ impl DeploymentConfig {
         let install_dir = self.install_dir();
         let tx_home = self.deployment.tx_srv_home();
         let malloc = if let Version::Debug = self.deployment.version() {
-            export_asan(&format!("{tx_home}/logs"))
+            export_asan(&self.deployment.tx_srv_logs())
         } else {
             format!("export LD_PRELOAD={tx_home}/lib/libmimalloc.so.2")
         };
@@ -319,7 +312,7 @@ impl DeploymentConfig {
             let log_start_template_path = config_template(START_LOG_TEMPLATE)?;
             let log_start_template = fs::read_to_string(log_start_template_path.as_path())?;
             let all_start_cmd_by_hosts = log_srv.log_start_cmd();
-            let log_home_dir = self.log_home_dir();
+            let log_home_dir = self.deployment.log_srv_home();
             let version = self.deployment.version.as_ref().unwrap();
             let cmd_scripts = all_start_cmd_by_hosts
                 .iter()
