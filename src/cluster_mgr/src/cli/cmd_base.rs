@@ -12,7 +12,6 @@ use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, STATE_MGR};
 use crate::StateValue;
 use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
-use regex::Regex;
 use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
@@ -406,18 +405,11 @@ impl CommandExecutor {
             info!("latest release version = {latest}");
             cnf.version = Some(latest);
         }
-        cnf.version.as_mut().unwrap().make_ascii_lowercase();
-        let ver = cnf.version_str();
-        if ver != "nightly" && ver != "debug" {
-            let re = Regex::new(r"(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)").unwrap();
-            if !re.is_match(ver) {
-                warn!("invalid version {}", ver);
-            }
-        }
+        // cnf.version.as_mut().unwrap().make_ascii_lowercase();
 
         let mut prefix = PathBuf::from(DOWNLOAD_SRC.as_str());
         prefix.push(product);
-        let version = cnf.version.as_ref().unwrap();
+        let version = cnf.version_str().to_owned();
         prefix.push(self.os_pretty());
         let prefix = prefix.as_path().to_str().unwrap();
         if cnf.tx_image.is_none() {

@@ -17,6 +17,7 @@ use configparser::ini::Ini;
 use core::panic;
 use indexmap::IndexMap;
 use itertools::Itertools;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::collections::HashMap;
@@ -24,6 +25,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::LazyLock;
 use strum_macros::Display;
 use tokio_postgres::config::SslMode;
 use tokio_postgres::NoTls;
@@ -51,6 +53,9 @@ const GC_SETTING_G1: &str = "
 -XX:InitiatingHeapOccupancyPercent=70
 ";
 const GB: u32 = 1024; // *MiB
+
+pub(crate) static VERSION_PATT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)").unwrap());
 
 #[macro_export]
 macro_rules! download_urls {
@@ -181,9 +186,10 @@ impl Codis {
 }
 
 pub enum Version {
-    Tag([u32; 3]),
     Nightly,
     Debug,
+    Tag([u32; 3]),
+    Devel(String),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -249,11 +255,17 @@ impl Deployment {
     }
 
     pub fn version(&self) -> Version {
-        let s = self.version.as_ref().unwrap().as_str();
-        match s {
+        let ver = self.version.as_ref().unwrap().as_str();
+        match ver {
             "nightly" => Version::Nightly,
             "debug" => Version::Debug,
-            _ => Version::Tag(parse_version(s)),
+            _ => {
+                if VERSION_PATT.is_match(ver) {
+                    Version::Tag(parse_version(ver))
+                } else {
+                    Version::Devel(ver.to_owned())
+                }
+            }
         }
     }
 
