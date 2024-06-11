@@ -177,10 +177,6 @@ impl CommandExecutor {
             | CommandArgs::Inspect { cluster, yaml: _ }
             | CommandArgs::Remove { cluster }
             | CommandArgs::Connect { cluster }
-            | CommandArgs::Update {
-                cluster: Some(cluster),
-                ..
-            }
             | CommandArgs::Scale {
                 cluster,
                 add_tx_node: _,
@@ -199,6 +195,44 @@ impl CommandExecutor {
                 command: _,
                 topology_file,
             } => Ok(DeploymentConfig::load(Some(topology_file))?),
+            CommandArgs::Update {
+                cluster: Some(cluster),
+                version,
+                cassandra,
+                cass_mirror,
+            } => {
+                let mut config = self
+                    .state_mgr
+                    .load_deployment_from_state(&cluster)
+                    .await?
+                    .ok_or(anyhow!("cluster {} not found", cluster))?;
+                if let Some(v) = version {
+                    if config.deployment.version_str() == v {
+                        warn!("cluster version not changed")
+                    }
+                    config.deployment.version = Some(v);
+                }
+                if cassandra.is_some() || cass_mirror.is_some() {
+                    let cass = &mut config.deployment.storage_service.cassandra;
+                    if cass.is_none() {
+                        bail!("do not have cassandra");
+                    }
+                    if let CassKind::Internal(cass) = &mut cass.as_mut().unwrap().kind {
+                        if let Some(v) = cassandra {
+                            if v == cass.version {
+                                bail!("cassandra version not changed")
+                            }
+                            cass.version = v;
+                        }
+                        if let Some(mi) = cass_mirror {
+                            cass.mirror = Some(mi);
+                        }
+                    } else {
+                        bail!("can not update cassandra");
+                    }
+                }
+                Ok(config)
+            }
             _ => unreachable!(),
         }
     }
@@ -238,8 +272,18 @@ impl CommandExecutor {
         };
 
         match cmd.clone() {
+            CommandArgs::Connect { .. } => {
+                println!("{}", config.client_conn());
+            }
+            CommandArgs::Inspect { cluster: _, yaml } => {
+                if yaml {
+                    println!("{}", config.config_to_string())
+                } else {
+                    println!("{:#?}", config);
+                }
+            }
             CommandArgs::Scale {
-                cluster: _,
+                cluster,
                 add_tx_node,
                 del_tx_node,
             } => {
@@ -260,23 +304,29 @@ impl CommandExecutor {
                     warn!("scale do nothing");
                     return Ok(());
                 }
+                todo!();
+                let mut config = config;
+                let tx_hosts = &mut config.deployment.tx_service.host;
+                tx_hosts.retain(|h| !del_tx_node.contains(h));
+                tx_hosts.extend(add_tx_node);
+                self.save_deployment_config(&config, true).await?;
+                println!("cluster {cluster} is scaled!");
             }
-            _ => {}
+            _ => {
+                let recv_rs_and_print_join = tokio::task::spawn(async move {
+                    let not_print_task_rs = option_env!("NOT_PRINT_TASK_RESULT");
+                    if not_print_task_rs.is_none() {
+                        self.task_mgr.print_task_result().await;
+                    }
+                });
+                // Generate and run tasks
+                let rs = self.task_mgr.run_tasks(cmd.clone(), config.clone()).await?;
+                recv_rs_and_print_join.await?;
+                info!(r#"all tasks complete.task_size={}"#, rs.len());
+                self.finishing(cmd, config).await?;
+            }
         }
-
-        let recv_rs_and_print_join = tokio::task::spawn(async move {
-            let not_print_task_rs = option_env!("NOT_PRINT_TASK_RESULT");
-            if not_print_task_rs.is_none() {
-                self.task_mgr.print_task_result().await;
-            }
-        });
-        // Generate and run tasks
-        let rs = self.task_mgr.run_tasks(cmd.clone(), config.clone()).await?;
-        recv_rs_and_print_join.await?;
-        info!(r#"all tasks complete.task_size={}"#, rs.len());
-
-        // After all tasks finished
-        self.finishing(cmd, config).await
+        Ok(())
     }
 
     async fn finishing(&self, cmd: CommandArgs, config: DeploymentConfig) -> Result<()> {
@@ -300,57 +350,10 @@ impl CommandExecutor {
                 let n = self.state_mgr.delete_cluster(&cluster).await?;
                 info!("cluster state cleared rows={}", n);
             }
-            CommandArgs::Inspect { cluster: _, yaml } => {
-                if yaml {
-                    println!("{}", config.config_to_string())
-                } else {
-                    println!("{:#?}", config);
-                }
-            }
-            CommandArgs::Connect { .. } => {
-                println!("{}", config.client_conn());
-            }
-            CommandArgs::Scale {
-                cluster,
-                add_tx_node,
-                del_tx_node,
-            } => {
-                let mut config = config;
-                let tx_hosts = &mut config.deployment.tx_service.host;
-                tx_hosts.retain(|h| !del_tx_node.contains(h));
-                tx_hosts.extend(add_tx_node);
-                self.save_deployment_config(&config, true).await?;
-                println!("cluster {cluster} is scaled!");
-            }
             CommandArgs::Update {
                 cluster: Some(cluster),
-                version,
-                cassandra,
+                ..
             } => {
-                let mut config = config;
-                if let Some(v) = version {
-                    config.deployment.version = Some(v);
-                }
-                if let Some(v) = cassandra {
-                    if let CassKind::Internal(cass) = &mut config
-                        .deployment
-                        .storage_service
-                        .cassandra
-                        .as_mut()
-                        .unwrap()
-                        .kind
-                    {
-                        cass.version = v;
-                        // let params = v.split('@').collect_vec();
-                        // if params.len() == 1 {
-                        //     cass.version = params[0].to_owned();
-                        // } else {
-                        //     assert!(params.len() == 2);
-                        //     cass.mirror = Some(params[0].to_owned());
-                        //     cass.version = params[1].to_owned();
-                        // }
-                    }
-                }
                 self.save_deployment_config(&config, true).await?;
                 println!("cluster {cluster} is updated!");
             }

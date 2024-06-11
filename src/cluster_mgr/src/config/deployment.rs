@@ -258,17 +258,7 @@ impl Deployment {
 
     pub fn version(&self) -> Version {
         let ver = self.version.as_ref().unwrap().as_str();
-        match ver {
-            "nightly" => Version::Nightly,
-            "debug" => Version::Debug,
-            _ => {
-                if VERSION_PATT.is_match(ver) {
-                    Version::Tag(parse_version(ver))
-                } else {
-                    Version::Devel(ver.to_owned())
-                }
-            }
-        }
+        parse_version(ver)
     }
 
     pub fn client_port(&self) -> u16 {
@@ -1026,7 +1016,7 @@ impl Deployment {
             Product::EloqSQL => {
                 let mut logout = "/dev/null".to_owned();
                 if let Version::Tag(nums) = self.version() {
-                    if nums <= parse_version("0.4.2") {
+                    if nums <= version_digits("0.4.2") {
                         logout = format!("{tx_dir}/logs/eloqsql.log")
                     }
                 }
@@ -1035,7 +1025,7 @@ impl Deployment {
             Product::EloqKV => {
                 let mut logout = "/dev/null".to_owned();
                 if let Version::Tag(nums) = self.version() {
-                    if nums <= parse_version("1.0.8") {
+                    if nums <= version_digits("1.0.8") {
                         logout = format!("{tx_dir}/logs/eloqkv.log")
                     }
                 }
@@ -1047,12 +1037,26 @@ impl Deployment {
     }
 }
 
-pub fn parse_version(s: &str) -> [u32; 3] {
+pub fn version_digits(s: &str) -> [u32; 3] {
     s.split('.')
         .map(|e| e.parse::<u32>().unwrap())
         .collect_vec()
         .try_into()
         .unwrap()
+}
+
+pub fn parse_version(v: &str) -> Version {
+    match v {
+        "nightly" => Version::Nightly,
+        "debug" => Version::Debug,
+        _ => {
+            if VERSION_PATT.is_match(v) {
+                Version::Tag(version_digits(v))
+            } else {
+                Version::Devel(v.to_owned())
+            }
+        }
+    }
 }
 
 #[cfg(test)]

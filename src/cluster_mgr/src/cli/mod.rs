@@ -122,6 +122,8 @@ pub enum CommandArgs {
         version: Option<String>,
         #[arg(long, value_name = "version")]
         cassandra: Option<String>,
+        #[arg(long, value_name = "url")]
+        cass_mirror: Option<String>,
     },
     #[command(
         long_about = "Update the configuration file and restart the tx service (the default value of restart is true). \

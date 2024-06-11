@@ -1,6 +1,5 @@
 use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::group::{TaskGroup, UpdateClusterTaskGroup};
-use crate::cli::task::local_copy_task::LocalCopyTask;
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::MonographTxCtlTask;
@@ -19,7 +18,13 @@ impl TaskGroup for UpdateClusterTaskGroup {
         config: DeploymentConfig,
     ) -> anyhow::Result<TaskExecutionContext> {
         let deployment_ref = &config.deployment;
-        let cluster = deployment_ref.clone().cluster_name;
+        let cluster = deployment_ref.cluster_name.clone();
+
+        let download_task = DownloadTask::from_config(&config)?;
+        let mut upld_tasks = IndexMap::new();
+        upld_tasks.extend(upload_tasks(UploadTaskBuilderType::MonographAll, &config));
+        upld_tasks.extend(upload_tasks(UploadTaskBuilderType::MonitorConf, &config));
+        let unpack_tasks = UnpackFileTask::from_config(&config)?;
 
         // stop tx-service and log-service
         let stop_cmd = CommandArgs::Stop {
@@ -27,45 +32,35 @@ impl TaskGroup for UpdateClusterTaskGroup {
             force: false,
             all: false,
         };
-        let mut stop_monograph = MonographTxCtlTask::from_config(stop_cmd.clone(), &config);
-        let has_log_srv = deployment_ref.log_service.is_some();
-        if has_log_srv {
-            stop_monograph.extend(MonographLogCtlTask::from_config(stop_cmd, &config));
+        let mut stop_tasks = MonographTxCtlTask::from_config(stop_cmd.clone(), &config);
+        if deployment_ref.log_service.is_some() {
+            stop_tasks.extend(MonographLogCtlTask::from_config(stop_cmd, &config));
         }
-
-        let mut download_task = DownloadTask::from_config(&config)?;
-        download_task.extend(LocalCopyTask::form_config(&config)?);
-        let mut upload_monograph_tasks = IndexMap::new();
-        upload_monograph_tasks.extend(upload_tasks(UploadTaskBuilderType::MonographAll, &config));
-        upload_monograph_tasks.extend(upload_tasks(UploadTaskBuilderType::MonitorConf, &config));
-        let unpack_tasks = UnpackFileTask::from_config(&config)?;
 
         // start log-service and tx-service
         let start_cmd = CommandArgs::Start { cluster };
-        let mut start_all_tasks = IndexMap::new();
-        if has_log_srv {
-            start_all_tasks.extend(MonographLogCtlTask::from_config(start_cmd.clone(), &config));
-            start_all_tasks.extend(MonographLogProbeTask::from_config(&config));
+        let mut start_tasks = IndexMap::new();
+        if deployment_ref.log_service.is_some() {
+            start_tasks.extend(MonographLogCtlTask::from_config(start_cmd.clone(), &config));
+            start_tasks.extend(MonographLogProbeTask::from_config(&config));
         }
-        start_all_tasks.extend(MonographTxCtlTask::from_config(start_cmd, &config));
+        start_tasks.extend(MonographTxCtlTask::from_config(start_cmd, &config));
 
         let barrier = vec![
-            stop_monograph.len(),
             download_task.len(),
-            upload_monograph_tasks.len(),
+            upld_tasks.len(),
+            stop_tasks.len(),
             unpack_tasks.len(),
-            start_all_tasks.len(),
+            start_tasks.len(),
         ];
         let mut executable = IndexMap::new();
-        executable.extend(stop_monograph);
         executable.extend(download_task);
-        executable.extend(upload_monograph_tasks);
+        executable.extend(upld_tasks);
+        executable.extend(stop_tasks);
         executable.extend(unpack_tasks);
-        executable.extend(start_all_tasks);
-
-        let cmd_ref = cmd_arg.as_ref();
+        executable.extend(start_tasks);
         Ok(TaskExecutionContext {
-            task_group: cmd_ref.to_string(),
+            task_group: cmd_arg.as_ref().to_string(),
             barrier: Some(barrier),
             executable,
         })
