@@ -455,7 +455,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[5s]))) / (1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[5s])) + sum(delta(cache_hit_or_miss_total{type=\"miss\",instance=~\"$eloqdata_server\"}[5s])))",
+          "expr": "(1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[6s]))) / (1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[6s])) + sum(delta(cache_hit_or_miss_total{type=\"miss\",instance=~\"$eloqdata_server\"}[6s])))",
           "legendFormat": "Current QPS",
           "range": true,
           "refId": "A"
@@ -522,7 +522,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(redis_command_total{instance=~\"$eloqdata_server\"}[5s]))",
+          "expr": "sum(rate(redis_command_total{instance=~\"$eloqdata_server\"}[6s]))",
           "legendFormat": "Current TPS",
           "range": true,
           "refId": "A"
@@ -589,7 +589,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (access_type) (rate(redis_command_total{instance=~\"$eloqdata_server\", access_type=\"read\"}[5s]))",
+          "expr": "sum by (access_type) (rate(redis_command_total{instance=~\"$eloqdata_server\", access_type=\"read\"}[6s]))",
           "legendFormat": "Current TPS",
           "range": true,
           "refId": "A"
@@ -656,7 +656,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (access_type) (rate(redis_command_total{instance=~\"$eloqdata_server\", access_type=\"write\"}[5s]))",
+          "expr": "sum by (access_type) (rate(redis_command_total{instance=~\"$eloqdata_server\", access_type=\"write\"}[6s]))",
           "legendFormat": "Current TPS",
           "range": true,
           "refId": "A"
@@ -730,7 +730,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile($percentile / 100, sum by (le)(rate(redis_command_duration_bucket{instance=~\"$eloqdata_server\"}[5s])))",
+          "expr": "histogram_quantile($percentile / 100, sum by (le)(rate(redis_command_duration_bucket{instance=~\"$eloqdata_server\"}[6s])))",
           "legendFormat": "Current QPS",
           "range": true,
           "refId": "A"
@@ -804,7 +804,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile($percentile / 100, sum by (le, access_type)(rate(redis_command_duration_bucket{instance=~\"$eloqdata_server\", access_type=\"read\"}[5s])))",
+          "expr": "histogram_quantile($percentile / 100, sum by (le, access_type)(rate(redis_command_duration_bucket{instance=~\"$eloqdata_server\", access_type=\"read\"}[6s])))",
           "legendFormat": "Current QPS",
           "range": true,
           "refId": "A"
@@ -878,7 +878,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile($percentile / 100, sum by (le, access_type)(rate(redis_command_duration_bucket{instance=~\"$eloqdata_server\", access_type=\"write\"}[5s])))",
+          "expr": "histogram_quantile($percentile / 100, sum by (le, access_type)(rate(redis_command_duration_bucket{instance=~\"$eloqdata_server\", access_type=\"write\"}[6s])))",
           "legendFormat": "Current QPS",
           "range": true,
           "refId": "A"
@@ -1165,7 +1165,7 @@
             "y": 3
           },
           "id": 123235,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1273,7 +1273,7 @@
             "y": 3
           },
           "id": 123378,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1381,7 +1381,7 @@
             "y": 13
           },
           "id": 123379,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1489,7 +1489,7 @@
             "y": 13
           },
           "id": 123374,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1611,7 +1611,7 @@
             "y": 31
           },
           "id": 123377,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1719,7 +1719,7 @@
             "y": 31
           },
           "id": 123390,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1827,7 +1827,7 @@
             "y": 41
           },
           "id": 123234,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1935,7 +1935,7 @@
             "y": 41
           },
           "id": 123380,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2057,7 +2057,7 @@
             "y": 32
           },
           "id": 123387,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2165,7 +2165,7 @@
             "y": 32
           },
           "id": 123373,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2273,7 +2273,7 @@
             "y": 42
           },
           "id": 123393,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2381,7 +2381,7 @@
             "y": 42
           },
           "id": 123396,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2503,7 +2503,7 @@
             "y": 33
           },
           "id": 123238,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2613,7 +2613,7 @@
             "y": 33
           },
           "id": 123406,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2738,7 +2738,7 @@
             "y": 34
           },
           "id": 123255,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2848,7 +2848,7 @@
             "y": 34
           },
           "id": 123410,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2973,7 +2973,7 @@
             "y": 47
           },
           "id": 123141,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3073,7 +3073,7 @@
             "y": 47
           },
           "id": 123145,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3187,7 +3187,7 @@
             "y": 57
           },
           "id": 123139,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3292,7 +3292,7 @@
             "y": 57
           },
           "id": 123148,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3408,7 +3408,7 @@
             "y": 48
           },
           "id": 123151,
-          "interval": "15s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3508,7 +3508,7 @@
             "y": 48
           },
           "id": 123152,
-          "interval": "15s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3861,7 +3861,7 @@
             "y": 50
           },
           "id": 123214,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3961,7 +3961,7 @@
             "y": 50
           },
           "id": 123213,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4063,7 +4063,7 @@
             "y": 60
           },
           "id": 123212,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4167,7 +4167,7 @@
             "y": 60
           },
           "id": 123231,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4280,7 +4280,7 @@
             "y": 36
           },
           "id": 123367,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4379,7 +4379,7 @@
             "y": 36
           },
           "id": 123368,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4478,7 +4478,7 @@
             "y": 46
           },
           "id": 123321,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4577,7 +4577,7 @@
             "y": 46
           },
           "id": 123336,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4690,7 +4690,7 @@
             "y": 37
           },
           "id": 123177,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4789,7 +4789,7 @@
             "y": 37
           },
           "id": 123178,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4888,7 +4888,7 @@
             "y": 47
           },
           "id": 123371,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4987,7 +4987,7 @@
             "y": 47
           },
           "id": 123372,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -5100,7 +5100,7 @@
             "y": 61
           },
           "id": 123179,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -5199,7 +5199,7 @@
             "y": 61
           },
           "id": 123186,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -5298,7 +5298,7 @@
             "y": 71
           },
           "id": 123188,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -5397,7 +5397,7 @@
             "y": 71
           },
           "id": 123189,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -5510,7 +5510,7 @@
             "y": 82
           },
           "id": 123193,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -5610,7 +5610,7 @@
             "y": 82
           },
           "id": 123183,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -5723,7 +5723,7 @@
             "y": 43
           },
           "id": 123201,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -5825,7 +5825,7 @@
             "y": 43
           },
           "id": 123194,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -5918,7 +5918,7 @@
       "type": "row"
     }
   ],
-  "refresh": "5s",
+  "refresh": "6s",
   "revision": 1,
   "schemaVersion": 38,
   "style": "dark",

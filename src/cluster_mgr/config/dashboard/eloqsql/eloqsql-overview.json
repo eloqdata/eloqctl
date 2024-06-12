@@ -469,7 +469,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[5s]))) / (1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[5s])) + sum(delta(cache_hit_or_miss_total{type=\"miss\",instance=~\"$eloqdata_server\"}[5s])))",
+          "expr": "(1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[6s]))) / (1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[6s])) + sum(delta(cache_hit_or_miss_total{type=\"miss\",instance=~\"$eloqdata_server\"}[6s])))",
           "legendFormat": "Current TPS",
           "range": true,
           "refId": "A"
@@ -532,7 +532,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(mysql_processed_tx_total{instance=~\"$eloqdata_server\"}[5s]))",
+          "expr": "sum(rate(mysql_processed_tx_total{instance=~\"$eloqdata_server\"}[6s]))",
           "legendFormat": "Current QPS",
           "range": true,
           "refId": "A"
@@ -595,7 +595,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(mysql_processed_query_total{instance=~\"$eloqdata_server\"}[5s]))",
+          "expr": "sum(rate(mysql_processed_query_total{instance=~\"$eloqdata_server\"}[6s]))",
           "legendFormat": "Current QPS",
           "range": true,
           "refId": "A"
@@ -634,7 +634,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "unit": "µs"
         },
         "overrides": []
       },
@@ -668,7 +669,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile($percentile / 100, sum by (le)(rate(mysql_tx_duration_bucket{instance=~\"$eloqdata_server\"}[5s])))",
+          "expr": "histogram_quantile($percentile / 100, sum by (le)(rate(mysql_tx_duration_bucket{instance=~\"$eloqdata_server\"}[6s])))",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1133,7 +1134,7 @@
             "y": 22
           },
           "id": 123160,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1233,7 +1234,7 @@
             "y": 22
           },
           "id": 123169,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1335,7 +1336,7 @@
             "y": 32
           },
           "id": 123215,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1441,7 +1442,7 @@
             "y": 32
           },
           "id": 123216,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1560,7 +1561,7 @@
             "y": 38
           },
           "id": 123235,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1668,7 +1669,7 @@
             "y": 38
           },
           "id": 123234,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1790,7 +1791,7 @@
             "y": 33
           },
           "id": 123238,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -1914,7 +1915,7 @@
             "y": 37
           },
           "id": 123255,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2039,7 +2040,7 @@
             "y": 41
           },
           "id": 123141,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2139,7 +2140,7 @@
             "y": 41
           },
           "id": 123145,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2253,7 +2254,7 @@
             "y": 51
           },
           "id": 123139,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2358,7 +2359,7 @@
             "y": 51
           },
           "id": 123148,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2474,7 +2475,7 @@
             "y": 27
           },
           "id": 123151,
-          "interval": "15s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2574,7 +2575,7 @@
             "y": 27
           },
           "id": 123152,
-          "interval": "15s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -2927,7 +2928,7 @@
             "y": 40
           },
           "id": 123214,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3027,7 +3028,7 @@
             "y": 40
           },
           "id": 123213,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3129,7 +3130,7 @@
             "y": 50
           },
           "id": 123212,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3233,7 +3234,7 @@
             "y": 50
           },
           "id": 123231,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3346,7 +3347,7 @@
             "y": 30
           },
           "id": 123367,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3445,7 +3446,7 @@
             "y": 30
           },
           "id": 123368,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3544,7 +3545,7 @@
             "y": 40
           },
           "id": 123321,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3643,7 +3644,7 @@
             "y": 40
           },
           "id": 123336,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3756,7 +3757,7 @@
             "y": 51
           },
           "id": 123177,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3855,7 +3856,7 @@
             "y": 51
           },
           "id": 123178,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -3954,7 +3955,7 @@
             "y": 61
           },
           "id": 123371,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4053,7 +4054,7 @@
             "y": 61
           },
           "id": 123372,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4166,7 +4167,7 @@
             "y": 43
           },
           "id": 123179,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4265,7 +4266,7 @@
             "y": 43
           },
           "id": 123186,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4364,7 +4365,7 @@
             "y": 53
           },
           "id": 123188,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4463,7 +4464,7 @@
             "y": 53
           },
           "id": 123189,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4576,7 +4577,7 @@
             "y": 44
           },
           "id": 123193,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4676,7 +4677,7 @@
             "y": 44
           },
           "id": 123183,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4789,7 +4790,7 @@
             "y": 45
           },
           "id": 123201,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4891,7 +4892,7 @@
             "y": 45
           },
           "id": 123194,
-          "interval": "5s",
+          "interval": "6s",
           "options": {
             "legend": {
               "calcs": [
@@ -4984,7 +4985,7 @@
       "type": "row"
     }
   ],
-  "refresh": "5s",
+  "refresh": "6s",
   "revision": 1,
   "schemaVersion": 38,
   "style": "dark",
