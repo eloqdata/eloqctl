@@ -16,7 +16,6 @@ use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::time::Duration;
 use tracing::{error, info};
 
 pub(crate) const DOWNLOAD_URL: &str = "download_url";
@@ -75,9 +74,7 @@ impl DownloadTask {
             download_url_vec.push(Codis::download_url());
         }
 
-        let client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(5))
-            .build()?;
+        let client = reqwest::Client::builder().build()?;
         let mpg_bar = MultiProgress::new();
         let local_ip = local_ip_address::local_ip()?.to_string();
         let download_tasks = download_url_vec
