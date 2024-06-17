@@ -22,9 +22,8 @@ impl TaskGroup for UpdateClusterTaskGroup {
 
         let download_task = DownloadTask::from_config(&config)?;
         let mut upld_tasks = IndexMap::new();
-        upld_tasks.extend(upload_tasks(UploadTaskBuilderType::MonographAll, &config));
-        upld_tasks.extend(upload_tasks(UploadTaskBuilderType::MonitorConf, &config));
-        let unpack_tasks = UnpackFileTask::from_config(&config)?;
+        upld_tasks.extend(upload_tasks(UploadTaskBuilderType::EloqImage, &config));
+        let unpack_tasks = UnpackFileTask::unpack_eloq_servers_image(&config);
 
         // stop tx-service and log-service
         let stop_cmd = CommandArgs::Stop {

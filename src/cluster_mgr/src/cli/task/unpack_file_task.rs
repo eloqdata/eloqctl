@@ -102,6 +102,64 @@ impl UnpackFileTask {
 
         Ok(unpack_task_instance)
     }
+
+    pub fn unpack_eloq_servers_image(config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
+        let deploy_ref = &config.deployment;
+        let image = deploy_ref.tx_image().split('/').last().unwrap();
+        let tx_home = config.product().home().to_owned();
+        let mut tasks = deploy_ref
+            .tx_service
+            .host
+            .iter()
+            .map(|host| Self::make_task_pair(config, host, image, &tx_home))
+            .collect::<IndexMap<TaskId, TaskInstance>>();
+        if let Some(srv) = &deploy_ref.log_service {
+            let image = srv.image.as_ref().unwrap().split('/').last().unwrap();
+            let ret = srv
+                .log_host_unique()
+                .iter()
+                .map(|host| Self::make_task_pair(config, host, image, LOG_SERVICE_HOME))
+                .collect::<IndexMap<TaskId, TaskInstance>>();
+            tasks.extend(ret);
+        }
+        tasks
+    }
+
+    fn make_task_pair(
+        config: &DeploymentConfig,
+        host: &str,
+        image: &str,
+        home: &str,
+    ) -> (TaskId, TaskInstance) {
+        let remote_img = format!("{}/{image}", config.deployment.install_dir());
+        let task_input = HashMap::from([
+            (REMOTE_TAR.to_string(), TaskArgValue::Str(remote_img)),
+            (
+                UNPACKED_NAME.to_string(),
+                TaskArgValue::Str(home.to_owned()),
+            ),
+        ]);
+        let task_host = TaskHost::Remote {
+            user: config.connection.username.clone(),
+            port: config.connection.ssh_port() as usize,
+            hosts: host.to_owned(),
+        };
+        let task_id = TaskId {
+            cmd: "update".to_string(),
+            task: format!("{image}_unpack"),
+            host: host.to_owned(),
+        };
+        let task = UnpackFileTask {
+            config: config.clone(),
+            task_id: task_id.clone(),
+        };
+        let inst = TaskInstance {
+            task_input: task_input.clone(),
+            task: Box::new(task),
+            task_host,
+        };
+        (task_id, inst)
+    }
 }
 
 #[async_trait]
