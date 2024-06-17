@@ -80,7 +80,7 @@ impl TaskGroup for DeploymentTaskGroup {
             )
         };
 
-        let upload_tx_conf = upload_tasks(UploadTaskBuilderType::MonographConf, &config);
+        let upload_tx_conf = upload_tasks(UploadTaskBuilderType::TxConf, &config);
 
         let mkdir_remote_dir = ExecCustomCommand::from_config(
             &cmd_args,

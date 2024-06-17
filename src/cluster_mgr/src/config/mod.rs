@@ -97,6 +97,12 @@ pub const SECTION_STORE: &str = "store";
 pub const SECTION_METRIC: &str = "metrics";
 
 #[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display, clap::ValueEnum)]
+pub enum TopoFormat {
+    Yaml,
+    Json,
+}
+
+#[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display, clap::ValueEnum)]
 pub enum StorageProvider {
     #[strum(serialize = "cassandra")]
     Cassandra,
@@ -136,7 +142,7 @@ impl DownloadUrl {
                 if url.domain() == Some(CLOUDFRONT) {
                     let mut seg = url.path_segments().unwrap();
                     let _filename = seg.next_back();
-                    while let Some(d) = seg.next() {
+                    for d in seg {
                         dir.push(d);
                     }
                 }

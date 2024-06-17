@@ -71,7 +71,7 @@ impl TaskExecutor for CopyTask {
     ) -> anyhow::Result<Option<ExecutionValue>> {
         let source = format!("{}@{}:{}", self.conn.username, self.src_host, self.src_path);
         let mut cmd = tokio::process::Command::new("scp");
-        cmd.args(&[
+        cmd.args([
             "-o",
             "UserKnownHostsFile=/dev/null",
             "-o",

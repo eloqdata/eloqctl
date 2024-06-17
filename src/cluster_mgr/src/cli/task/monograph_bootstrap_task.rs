@@ -114,7 +114,7 @@ impl TaskExecutor for MonographInstall {
             }
             Product::EloqKV => {
                 let tx_ini = self.config.deployment.tx_srv_ini();
-                let head = if let Version::Debug = self.config.deployment.version() {
+                let head = if let Some(Version::Debug) = self.config.deployment.version() {
                     export_asan(&format!("{tx_logs}/bootstrap-asan"))
                 } else {
                     format!("export LD_PRELOAD={txsv_dir}/lib/libmimalloc.so.2")

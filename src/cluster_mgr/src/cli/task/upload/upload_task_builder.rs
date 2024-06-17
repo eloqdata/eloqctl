@@ -3,7 +3,7 @@ use crate::cli::task::upload::cass_conf_upload_builder::CassConfUploadBuilder;
 use crate::cli::task::upload::codis_upload::CodisUpload;
 use crate::cli::task::upload::data_dir_upload_builder::DataDirUploadBuilder;
 use crate::cli::task::upload::monitor_upload_builder::*;
-use crate::cli::task::upload::monograph_upload_builder::MonographUploadBuilder;
+use crate::cli::task::upload::monograph_upload_builder::{EloqUpload, MonographUploadBuilder};
 use crate::cli::task::upload::tx_conf_upload_builder::TxConfUpload;
 use crate::cli::task::upload::upload_task::UploadTask;
 use crate::cli::{upload_dir, upload_host_dir};
@@ -61,8 +61,10 @@ pub enum UploadTaskBuilderType {
     DataDir,
     MonographAll,
     MonitorConf,
-    MonographConf,
+    TxConf,
     Codis,
+    EloqImage,
+    CassImage,
 }
 
 #[macro_export]
@@ -81,8 +83,20 @@ pub fn upload_tasks(
         UploadTaskBuilderType::DataDir => DataDirUploadBuilder {}.build(conf),
         UploadTaskBuilderType::MonographAll => MonographUploadBuilder {}.build(conf),
         UploadTaskBuilderType::MonitorConf => MonitorInfraConfUploadBuilder {}.build(conf),
-        UploadTaskBuilderType::MonographConf => TxConfUpload {}.build(conf),
+        UploadTaskBuilderType::TxConf => TxConfUpload {}.build(conf),
         UploadTaskBuilderType::Codis => CodisUpload {}.build(conf),
+        UploadTaskBuilderType::EloqImage => EloqUpload::build_tasks(
+            conf,
+            "update",
+            "upload_eloq_image",
+            EloqUpload::eloq_image_upload(&conf.deployment),
+        ),
+        UploadTaskBuilderType::CassImage => EloqUpload::build_tasks(
+            conf,
+            "update",
+            "upload_cass_image",
+            EloqUpload::cassandra_image_upload(&conf.deployment),
+        ),
     }
 }
 

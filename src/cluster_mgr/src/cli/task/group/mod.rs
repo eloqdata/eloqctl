@@ -8,8 +8,8 @@ mod launch_group;
 mod log_srv_ctl_group;
 mod monitor_ctl_group;
 mod remove_group;
+mod update_cluster_group;
 mod update_config_group;
-mod upgrade_cluster_group;
 
 use crate::cli::task::task_base::TaskExecutionContext;
 use crate::cli::CommandArgs;
@@ -55,7 +55,7 @@ task_group_boxed! {
     {InstallRuntimeDepsTaskGroup},
     {MonitorCtlTaskGroup},
     {LogServiceCtlTaskGroup},
-    {UpgradeClusterTaskGroup},
+    {UpdateClusterTaskGroup},
     {UpdateConfigTaskGroup},
     {LaunchTaskGroup},
     {RemoveTaskGroup},
@@ -77,7 +77,7 @@ pub fn init_task_group() -> &'static HashMap<String, Box<dyn TaskGroup>> {
             ("run-deps".to_string(), InstallRuntimeDepsTaskGroup::boxed()),
             ("monitor".to_string(), MonitorCtlTaskGroup::boxed()),
             ("log-srv".to_string(), LogServiceCtlTaskGroup::boxed()),
-            ("upgrade".to_string(), UpgradeClusterTaskGroup::boxed()),
+            ("update".to_string(), UpdateClusterTaskGroup::boxed()),
             ("update-conf".to_string(), UpdateConfigTaskGroup::boxed()),
             ("launch".to_string(), LaunchTaskGroup::boxed()),
             ("remove".to_string(), RemoveTaskGroup::boxed()),

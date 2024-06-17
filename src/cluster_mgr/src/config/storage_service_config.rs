@@ -11,6 +11,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct StorageService {
     pub cassandra: Option<Cassandra>,
@@ -27,8 +28,21 @@ pub struct CassConnect {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct CassDeploy {
-    pub download_url: String,
+    pub mirror: Option<String>,
+    pub version: String,
     pub cluster_name: Option<String>,
+}
+
+impl CassDeploy {
+    pub fn image_url(&self) -> String {
+        let mirror = self.mirror.as_deref().unwrap_or("https://dlcdn.apache.org");
+        let version = &self.version;
+        format!("{mirror}/cassandra/{version}/apache-cassandra-{version}-bin.tar.gz")
+    }
+
+    pub fn image_file(&self) -> String {
+        format!("apache-cassandra-{}-bin.tar.gz", self.version)
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

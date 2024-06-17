@@ -8,6 +8,9 @@ deployment:
   product: "EloqKV"
   version: "latest"
   install_dir: "/home/${USER}"
+  tx_service:
+    host: [127.0.0.1]
+    client_port: 6389
   log_service:
     nodes:
       - host: 127.0.0.1
@@ -15,14 +18,14 @@ deployment:
         data_dir:
           - "/home/${USER}/disk_wal_kv"
     replica: 1
-  tx_service:
-    host: [127.0.0.1]
-    client_port: 6389
   storage_service:
     cassandra:
       host: [127.0.0.1]
       kind: !Internal
-        download_url: "https://d143xau9fe26d8.cloudfront.net/others/apache-cassandra-4.1.3-bin.tar.gz"
+        mirror: "https://d143xau9fe26d8.cloudfront.net"
+        # mirror: "https://mirrors.aliyun.com/apache"
+        # mirror: "https://dlcdn.apache.org"
+        version: "4.1.3"
         storage_cluster: "eloqkv-cluster"
   monitor:
     data_dir: ""

@@ -8,16 +8,16 @@ deployment:
   product: "EloqSQL"
   version: "latest"
   install_dir: "${CLUSTER_MGR_HOME}"
+  tx_service:
+    host: [127.0.0.1]
+    port: 8000
+    client_port: 3316
   log_service:
     nodes:
       - host: 127.0.0.1
         port: 9000
         data_dir: ["/tmp/disk_wal_eloqsql"]
     replica: 1
-  tx_service:
-    host: [127.0.0.1]
-    port: 8000
-    client_port: 3316
   storage_service:
   monitor:
     data_dir: ""

@@ -419,10 +419,7 @@ impl TaskMgr {
             tasks_execution.executable.len(),
             tasks_execution.barrier
         );
-        let err_brk = match cmd_args {
-            CommandArgs::Remove { cluster: _ } => false,
-            _ => true,
-        };
+        let err_brk = !matches!(cmd_args, CommandArgs::Remove { cluster: _ });
         self.task_controller
             .run_all_tasks(tasks_execution, config, err_brk)
             .await

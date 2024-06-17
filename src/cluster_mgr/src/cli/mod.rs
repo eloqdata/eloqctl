@@ -1,4 +1,4 @@
-use crate::config::{deployment::Product, StorageProvider, CONFIG_PATH_DIR};
+use crate::config::{deployment::Product, StorageProvider, TopoFormat, CONFIG_PATH_DIR};
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -116,10 +116,14 @@ pub enum CommandArgs {
         long_about = "According to the deployment.yaml, update the related monograph_db cluster by stopping the cluster, replacing the package, and starting the cluster. \n./cluster_mgr upgrade --topology_file ${PWD}/config/deployment.yaml
     "
     )]
-    #[strum(serialize = "upgrade")]
-    Upgrade {
-        #[arg(short, long, value_name = "TOPOLOGY")]
-        topology_file: String,
+    #[strum(serialize = "update")]
+    Update {
+        cluster: Option<String>,
+        version: Option<String>,
+        #[arg(long, value_name = "version")]
+        cassandra: Option<String>,
+        #[arg(long, value_name = "url")]
+        cass_mirror: Option<String>,
     },
     #[command(
         long_about = "Update the configuration file and restart the tx service (the default value of restart is true). \
@@ -181,8 +185,8 @@ pub enum CommandArgs {
     #[strum(serialize = "list")]
     List,
     #[command(long_about = "List available versions")]
-    #[strum(serialize = "list-version")]
-    ListVersion {
+    #[strum(serialize = "versions")]
+    Versions {
         #[arg(long)]
         product: Option<Product>,
         #[arg(long)]
@@ -192,8 +196,8 @@ pub enum CommandArgs {
     #[strum(serialize = "inspect")]
     Inspect {
         cluster: String,
-        #[arg(short, long, default_value_t = false)]
-        yaml: bool,
+        #[arg(short, long)]
+        format: Option<TopoFormat>,
     },
     #[command(long_about = "Connect to cluster")]
     #[strum(serialize = "connect")]

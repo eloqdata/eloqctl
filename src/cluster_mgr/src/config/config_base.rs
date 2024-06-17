@@ -8,7 +8,7 @@ use crate::config::{
 };
 use crate::config::{ConfigErr, DownloadUrl};
 use crate::gen_db_misc_files;
-use anyhow::{anyhow, bail};
+use anyhow::anyhow;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ use std::env::current_exe;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tracing::{error, info};
 
 pub const LOG_SERVICE_HOME: &str = "LogServer";
@@ -67,6 +67,7 @@ pub struct UploadFile {
     pub copy_dir: bool,
 }
 
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct DeploymentConfig {
     pub connection: Connection,
@@ -85,8 +86,8 @@ impl DeploymentConfig {
         let all_hosts = self.get_host_as_map();
         let cassandra_opt = self.deployment.storage_service.cassandra.as_ref();
         let monitor_opt = self.deployment.monitor.as_ref();
-        let tx_image = &self.deployment.get_tx_image();
-        let log_image = &self.deployment.log_image;
+        let tx_image = self.deployment.tx_image();
+        let log_image = self.deployment.log_image();
         let monitor_link = if let Some(monitor) = monitor_opt {
             monitor.download_links_as_map().unwrap()
         } else {
@@ -101,8 +102,7 @@ impl DeploymentConfig {
                         if let Some(cassandra) = cassandra_opt {
                             if let Some(cassdply) = cassandra.internal() {
                                 let cass_url =
-                                    DownloadUrl::from_url_str(cassdply.download_url.as_str())
-                                        .unwrap();
+                                    DownloadUrl::from_url_str(&cassdply.image_url()).unwrap();
                                 unpack_files.push(cass_url);
                                 extract_monitor_link!(
                                     monitor_link,
@@ -120,13 +120,12 @@ impl DeploymentConfig {
                     DeploymentPackage::MonographTx => {
                         extract_monitor_link!(monitor_link, NODE_EXPORTER_FILE_KEY, unpack_files);
                         extract_monitor_link!(monitor_link, MYSQL_EXPORTER_FILE_KEY, unpack_files);
-                        let tx_image = DownloadUrl::from_url_str(tx_image.as_str()).unwrap();
+                        let tx_image = DownloadUrl::from_url_str(tx_image).unwrap();
                         unpack_files.push(tx_image);
                     }
                     DeploymentPackage::MonographLog => {
-                        if let Some(log_img_val) = log_image {
-                            let log_image_link =
-                                DownloadUrl::from_url_str(log_img_val.as_str()).unwrap();
+                        if let Some(img) = log_image {
+                            let log_image_link = DownloadUrl::from_url_str(img).unwrap();
                             unpack_files.push(log_image_link);
                             extract_monitor_link!(
                                 monitor_link,
@@ -258,10 +257,10 @@ impl DeploymentConfig {
     }
 
     pub fn client_conn(&self) -> String {
+        let bin = self.deployment.client_bin();
         match self.product() {
             Product::EloqSQL => format!(
-                "{} --user={} -S /tmp/eloqsql{}.sock",
-                self.deployment.client_bin(),
+                "{bin} --user={} -S /tmp/eloqsql{}.sock",
                 self.connection.username,
                 self.deployment.client_port()
             ),
@@ -274,13 +273,7 @@ impl DeploymentConfig {
                         self.deployment.client_port(),
                     )
                 };
-                format!(
-                    "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{}/lib {} -server {}:{}",
-                    self.deployment.tx_srv_home(),
-                    self.deployment.client_bin(),
-                    host,
-                    port
-                )
+                format!("{bin} -h {} -p {}", host, port)
             }
         }
     }
@@ -293,7 +286,7 @@ impl DeploymentConfig {
         let install_db_template = config_template(MONOGRAPH_INSTALL_SCRIPT)?;
         let install_dir = self.install_dir();
         let tx_home = self.deployment.tx_srv_home();
-        let malloc = if let Version::Debug = self.deployment.version() {
+        let malloc = if let Some(Version::Debug) = self.deployment.version() {
             export_asan(&self.deployment.tx_srv_logs())
         } else {
             format!("export LD_PRELOAD={tx_home}/lib/libmimalloc.so.2")
@@ -415,14 +408,22 @@ impl DeploymentConfig {
         if let Some(sp) = storage.provider() {
             Ok(sp)
         } else {
-            Err(anyhow!(ConfigErr::StorageConfigErr(format!(
-                "storage provider is missing"
-            ))))
+            Err(anyhow!(ConfigErr::StorageConfigErr(
+                "storage provider is missing".to_owned()
+            )))
         }
     }
 
-    pub fn config_to_string(&self) -> String {
+    pub fn to_yaml(&self) -> String {
         serde_yaml::to_string(self).unwrap()
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap()
+    }
+
+    pub fn to_flat_json(&self) -> String {
+        serde_json::to_string(self).unwrap()
     }
 
     /// Returns the runtime dependencies of MonographDB, with different return values depending on the installation platform.
@@ -473,11 +474,7 @@ impl DeploymentConfig {
         info!("DeploymentConfig load file from {}", path_string);
         let config = DeploymentConfig::read_config_from_file(path_string.clone())
             .map_err(|err| anyhow!("{path_string}: {err}"))?;
-        if let Some(sshkey) = &config.connection.auth.keypair {
-            if !Path::new(sshkey).exists() {
-                bail!("ssh key {sshkey} not exist");
-            }
-        }
+        config.connection.auth.check_keypair()?;
         Ok(config)
     }
 
@@ -543,6 +540,7 @@ impl DeploymentConfig {
         DeployAbstract {
             name: self.deployment.cluster_name.clone(),
             product: self.deployment.product(),
+            store: self.deployment.storage_service.pretty_name(),
             version: self.deployment.version.clone().unwrap_or_default(),
             user: self.connection.username.clone(),
         }
@@ -553,6 +551,7 @@ impl DeploymentConfig {
 pub struct DeployAbstract {
     name: String,
     product: Product,
+    store: String,
     version: String,
     user: String,
 }

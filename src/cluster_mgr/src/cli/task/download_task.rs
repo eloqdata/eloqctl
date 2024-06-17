@@ -16,7 +16,6 @@ use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::time::Duration;
 use tracing::{error, info};
 
 pub(crate) const DOWNLOAD_URL: &str = "download_url";
@@ -35,28 +34,28 @@ impl DownloadTask {
         config: &DeploymentConfig,
     ) -> anyhow::Result<IndexMap<TaskId, TaskInstance>> {
         let deployment_ref = &config.deployment;
-        let tx_download_url_string = deployment_ref.get_tx_image();
-        let tx_download_url = DownloadUrl::from_url_str(tx_download_url_string.as_str())?;
+        let tx_download_str = deployment_ref.tx_image();
+        let tx_download_url = DownloadUrl::from_url_str(tx_download_str)?;
 
         let mut download_url_vec = vec![];
         if !tx_download_url.is_local() {
-            download_url_vec.push(tx_download_url_string);
+            download_url_vec.push(tx_download_str.to_owned());
         }
 
-        if let Some(log_image_url) = deployment_ref.log_image.as_ref() {
-            let log_download_url = DownloadUrl::from_url_str(log_image_url.as_str())?;
+        if let Some(log_image_url) = deployment_ref.log_image() {
+            let log_download_url = DownloadUrl::from_url_str(log_image_url)?;
             if !log_download_url.is_local() {
-                download_url_vec.push(log_image_url.to_string());
+                download_url_vec.push(log_image_url.to_owned());
             }
         }
 
         if let Some(cassandra) = &config.deployment.storage_service.cassandra {
             if let Some(cassdp) = cassandra.internal() {
-                let cass_download_url_string = &cassdp.download_url;
+                let cass_download_url_string = &cassdp.image_url();
                 let cass_download_url =
                     DownloadUrl::from_url_str(cass_download_url_string.as_str())?;
                 if !cass_download_url.is_local() {
-                    download_url_vec.push(cass_download_url_string.to_string());
+                    download_url_vec.push(cass_download_url_string.to_owned());
                 }
             }
         }
@@ -75,9 +74,7 @@ impl DownloadTask {
             download_url_vec.push(Codis::download_url());
         }
 
-        let client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(5))
-            .build()?;
+        let client = reqwest::Client::builder().build()?;
         let mpg_bar = MultiProgress::new();
         let local_ip = local_ip_address::local_ip()?.to_string();
         let download_tasks = download_url_vec

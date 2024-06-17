@@ -3,6 +3,7 @@ use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
 use crate::config::config_base::{DeploymentConfig, LOG_SERVICE_HOME};
+use crate::config::storage_service_config::CassKind;
 use crate::config::DownloadUrl;
 use crate::task_return_value;
 use async_trait::async_trait;
@@ -45,13 +46,11 @@ impl UnpackFileTask {
     ) -> anyhow::Result<IndexMap<TaskId, TaskInstance>> {
         let deployment_ref = &config.deployment;
 
-        let tx_image = DownloadUrl::from_url_str(&deployment_ref.get_tx_image())
+        let tx_image = DownloadUrl::from_url_str(deployment_ref.tx_image())
             .unwrap()
             .file_name();
-        let log_image = if let Some(log_image_file) = deployment_ref.log_image.as_ref() {
-            DownloadUrl::from_url_str(log_image_file.as_str())
-                .unwrap()
-                .file_name()
+        let log_image = if let Some(img) = deployment_ref.log_image() {
+            DownloadUrl::from_url_str(img).unwrap().file_name()
         } else {
             "".to_string()
         };
@@ -103,6 +102,80 @@ impl UnpackFileTask {
             .collect::<IndexMap<TaskId, TaskInstance>>();
 
         Ok(unpack_task_instance)
+    }
+
+    pub fn unpack_eloq_servers_image(config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
+        let deploy_ref = &config.deployment;
+        let image = deploy_ref.tx_image().split('/').last().unwrap();
+        let tx_home = config.product().home().to_owned();
+        let mut tasks = deploy_ref
+            .tx_service
+            .host
+            .iter()
+            .map(|host| Self::make_task_pair(config, host, image, &tx_home))
+            .collect::<IndexMap<TaskId, TaskInstance>>();
+        if let Some(srv) = &deploy_ref.log_service {
+            let image = srv.image.as_ref().unwrap().split('/').last().unwrap();
+            let ret = srv
+                .log_host_unique()
+                .iter()
+                .map(|host| Self::make_task_pair(config, host, image, LOG_SERVICE_HOME))
+                .collect::<IndexMap<TaskId, TaskInstance>>();
+            tasks.extend(ret);
+        }
+        tasks
+    }
+
+    pub fn unpack_cassandra_image(config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
+        let deploy_ref = &config.deployment;
+        if let Some(cass) = &deploy_ref.storage_service.cassandra {
+            if let CassKind::Internal(cdp) = &cass.kind {
+                let image = cdp.image_file();
+                let home = extract_unpacked_name(&image);
+                return cass
+                    .host
+                    .iter()
+                    .map(|host| Self::make_task_pair(config, host, &image, &home))
+                    .collect();
+            }
+        }
+        IndexMap::new()
+    }
+
+    fn make_task_pair(
+        config: &DeploymentConfig,
+        host: &str,
+        image: &str,
+        home: &str,
+    ) -> (TaskId, TaskInstance) {
+        let remote_img = format!("{}/{image}", config.deployment.install_dir());
+        let task_input = HashMap::from([
+            (REMOTE_TAR.to_string(), TaskArgValue::Str(remote_img)),
+            (
+                UNPACKED_NAME.to_string(),
+                TaskArgValue::Str(home.to_owned()),
+            ),
+        ]);
+        let task_host = TaskHost::Remote {
+            user: config.connection.username.clone(),
+            port: config.connection.ssh_port() as usize,
+            hosts: host.to_owned(),
+        };
+        let task_id = TaskId {
+            cmd: "update".to_string(),
+            task: format!("{image}_unpack"),
+            host: host.to_owned(),
+        };
+        let task = UnpackFileTask {
+            config: config.clone(),
+            task_id: task_id.clone(),
+        };
+        let inst = TaskInstance {
+            task_input: task_input.clone(),
+            task: Box::new(task),
+            task_host,
+        };
+        (task_id, inst)
     }
 }
 

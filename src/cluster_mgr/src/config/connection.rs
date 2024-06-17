@@ -1,4 +1,6 @@
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Connection {
@@ -26,4 +28,15 @@ impl Connection {
 pub struct Auth {
     pub password: Option<String>,
     pub keypair: Option<String>,
+}
+
+impl Auth {
+    pub fn check_keypair(&self) -> Result<()> {
+        if let Some(sshkey) = &self.keypair {
+            if !Path::new(sshkey).exists() {
+                bail!("ssh key {sshkey} not exist");
+            }
+        }
+        Ok(())
+    }
 }

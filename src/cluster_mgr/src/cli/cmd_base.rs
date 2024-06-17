@@ -5,18 +5,18 @@ use crate::config::deployment::{pg_client, Deployment, Product};
 use crate::config::storage_service_config::{
     CassConnect, CassDeploy, CassKind, Cassandra, RocksDB,
 };
-use crate::config::{StorageProvider, CONFIG_PATH_DIR, DOWNLOAD_SRC};
+use crate::config::{StorageProvider, TopoFormat, CONFIG_PATH_DIR, DOWNLOAD_SRC};
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
 use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, STATE_MGR};
 use crate::StateValue;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Ok, Result};
 use itertools::Itertools;
 use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 pub static NOT_PRINT_TASK_RESULT: &str = "NOT_PRINT_TASK_RESULT";
 
@@ -73,26 +73,21 @@ impl CommandExecutor {
             .state_mgr
             .get_state_operation::<DeploymentOperation>(DEPLOYMENT_STATE);
 
-        let curr_cluster = &config.deployment.cluster_name;
+        let cluster = &config.deployment.cluster_name;
         let deployment_entity = deployment_operation
             .load(|| -> Option<QueryCondition> {
                 Some(QueryCondition {
                     cond_text: "cluster_name = $1".to_string(),
-                    bind_values: vec![StateValue::Varchar(curr_cluster.clone())],
+                    bind_values: vec![StateValue::Varchar(cluster.clone())],
                 })
             })
             .await?;
-        if !deployment_entity.is_empty() {
-            if !upsert {
-                bail!("cluster {} already exists", curr_cluster);
-            }
+        if !deployment_entity.is_empty() && !upsert {
+            bail!("cluster {cluster} already exists");
         }
         let all_hosts = config.get_unique_host_list().join(";");
-        let config_string = config.config_to_string();
-        debug!(
-            "CmdExecutor save DeploymentConfig {} {}",
-            config_string, all_hosts
-        );
+        let config_string = config.to_yaml();
+        info!("DeploymentConfig saved: cluster={cluster} @ {all_hosts}");
         let default_timestamp = chrono::DateTime::default();
         deployment_operation
             .put(DeploymentEntity {
@@ -109,13 +104,12 @@ impl CommandExecutor {
     async fn get_config(&self, cmd: CommandArgs) -> anyhow::Result<DeploymentConfig> {
         match cmd.clone() {
             CommandArgs::Deploy { topology_file }
-            | CommandArgs::Upgrade { topology_file }
             | CommandArgs::Launch {
                 topology_file,
                 skip_deps: _,
             } => {
                 let mut config = DeploymentConfig::load(Some(topology_file))?;
-                self.set_image(&mut config.deployment).await?;
+                self.resolve_version(&mut config.deployment).await?;
                 config.scan_hardware().await?;
                 self.save_deployment_config(&config, cmd.as_ref().eq("upgrade"))
                     .await?;
@@ -175,7 +169,7 @@ impl CommandExecutor {
                 command: _,
                 cluster,
             }
-            | CommandArgs::Inspect { cluster, yaml: _ }
+            | CommandArgs::Inspect { cluster, .. }
             | CommandArgs::Remove { cluster }
             | CommandArgs::Connect { cluster }
             | CommandArgs::Scale {
@@ -185,7 +179,7 @@ impl CommandExecutor {
             } => {
                 let config = self
                     .state_mgr
-                    .load_deployment_from_state(cluster.as_str())
+                    .load_deployment_from_state(&cluster)
                     .await?
                     .ok_or(anyhow!("cluster {} not found", cluster))?;
                 Ok(config)
@@ -196,6 +190,49 @@ impl CommandExecutor {
                 command: _,
                 topology_file,
             } => Ok(DeploymentConfig::load(Some(topology_file))?),
+            CommandArgs::Update {
+                cluster: Some(cluster),
+                version,
+                cassandra,
+                cass_mirror,
+            } => {
+                let mut config = self
+                    .state_mgr
+                    .load_deployment_from_state(&cluster)
+                    .await?
+                    .ok_or(anyhow!("cluster {} not found", cluster))?;
+                if let Some(v) = version {
+                    if config.deployment.version.is_some() && config.deployment.version_str() == v {
+                        warn!("cluster version not changed")
+                    }
+                    config.deployment.version = Some(v);
+                    config.deployment.tx_service.image = None;
+                    if let Some(logsrv) = &mut config.deployment.log_service {
+                        logsrv.image = None;
+                    }
+                    self.resolve_version(&mut config.deployment).await?;
+                }
+                if cassandra.is_some() || cass_mirror.is_some() {
+                    let cass = &mut config.deployment.storage_service.cassandra;
+                    if cass.is_none() {
+                        bail!("do not have cassandra");
+                    }
+                    if let CassKind::Internal(cass) = &mut cass.as_mut().unwrap().kind {
+                        if let Some(v) = cassandra {
+                            if v == cass.version {
+                                bail!("cassandra version not changed")
+                            }
+                            cass.version = v;
+                        }
+                        if let Some(mi) = cass_mirror {
+                            cass.mirror = Some(mi);
+                        }
+                    } else {
+                        bail!("can not update cassandra");
+                    }
+                }
+                Ok(config)
+            }
             _ => unreachable!(),
         }
     }
@@ -206,13 +243,19 @@ impl CommandExecutor {
         deployment_config: Option<DeploymentConfig>,
     ) -> Result<()> {
         match &cmd {
-            CommandArgs::List => {
-                return self.list_clusters().await;
+            CommandArgs::List => return self.list_clusters().await,
+            CommandArgs::Versions { product, store } => {
+                return self.list_versions(product.clone(), store.clone()).await
             }
-            CommandArgs::ListVersion { product, store } => {
-                return self.list_versions(product.clone(), store.clone()).await;
+            CommandArgs::Update { cluster: None, .. } => {
+                unimplemented!()
             }
-            CommandArgs::Launch { .. } | CommandArgs::Demo { .. } => {
+            CommandArgs::Launch { .. }
+            | CommandArgs::Demo { .. }
+            | CommandArgs::Update {
+                cluster: Some(_), ..
+            }
+            | CommandArgs::UpdateConf { .. } => {
                 std::fs::remove_dir_all(upload_dir())?;
                 std::fs::create_dir(upload_dir())?;
             }
@@ -223,6 +266,8 @@ impl CommandExecutor {
         let cmd_ref = cmd.as_ref();
         let config = match deployment_config {
             Some(mut config) => {
+                config.connection.auth.check_keypair()?;
+                self.resolve_version(&mut config.deployment).await?;
                 config.scan_hardware().await?;
                 self.save_deployment_config(&config, cmd_ref.eq("upgrade"))
                     .await?;
@@ -232,13 +277,23 @@ impl CommandExecutor {
         };
 
         match cmd.clone() {
+            CommandArgs::Connect { .. } => {
+                println!("{}", config.client_conn());
+            }
+            CommandArgs::Inspect { cluster: _, format } => match format {
+                Some(fmt) => match fmt {
+                    TopoFormat::Yaml => println!("{}", config.to_yaml()),
+                    TopoFormat::Json => println!("{}", config.to_json()),
+                },
+                None => println!("{:#?}", config),
+            },
             CommandArgs::Scale {
                 cluster: _,
                 add_tx_node,
                 del_tx_node,
             } => {
-                let add: HashSet<String> = HashSet::from_iter(add_tx_node.into_iter());
-                let del: HashSet<String> = HashSet::from_iter(del_tx_node.into_iter());
+                let add: HashSet<String> = HashSet::from_iter(add_tx_node.clone().into_iter());
+                let del: HashSet<String> = HashSet::from_iter(del_tx_node.clone().into_iter());
                 if add.intersection(&del).count() > 0 {
                     bail!("add_tx_node is overlaped with del_tx_node")
                 }
@@ -254,23 +309,30 @@ impl CommandExecutor {
                     warn!("scale do nothing");
                     return Ok(());
                 }
+                // TODO(zhanghao): scale cluster
+                let mut config = config;
+                let tx_hosts = &mut config.deployment.tx_service.host;
+                tx_hosts.retain(|h| !del_tx_node.contains(h));
+                tx_hosts.extend(add_tx_node);
+                // self.save_deployment_config(&config, true).await?;
+                // println!("cluster {cluster} is scaled!");
+                unimplemented!()
             }
-            _ => {}
+            _ => {
+                let recv_rs_and_print_join = tokio::task::spawn(async move {
+                    let not_print_task_rs = option_env!("NOT_PRINT_TASK_RESULT");
+                    if not_print_task_rs.is_none() {
+                        self.task_mgr.print_task_result().await;
+                    }
+                });
+                // Generate and run tasks
+                let rs = self.task_mgr.run_tasks(cmd.clone(), config.clone()).await?;
+                recv_rs_and_print_join.await?;
+                info!(r#"all tasks complete.task_size={}"#, rs.len());
+                self.finishing(cmd, config).await?;
+            }
         }
-
-        let recv_rs_and_print_join = tokio::task::spawn(async move {
-            let not_print_task_rs = option_env!("NOT_PRINT_TASK_RESULT");
-            if not_print_task_rs.is_none() {
-                self.task_mgr.print_task_result().await;
-            }
-        });
-        // Generate and run tasks
-        let rs = self.task_mgr.run_tasks(cmd.clone(), config.clone()).await?;
-        recv_rs_and_print_join.await?;
-        info!(r#"all tasks complete.task_size={}"#, rs.len());
-
-        // After all tasks finished
-        self.finishing(cmd, config).await
+        Ok(())
     }
 
     async fn finishing(&self, cmd: CommandArgs, config: DeploymentConfig) -> Result<()> {
@@ -294,27 +356,12 @@ impl CommandExecutor {
                 let n = self.state_mgr.delete_cluster(&cluster).await?;
                 info!("cluster state cleared rows={}", n);
             }
-            CommandArgs::Inspect { cluster: _, yaml } => {
-                if yaml {
-                    println!("{}", config.config_to_string())
-                } else {
-                    println!("{:#?}", config);
-                }
-            }
-            CommandArgs::Connect { .. } => {
-                println!("{}", config.client_conn());
-            }
-            CommandArgs::Scale {
-                cluster,
-                add_tx_node,
-                del_tx_node,
+            CommandArgs::Update {
+                cluster: Some(cluster),
+                ..
             } => {
-                let mut config = config;
-                let tx_hosts = &mut config.deployment.tx_service.host;
-                tx_hosts.retain(|h| !del_tx_node.contains(h));
-                tx_hosts.extend(add_tx_node);
                 self.save_deployment_config(&config, true).await?;
-                println!("cluster {cluster} is scaled done!");
+                println!("cluster {cluster} is updated!");
             }
             _ => {}
         }
@@ -372,12 +419,11 @@ impl CommandExecutor {
         Ok(())
     }
 
-    // Populate tx_image and log_image according to version number
-    pub async fn set_image(&self, cnf: &mut Deployment) -> Result<()> {
+    pub async fn resolve_version(&self, cnf: &mut Deployment) -> Result<()> {
         let product = cnf.product().name().to_owned();
         let arch = &self.cpu_arch;
         let store = cnf.storage_service.pretty_name();
-        if cnf.version.is_none() || cnf.version_str() == "latest" {
+        if cnf.version.is_some() && cnf.version_str().to_ascii_lowercase() == "latest" {
             // request latest release version ID
             let client = pg_client().await?;
             let row = client
@@ -401,20 +447,22 @@ impl CommandExecutor {
         // cnf.version.as_mut().unwrap().make_ascii_lowercase();
 
         let mut prefix = PathBuf::from(DOWNLOAD_SRC.as_str());
-        prefix.push(product);
-        let version = cnf.version_str().to_owned();
+        prefix.push(&product);
         prefix.push(self.os_pretty());
         let prefix = prefix.as_path().to_str().unwrap();
-        if cnf.tx_image.is_none() {
-            let tx_tarball = match cnf.product() {
-                Product::EloqSQL => format!("eloqsql-{version}-{arch}.tar.gz"),
-                Product::EloqKV => format!("eloqkv-{version}-{arch}.tar.gz"),
-            };
-            cnf.tx_image = Some(format!("{prefix}/{store}/{tx_tarball}"));
+        if cnf.tx_service.image.is_none() {
+            let vers = cnf.version.as_deref().expect("version is missing");
+            let img = format!("{prefix}/{store}/{product}-{vers}-{arch}.tar.gz");
+            info!("tx service image is set: {img}");
+            cnf.tx_service.image = Some(img);
         }
-        if cnf.log_image.is_none() && cnf.log_service.is_some() {
-            let log_tarball = format!("log-service-{version}-{arch}.tar.gz");
-            cnf.log_image = Some(format!("{prefix}/logservice/{log_tarball}"));
+        if let Some(logsrv) = &mut cnf.log_service {
+            if logsrv.image.is_none() {
+                let vers = cnf.version.as_deref().expect("version is missing");
+                let img = format!("{prefix}/logservice/log-service-{vers}-{arch}.tar.gz");
+                info!("log service image is set: {img}");
+                logsrv.image = Some(img);
+            }
         }
         Ok(())
     }
@@ -450,12 +498,9 @@ impl CommandExecutor {
                     });
                 } else {
                     host = vec!["127.0.0.1".to_owned()];
-                    let download_url = format!(
-                        "{}/others/apache-cassandra-4.1.3-bin.tar.gz",
-                        DOWNLOAD_SRC.as_str()
-                    );
                     kind = CassKind::Internal(CassDeploy {
-                        download_url,
+                        mirror: Some("https://d143xau9fe26d8.cloudfront.net".to_owned()),
+                        version: "4.1.3".to_owned(),
                         cluster_name: None,
                     });
                 };
@@ -492,7 +537,7 @@ impl CommandExecutor {
         // set version
         deploy.version.replace(version);
         // set image URL
-        self.set_image(deploy).await?;
+        self.resolve_version(deploy).await?;
         // add kv-store name to cluster name suffix
         let name_suffix = format!("-{store}");
         deploy.cluster_name.push_str(&name_suffix);

@@ -1,7 +1,7 @@
 use crate::{listen_exit_signal, RequestPayload};
 use cluster_mgr::cli::cmd_base::CommandExecutor;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Clone)]
 pub struct GlobalCommandHandler {
@@ -58,13 +58,20 @@ impl GlobalCommandHandler {
                 break;
             }
             let cmd = cmd_opt.unwrap();
-            info!("Global handler process command={}", cmd.as_ref());
+            let cmd_str = cmd.as_ref().to_owned();
+            info!("Global handler process command={cmd_str}");
             match cmd.as_ref() {
                 "deploy" | "run-deps" => {
                     let config = payload.config.unwrap();
-                    cmd_executor.run(cmd, Some(config)).await?
+                    if let Err(err) = cmd_executor.run(cmd, Some(config)).await {
+                        error!("command {cmd_str} failed: {err}");
+                    }
                 }
-                _ => cmd_executor.run(cmd, None).await?,
+                _ => {
+                    if let Err(err) = cmd_executor.run(cmd, None).await {
+                        error!("command {cmd_str} failed: {err}");
+                    }
+                }
             }
         }
         Ok(())

@@ -63,7 +63,7 @@ pub(crate) static VERSION_PATT: LazyLock<Regex> =
 macro_rules! download_urls {
     ($download_link:expr, $({$url_key:expr, $url_value:expr} $(,)?)*) => {
         $(
-          $download_link.insert($url_key.to_string(), DownloadUrl::from_url_str($url_value.as_str()).unwrap());
+          $download_link.insert($url_key.to_string(), DownloadUrl::from_url_str($url_value).unwrap());
         )*
     };
 }
@@ -122,6 +122,7 @@ pub struct MonographPort {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct MonographService {
+    pub image: Option<String>,
     pub host: Vec<String>,
     pub port: Option<u16>,
     pub client_port: u16,
@@ -194,12 +195,11 @@ pub enum Version {
     Devel(String),
 }
 
+#[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Deployment {
     pub product: Option<Product>,
     pub version: Option<String>,
-    pub tx_image: Option<String>,
-    pub log_image: Option<String>,
     pub cluster_name: String,
     pub install_dir: String,
     pub tx_service: MonographService,
@@ -232,8 +232,16 @@ pub async fn pg_client() -> Result<tokio_postgres::Client> {
 }
 
 impl Deployment {
-    pub fn get_tx_image(&self) -> String {
-        self.tx_image.clone().unwrap()
+    pub fn tx_image(&self) -> &str {
+        self.tx_service.image.as_ref().unwrap()
+    }
+
+    pub fn log_image(&self) -> Option<&str> {
+        if let Some(srv) = &self.log_service {
+            srv.image.as_deref()
+        } else {
+            None
+        }
     }
 
     pub fn get_hardware(&self, host: &str) -> Option<&Hardware> {
@@ -256,19 +264,8 @@ impl Deployment {
         self.version.as_ref().unwrap()
     }
 
-    pub fn version(&self) -> Version {
-        let ver = self.version.as_ref().unwrap().as_str();
-        match ver {
-            "nightly" => Version::Nightly,
-            "debug" => Version::Debug,
-            _ => {
-                if VERSION_PATT.is_match(ver) {
-                    Version::Tag(parse_version(ver))
-                } else {
-                    Version::Devel(ver.to_owned())
-                }
-            }
-        }
+    pub fn version(&self) -> Option<Version> {
+        self.version.as_ref().map(|ver| parse_version(ver))
     }
 
     pub fn client_port(&self) -> u16 {
@@ -309,7 +306,7 @@ impl Deployment {
     pub fn client_bin(&self) -> String {
         match self.product() {
             Product::EloqSQL => format!("{}/bin/mariadb", &self.tx_srv_home()),
-            Product::EloqKV => format!("{}/bin/eloqkv-client", &self.tx_srv_home()),
+            Product::EloqKV => "redis-cli".to_owned(),
         }
     }
 
@@ -564,7 +561,7 @@ impl Deployment {
         let key = "monograph_node_memory_limit_mb";
         let val = set_by_user!(my_ini.get(SECTION_MARIADB, key), u32);
         if val.is_none() {
-            let mut limit = opt_hw.map(|hw| (hw.memory * 3) / 5).unwrap_or(1 * GB);
+            let mut limit = opt_hw.map(|hw| (hw.memory * 3) / 5).unwrap_or(GB);
             if union_cass {
                 limit /= 2;
             }
@@ -744,7 +741,7 @@ impl Deployment {
         let key = "node_memory_limit_mb";
         let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
         if val.is_none() {
-            let mut limit = opt_hw.map(|hw| (hw.memory * 4) / 5).unwrap_or(1 * GB);
+            let mut limit = opt_hw.map(|hw| (hw.memory * 4) / 5).unwrap_or(GB);
             if union_cass {
                 limit /= 2;
             }
@@ -817,18 +814,14 @@ impl Deployment {
 
     pub fn monograph_download_links(&self) -> anyhow::Result<HashMap<String, DownloadUrl>> {
         let mut links = HashMap::new();
-        download_urls!(links,
-                {MONOGRAPH_FILE_KEY, self.get_tx_image()}
-        );
-        if let Some(log_image_url) = self.log_image.as_ref() {
-            download_urls!(links,
-                {MONOGRAPH_LOG_FILE_KEY, log_image_url.to_string()}
-            );
+        download_urls!(links,{MONOGRAPH_FILE_KEY, self.tx_image()});
+        if let Some(img) = self.log_image() {
+            download_urls!(links,{MONOGRAPH_LOG_FILE_KEY, img});
         }
         if let Some(cass) = self.storage_service.cassandra.as_ref() {
             if let Some(cassdp) = cass.internal() {
                 download_urls!(links,
-                    {CASSANDRA_FILE_KEY, cassdp.download_url}
+                    {CASSANDRA_FILE_KEY, &cassdp.image_url()}
                 );
             }
         }
@@ -841,7 +834,7 @@ impl Deployment {
             db_image_download_links.extend(monitor_srv.download_links_as_map()?);
         }
         if self.codis.is_some() {
-            download_urls!(db_image_download_links, {"codis", Codis::download_url()});
+            download_urls!(db_image_download_links, {"codis", &Codis::download_url()});
         }
         Ok(db_image_download_links)
     }
@@ -1014,7 +1007,7 @@ impl Deployment {
         let glog = format!(
             "mkdir -p {tx_logs} ; export GLOG_log_dir={tx_logs} ; export GLOG_max_log_size=1024"
         );
-        let mut ld_lib = if let Version::Debug = self.version() {
+        let mut ld_lib = if let Some(Version::Debug) = self.version() {
             export_asan(&format!("{tx_logs}/asan"))
         } else {
             format!("export LD_PRELOAD={tx_dir}/lib/libmimalloc.so.2")
@@ -1025,8 +1018,8 @@ impl Deployment {
         match self.product() {
             Product::EloqSQL => {
                 let mut logout = "/dev/null".to_owned();
-                if let Version::Tag(nums) = self.version() {
-                    if nums <= parse_version("0.4.2") {
+                if let Some(Version::Tag(nums)) = self.version() {
+                    if nums <= version_digits("0.4.2") {
                         logout = format!("{tx_dir}/logs/eloqsql.log")
                     }
                 }
@@ -1034,8 +1027,8 @@ impl Deployment {
             }
             Product::EloqKV => {
                 let mut logout = "/dev/null".to_owned();
-                if let Version::Tag(nums) = self.version() {
-                    if nums <= parse_version("1.0.8") {
+                if let Some(Version::Tag(nums)) = self.version() {
+                    if nums <= version_digits("1.0.8") {
                         logout = format!("{tx_dir}/logs/eloqkv.log")
                     }
                 }
@@ -1047,12 +1040,26 @@ impl Deployment {
     }
 }
 
-pub fn parse_version(s: &str) -> [u32; 3] {
+pub fn version_digits(s: &str) -> [u32; 3] {
     s.split('.')
         .map(|e| e.parse::<u32>().unwrap())
         .collect_vec()
         .try_into()
         .unwrap()
+}
+
+pub fn parse_version(v: &str) -> Version {
+    match v {
+        "nightly" => Version::Nightly,
+        "debug" => Version::Debug,
+        _ => {
+            if VERSION_PATT.is_match(v) {
+                Version::Tag(version_digits(v))
+            } else {
+                Version::Devel(v.to_owned())
+            }
+        }
+    }
 }
 
 #[cfg(test)]

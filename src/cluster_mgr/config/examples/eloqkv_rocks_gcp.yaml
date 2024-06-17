@@ -8,6 +8,9 @@ deployment:
   product: "EloqKV"
   version: "latest"
   install_dir: "/home/${USER}"
+  tx_service:
+    host: [127.0.0.1]
+    client_port: 6389
   log_service:
     nodes:
       - host: 127.0.0.1
@@ -15,9 +18,6 @@ deployment:
         data_dir:
           - "/home/${USER}/disk_wal_kv"
     replica: 1
-  tx_service:
-    host: [127.0.0.1]
-    client_port: 6389
   storage_service:
     rocksdb: !GCP
       region: "xxx"
