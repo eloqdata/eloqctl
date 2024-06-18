@@ -91,6 +91,10 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> CommandArgs
             cluster: cluster.unwrap(),
             command: "stop".to_string(),
         },
+        "launch" => CommandArgs::Launch {
+            topology_file: "_NONE".to_owned(),
+            skip_deps: false,
+        },
         _ => unreachable!(),
     }
 }
@@ -100,11 +104,20 @@ pub fn ctrl_cluster(
     global_handler: web::Data<GlobalCommandHandler>,
     post_deployment: web::Json<DeploymentConfig>,
 ) {
-    let deploy_without_topology_file = build_command_from_str(cmd, None);
+    let cmd_without_topology_file = build_command_from_str(cmd, None);
     global_handler.submit(RequestPayload {
-        command: Some(deploy_without_topology_file),
+        command: Some(cmd_without_topology_file),
         config: Some(post_deployment.0),
     });
+}
+
+#[post("/launch")]
+pub async fn launch_cluster(
+    global_handler: web::Data<GlobalCommandHandler>,
+    post_deployment: web::Json<DeploymentConfig>,
+) -> impl Responder {
+    ctrl_cluster("launch", global_handler, post_deployment);
+    HttpResponse::Ok().finish()
 }
 
 #[post("/deploy")]
