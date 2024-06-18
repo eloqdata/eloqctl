@@ -111,8 +111,7 @@ impl CommandExecutor {
                 let mut config = DeploymentConfig::load(Some(topology_file))?;
                 self.resolve_version(&mut config.deployment).await?;
                 config.scan_hardware().await?;
-                self.save_deployment_config(&config, cmd.as_ref().eq("upgrade"))
-                    .await?;
+                self.save_deployment_config(&config, false).await?;
                 info!("CmdExecutor Save DeploymentConfig successfully.");
                 Ok(config)
             }
@@ -252,6 +251,7 @@ impl CommandExecutor {
             }
             CommandArgs::Launch { .. }
             | CommandArgs::Demo { .. }
+            | CommandArgs::Deploy { .. }
             | CommandArgs::Update {
                 cluster: Some(_), ..
             }
@@ -263,14 +263,12 @@ impl CommandExecutor {
         }
 
         // fetch config from file or database
-        let cmd_ref = cmd.as_ref();
         let config = match deployment_config {
             Some(mut config) => {
                 config.connection.auth.check_keypair()?;
                 self.resolve_version(&mut config.deployment).await?;
                 config.scan_hardware().await?;
-                self.save_deployment_config(&config, cmd_ref.eq("upgrade"))
-                    .await?;
+                self.save_deployment_config(&config, true).await?;
                 config
             }
             None => self.get_config(cmd.clone()).await?,

@@ -112,10 +112,7 @@ pub enum CommandArgs {
     )]
     #[strum(serialize = "log-srv")]
     LogService { cluster: String, command: String },
-    #[command(
-        long_about = "According to the deployment.yaml, update the related monograph_db cluster by stopping the cluster, replacing the package, and starting the cluster. \n./cluster_mgr upgrade --topology_file ${PWD}/config/deployment.yaml
-    "
-    )]
+    #[command(long_about = "Update cluster version. This will stop/update/start the cluster")]
     #[strum(serialize = "update")]
     Update {
         cluster: Option<String>,
@@ -144,9 +141,7 @@ pub enum CommandArgs {
         #[arg(long)]
         del_tx_node: Vec<String>,
     },
-    #[command(
-        long_about = "Launch a cluster quickly.\ncluster_mgr launch ${PWD}/config/deployment.yaml"
-    )]
+    #[command(long_about = "Launch a cluster.\ncluster_mgr launch ${PWD}/config/deployment.yaml")]
     #[strum(serialize = "launch")]
     Launch {
         topology_file: String,

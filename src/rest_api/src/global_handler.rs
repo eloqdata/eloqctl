@@ -61,7 +61,7 @@ impl GlobalCommandHandler {
             let cmd_str = cmd.as_ref().to_owned();
             info!("Global handler process command={cmd_str}");
             match cmd.as_ref() {
-                "deploy" | "run-deps" => {
+                "deploy" | "run-deps" | "launch" => {
                     let config = payload.config.unwrap();
                     if let Err(err) = cmd_executor.run(cmd, Some(config)).await {
                         error!("command {cmd_str} failed: {err}");

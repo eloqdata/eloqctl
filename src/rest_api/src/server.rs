@@ -1,6 +1,6 @@
 use crate::global_handler::GlobalCommandHandler;
 use crate::handler::{
-    check_cmd_status, check_health, ctl_cluster, deploy_cluster, install_run_deps,
+    check_cmd_status, check_health, ctl_cluster, deploy_cluster, install_run_deps, launch_cluster,
     mono_service_status,
 };
 use crate::listen_exit_signal;
@@ -67,6 +67,7 @@ impl CliMgrHttpServer {
                 .service(ctl_cluster)
                 .service(mono_service_status)
                 .service(install_run_deps)
+                .service(launch_cluster)
                 .service(web::resource("/").route(
                     web::get().to(|| async { "Hey man. I'm MonographDB cluster RESTful Service." }),
                 ))
