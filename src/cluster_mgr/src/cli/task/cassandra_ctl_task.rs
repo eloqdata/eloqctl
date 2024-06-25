@@ -127,8 +127,8 @@ impl CassandraCmd {
             ),
             "processinfo" => {
                 let print_pid = "awk '{print $2,$11}'";
-                let pid_cwd = r#" awk '{printf "%s", sep $0; sep = "+"}; END {if (NR) print ""}'"#;
-                let final_cmd = format!("{echo_cmd} | {print_pid} | {pid_cwd}");
+                // let pid_cwd = r#" awk '{printf "%s", sep $0; sep = "+"}; END {if (NR) print ""}' "#;
+                let final_cmd = format!("{echo_cmd} | {print_pid}");
                 CassandraCmd::ProcessInfo(final_cmd)
             }
             _ => {
@@ -242,28 +242,25 @@ impl CassandraCtlTask {
         let cassandra_process = CassandraCmd::from_string("processinfo", cassandra_home, conn_user);
         let process_info = cassandra_process.cmd_value();
         check_pid(process_info, ssh_conn, |output| -> Option<i32> {
-            let mut pid = None;
-            for line in output.lines() {
-                let p_info = line.split('+').collect_vec();
-                info!("JAVA_HOME={} check_process_info={:#?}", java_home, p_info);
-                if p_info.is_empty() || p_info.len() == 1 {
-                    continue;
-                }
-                let collect_pid = p_info
-                    .into_iter()
-                    .filter(|split| {
-                        let p_info = split.split_whitespace().collect_vec();
-                        p_info[1].contains(&java_home)
-                    })
-                    .map(|p_info| p_info.split_whitespace().collect_vec()[0])
-                    .collect_vec();
-                if !collect_pid.is_empty() {
-                    pid = Some(collect_pid[0].parse::<i32>().unwrap());
-                    info!("cassandra process is already running PID={pid:?}");
-                    break;
-                }
+            let pids = output
+                .lines()
+                .filter_map(|line| {
+                    let p_info = line.split_whitespace().collect_vec();
+                    info!("PID={} JAVA_HOME={}", p_info[0], p_info[1]);
+                    if p_info[1].contains(&java_home) {
+                        Some(p_info[0].parse::<i32>().unwrap())
+                    } else {
+                        None
+                    }
+                })
+                .collect_vec();
+            if pids.len() > 1 {
+                warn!(
+                    "too many java process so that can't tell cassandra {:?}",
+                    pids
+                )
             }
-            pid
+            pids.first().copied()
         })
         .await
     }
@@ -275,7 +272,7 @@ impl CassandraCtlTask {
     ) -> anyhow::Result<ExecutionValue> {
         let ssh_info = ssh_conn.ssh_conn_info();
         let check_status = CassandraCmd::from_string(
-            "processinfo",
+            "status",
             self.config.deployment.cassandra_home(),
             ssh_info.1,
         );
