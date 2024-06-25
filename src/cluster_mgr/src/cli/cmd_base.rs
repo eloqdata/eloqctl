@@ -135,8 +135,16 @@ impl CommandExecutor {
         format!("{}{}", self.os_id, self.os_version)
     }
 
-    fn home(&self) -> &str {
+    fn dir_home(&self) -> &str {
         self.home.to_str().expect("invalid home directory")
+    }
+
+    fn dir_config(&self) -> PathBuf {
+        self.home.join("config")
+    }
+
+    fn dir_download(&self) -> PathBuf {
+        self.home.join("download")
     }
 
     async fn save_deployment_config(&self, config: &DeploymentConfig, upsert: bool) -> Result<()> {
@@ -548,7 +556,10 @@ impl CommandExecutor {
         ext_cass_user: Option<String>,
         ext_cass_pwd: Option<String>,
     ) -> Result<DeploymentConfig> {
-        let topology = format!("{}/demo-{product}.yaml", self.home.to_string_lossy());
+        let topology = format!(
+            "{}/demo-{product}.yaml",
+            self.dir_config().to_string_lossy()
+        );
         let mut config = DeploymentConfig::load(Some(topology))?;
         let deploy = &mut config.deployment;
         // set storage
@@ -629,7 +640,7 @@ impl CommandExecutor {
         let len = resp
             .content_length()
             .ok_or_else(|| anyhow!("can't know package size"))?;
-        let mut cache_path = download_dir();
+        let mut cache_path = self.dir_download();
         cache_path.push(filename);
         if cache_path.exists() {
             let local_len = std::fs::metadata(&cache_path)?.len();
@@ -650,7 +661,7 @@ impl CommandExecutor {
         }
         println!(
             "Execute the following command to complete the update:\n tar -xzvf {} -C {} --strip-components 1 --overwrite",
-            cache_path.to_string_lossy(), self.home()
+            cache_path.to_string_lossy(), self.dir_home()
         );
         Ok(())
     }
