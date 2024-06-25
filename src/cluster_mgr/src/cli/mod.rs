@@ -1,5 +1,4 @@
-use crate::config::{deployment::Product, StorageProvider, TopoFormat, CONFIG_PATH_DIR};
-use anyhow::anyhow;
+use crate::config::{deployment::Product, StorageProvider, TopoFormat};
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
@@ -200,30 +199,6 @@ pub enum CommandArgs {
 }
 
 pub const HOME_DIR: &str = "CLUSTER_MGR_HOME";
-
-pub fn set_home_dir(home: &Option<PathBuf>) -> anyhow::Result<()> {
-    match home {
-        Some(ref home) => env::set_var(HOME_DIR, home),
-        None => {
-            if env::var(HOME_DIR).is_err() {
-                env::set_var(HOME_DIR, env::current_dir().unwrap())
-            }
-        }
-    };
-    // check config directory
-    let cnf_dir = home_path().join("config");
-    if !cnf_dir.exists() {
-        return Err(anyhow!("Config path not exist: {} ", cnf_dir.display()));
-    }
-    env::set_var(CONFIG_PATH_DIR, cnf_dir);
-    if !download_dir().exists() {
-        std::fs::create_dir(download_dir())?;
-    }
-    if !upload_dir().exists() {
-        std::fs::create_dir(upload_dir())?;
-    }
-    Ok(())
-}
 
 pub fn home_path() -> PathBuf {
     PathBuf::from(env::var(HOME_DIR).unwrap())

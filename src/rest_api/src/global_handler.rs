@@ -19,10 +19,15 @@ impl GlobalCommandHandler {
             rx,
         };
         let handler_arc = Arc::new(handler.clone());
-        let handler_clone = Arc::clone(&handler_arc);
+        let tx = handler.tx.clone();
         tokio::spawn(async move {
-            listen_exit_signal(handler_clone, |handler_clone| async move {
-                handler_clone.close()
+            listen_exit_signal(tx, |tx| async move {
+                info!("GlobalCommandHandler will exit.");
+                tx.send(RequestPayload {
+                    command: None,
+                    config: None,
+                })
+                .unwrap();
             })
             .await;
         });
@@ -34,16 +39,6 @@ impl GlobalCommandHandler {
 
     pub fn get_command_executor(&self) -> &CommandExecutor {
         &self.cmd_executor
-    }
-
-    fn close(&self) {
-        info!("GlobalCommandHandler will exit.");
-        self.tx
-            .send(RequestPayload {
-                command: None,
-                config: None,
-            })
-            .unwrap();
     }
 
     pub fn submit(&self, payload: RequestPayload) {
