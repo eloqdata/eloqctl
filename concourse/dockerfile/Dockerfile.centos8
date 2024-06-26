@@ -2,13 +2,13 @@ FROM tgagor/centos:stream8
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH 
+    PATH=/usr/local/cargo/bin:$PATH \
     RUST_VERSION=1.78.0
 
 RUN set -eux; \
     dnf -y update; \
     dnf install -y \
-    wget \
+    wget git \
     ca-certificates \
     gcc \
     glibc-devel \

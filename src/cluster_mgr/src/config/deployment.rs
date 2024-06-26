@@ -9,8 +9,8 @@ use crate::config::storage_service_config::{Cassandra, RocksDB, StorageService};
 use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
     config_template, load_yaml_config_template, DeploymentPackage, DownloadUrl, StorageProvider,
-    CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CODIS_DASHBOARD_CNF,
-    CODIS_PROXY_CNF, DOWNLOAD_SRC, ELOQKV_TEMP, ELOQSQL_DYNAMO_TEMP, ELOQSQL_TEMP,
+    CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CDN,
+    CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF, ELOQKV_TEMP, ELOQSQL_DYNAMO_TEMP, ELOQSQL_TEMP,
     JVM_SETTING_HOLDER, SECTION_CLUSTER, SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC,
     SECTION_STORE, SET_FOR_ME,
 };
@@ -29,9 +29,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::LazyLock;
 use strum_macros::Display;
-use tokio_postgres::config::SslMode;
-use tokio_postgres::NoTls;
-use tracing::{error, warn};
+use tracing::warn;
 
 const GC_SETTING_CMS: &str = "
 -XX:+UseConcMarkSweepGC
@@ -166,7 +164,7 @@ pub struct Codis {
 
 impl Codis {
     pub fn download_url() -> String {
-        format!("{}/codis/codis.tar.gz", DOWNLOAD_SRC.as_str())
+        format!("{CDN}/codis/codis.tar.gz")
     }
     pub fn dir(install_dir: &str) -> String {
         format!("{install_dir}/codis")
@@ -208,27 +206,6 @@ pub struct Deployment {
     pub monitor: Option<Monitor>,
     pub codis: Option<Codis>,
     pub hardware: Option<HashMap<String, Hardware>>,
-}
-
-pub async fn pg_client() -> Result<tokio_postgres::Client> {
-    let (client, conn) = tokio_postgres::Config::new()
-        .user("postgres")
-        .password("eloq-pub-service-postgresql")
-        .host("18.177.72.104")
-        .port(5432)
-        .dbname("eloq_release")
-        .ssl_mode(SslMode::Prefer)
-        .connect(NoTls)
-        .await
-        .map_err(|e| anyhow!("connect postgres failed: {e}"))?;
-    // The connection object performs the actual communication with the database,
-    // so spawn it off to run on its own.
-    tokio::spawn(async move {
-        if let Err(e) = conn.await {
-            error!("connection error: {}", e);
-        }
-    });
-    Ok(client)
 }
 
 impl Deployment {

@@ -7,8 +7,7 @@ use crate::listen_exit_signal;
 use actix_server::Server;
 use actix_web::{middleware, web, App, HttpServer};
 use cluster_mgr::cli::cmd_base::CommandExecutor;
-use cluster_mgr::config::CONFIG_PATH_DIR;
-use std::env;
+use std::path::PathBuf;
 use tracing::info;
 
 macro_rules! server_listen_addr {
@@ -30,9 +29,9 @@ impl CliMgrHttpServer {
         &'static self,
         addr: Option<String>,
         port: Option<u16>,
-        config_path: String,
+        home: Option<PathBuf>,
     ) -> anyhow::Result<()> {
-        let server = CliMgrHttpServer::new_http_server(addr, port, config_path).await?;
+        let server = CliMgrHttpServer::new_http_server(addr, port, home).await?;
         let web_handler = server.handle();
         info!("Starting CliMgrHttpServer.");
         let shutdown_join = tokio::spawn(async move {
@@ -50,12 +49,11 @@ impl CliMgrHttpServer {
     async fn new_http_server(
         addr: Option<String>,
         port: Option<u16>,
-        config_path: String,
+        home: Option<PathBuf>,
     ) -> anyhow::Result<Server> {
         let listen_addr = server_listen_addr!(addr, "127.0.0.1".to_string());
         let listen_port = server_listen_addr!(port, 8090);
-        env::set_var(CONFIG_PATH_DIR, config_path);
-        let handler = GlobalCommandHandler::new(CommandExecutor::new()).await;
+        let handler = GlobalCommandHandler::new(CommandExecutor::new(home)).await;
         let global_handler = web::Data::new(handler);
         let server = HttpServer::new(move || {
             App::new()

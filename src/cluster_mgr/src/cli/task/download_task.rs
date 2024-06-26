@@ -1,3 +1,4 @@
+use crate::cli::cmd_base::HTTP_CLIENT;
 use crate::cli::task::task_base::CmdErr::DownloadErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
@@ -26,7 +27,6 @@ pub(crate) const DOWNLOAD_PATH: &str = "download_path";
 pub struct DownloadTask {
     task_id: TaskId,
     pg_bar: ProgressBar,
-    client: reqwest::Client,
 }
 
 impl DownloadTask {
@@ -74,7 +74,6 @@ impl DownloadTask {
             download_url_vec.push(Codis::download_url());
         }
 
-        let client = reqwest::Client::builder().build()?;
         let mpg_bar = MultiProgress::new();
         let local_ip = local_ip_address::local_ip()?.to_string();
         let download_tasks = download_url_vec
@@ -100,7 +99,7 @@ impl DownloadTask {
                             (DOWNLOAD_FILE_NAME.to_string(), TaskArgValue::Str(filename)),
                             (DOWNLOAD_PATH.to_string(), TaskArgValue::Str(download_dir)),
                         ]),
-                        task: Box::new(DownloadTask::new(task_id, pb, client.clone())),
+                        task: Box::new(DownloadTask::new(task_id, pb)),
                         task_host: TaskHost::Local,
                     },
                 )
@@ -109,12 +108,8 @@ impl DownloadTask {
         Ok(download_tasks)
     }
 
-    pub fn new(task_id: TaskId, pg_bar: ProgressBar, client: reqwest::Client) -> Self {
-        Self {
-            task_id,
-            pg_bar,
-            client,
-        }
+    pub fn new(task_id: TaskId, pg_bar: ProgressBar) -> Self {
+        Self { task_id, pg_bar }
     }
 }
 
@@ -139,8 +134,7 @@ impl TaskExecutor for DownloadTask {
             task_input.get(DOWNLOAD_PATH).unwrap().clone(),
         ));
 
-        let response = self
-            .client
+        let response = HTTP_CLIENT
             .get(&url)
             .send()
             .await

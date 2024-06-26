@@ -1,43 +1,89 @@
 use crate::cli::task::task_base::TaskMgr;
-use crate::cli::{upload_dir, CommandArgs};
+use crate::cli::{download_dir, upload_dir, CommandArgs, HOME_DIR};
 use crate::config::config_base::{DeploymentConfig, VersionRow};
-use crate::config::deployment::{pg_client, Deployment, Product};
+use crate::config::deployment::{Deployment, Product};
 use crate::config::storage_service_config::{
     CassConnect, CassDeploy, CassKind, Cassandra, RocksDB,
 };
-use crate::config::{StorageProvider, TopoFormat, CONFIG_PATH_DIR, DOWNLOAD_SRC};
+use crate::config::{StorageProvider, TopoFormat, CDN, CONFIG_PATH_DIR};
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
 use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, STATE_MGR};
 use crate::StateValue;
-use anyhow::{anyhow, bail, Ok, Result};
+use anyhow::{anyhow, bail, Result};
+use futures::StreamExt;
+use indicatif::ProgressBar;
 use itertools::Itertools;
 use std::collections::HashSet;
 use std::env;
+use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
-use tracing::{info, warn};
+use std::sync::{Arc, LazyLock, OnceLock};
+use tokio_postgres::config::SslMode;
+use tokio_postgres::NoTls;
+use tracing::{error, info, warn};
 
 pub static NOT_PRINT_TASK_RESULT: &str = "NOT_PRINT_TASK_RESULT";
 
-#[derive(Clone)]
+pub static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .build()
+        .expect("can't init http client")
+});
+
+pub static HTTP_INTERNAL: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .expect("can't init http client for internal use")
+});
+
 pub struct CommandExecutor {
     task_mgr: Arc<TaskMgr>,
     state_mgr: Arc<StateMgr>,
     cpu_arch: String,
     os_id: String,
     os_version: String,
+    home: PathBuf,
+    pg_client: OnceLock<tokio_postgres::Client>,
 }
 
 impl Default for CommandExecutor {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
 impl CommandExecutor {
-    pub fn new() -> Self {
+    pub fn new(home: Option<PathBuf>) -> Self {
         info!("CommandExecutor init.");
+        let home = match home {
+            Some(home) => {
+                env::set_var(HOME_DIR, &home);
+                home
+            }
+            None => match env::var(HOME_DIR) {
+                Ok(v) => PathBuf::from(v),
+                Err(_) => {
+                    let home = env::current_dir().expect("can't know current directory");
+                    env::set_var(HOME_DIR, &home);
+                    home
+                }
+            },
+        };
+        // check config directory
+        let cnf_dir = home.join("config");
+        if !cnf_dir.exists() {
+            panic!("config path not exist: {} ", cnf_dir.display());
+        }
+        env::set_var(CONFIG_PATH_DIR, cnf_dir);
+        if !download_dir().exists() {
+            std::fs::create_dir(download_dir()).expect("can't init download directory");
+        }
+        if !upload_dir().exists() {
+            std::fs::create_dir(upload_dir()).expect("can't init upload directory");
+        }
+
         let mut cpu_arch = sysinfo::System::cpu_arch().expect("can't know CPU arch info");
         cpu_arch = match cpu_arch.as_str() {
             "aarch64" | "arm64" => "arm64",
@@ -53,6 +99,34 @@ impl CommandExecutor {
             cpu_arch,
             os_id,
             os_version,
+            home,
+            pg_client: OnceLock::new(),
+        }
+    }
+
+    async fn pg_client(&self) -> Result<&tokio_postgres::Client> {
+        if let Some(client) = self.pg_client.get() {
+            Ok(client)
+        } else {
+            let (client, conn) = tokio_postgres::Config::new()
+                .user("postgres")
+                .password("eloq-pub-service-postgresql")
+                .host("18.177.72.104")
+                .port(5432)
+                .dbname("eloq_release")
+                .ssl_mode(SslMode::Prefer)
+                .connect(NoTls)
+                .await
+                .map_err(|e| anyhow!("connect postgres failed: {e}"))?;
+            // The connection object performs the actual communication with the database,
+            // so spawn it off to run on its own.
+            tokio::spawn(async move {
+                if let Err(e) = conn.await {
+                    error!("PG connection error: {}", e);
+                }
+            });
+            self.pg_client.set(client).unwrap();
+            Ok(self.pg_client.get().unwrap())
         }
     }
 
@@ -66,6 +140,18 @@ impl CommandExecutor {
 
     pub fn os_pretty(&self) -> String {
         format!("{}{}", self.os_id, self.os_version)
+    }
+
+    fn dir_home(&self) -> &str {
+        self.home.to_str().expect("invalid home directory")
+    }
+
+    fn dir_config(&self) -> PathBuf {
+        self.home.join("config")
+    }
+
+    fn dir_download(&self) -> PathBuf {
+        self.home.join("download")
     }
 
     async fn save_deployment_config(&self, config: &DeploymentConfig, upsert: bool) -> Result<()> {
@@ -246,9 +332,7 @@ impl CommandExecutor {
             CommandArgs::Versions { product, store } => {
                 return self.list_versions(product.clone(), store.clone()).await
             }
-            CommandArgs::Update { cluster: None, .. } => {
-                unimplemented!()
-            }
+            CommandArgs::Update { cluster: None, .. } => return self.update().await,
             CommandArgs::Launch { .. }
             | CommandArgs::Demo { .. }
             | CommandArgs::Deploy { .. }
@@ -317,10 +401,11 @@ impl CommandExecutor {
                 unimplemented!()
             }
             _ => {
+                let task_mgr = self.task_mgr.clone();
                 let recv_rs_and_print_join = tokio::task::spawn(async move {
                     let not_print_task_rs = option_env!("NOT_PRINT_TASK_RESULT");
                     if not_print_task_rs.is_none() {
-                        self.task_mgr.print_task_result().await;
+                        task_mgr.print_task_result().await;
                     }
                 });
                 // Generate and run tasks
@@ -385,7 +470,7 @@ impl CommandExecutor {
         product: Option<Product>,
         store: Option<StorageProvider>,
     ) -> Result<()> {
-        let client = pg_client().await?;
+        let client = self.pg_client().await?;
         let mut sql = "SELECT * FROM tx_release WHERE arch=$1 AND os=$2".to_owned();
         if let Some(p) = product {
             sql.push_str(&format!(" AND product='{}'", p.name()));
@@ -423,7 +508,7 @@ impl CommandExecutor {
         let store = cnf.storage_service.pretty_name();
         if cnf.version.is_some() && cnf.version_str().to_ascii_lowercase() == "latest" {
             // request latest release version ID
-            let client = pg_client().await?;
+            let client = self.pg_client().await?;
             let row = client
                 .query_one(
                     "SELECT * FROM tx_release WHERE product=$1 AND arch=$2 AND os=$3 AND store=$4
@@ -444,7 +529,7 @@ impl CommandExecutor {
         }
         // cnf.version.as_mut().unwrap().make_ascii_lowercase();
 
-        let mut prefix = PathBuf::from(DOWNLOAD_SRC.as_str());
+        let mut prefix = PathBuf::from(CDN);
         prefix.push(&product);
         prefix.push(self.os_pretty());
         let prefix = prefix.as_path().to_str().unwrap();
@@ -478,8 +563,10 @@ impl CommandExecutor {
         ext_cass_user: Option<String>,
         ext_cass_pwd: Option<String>,
     ) -> Result<DeploymentConfig> {
-        let dir = env::var(CONFIG_PATH_DIR)?;
-        let topology = format!("{dir}/demo-{product}.yaml");
+        let topology = format!(
+            "{}/demo-{product}.yaml",
+            self.dir_config().to_string_lossy()
+        );
         let mut config = DeploymentConfig::load(Some(topology))?;
         let deploy = &mut config.deployment;
         // set storage
@@ -497,7 +584,7 @@ impl CommandExecutor {
                 } else {
                     host = vec!["127.0.0.1".to_owned()];
                     kind = CassKind::Internal(CassDeploy {
-                        mirror: Some("https://d143xau9fe26d8.cloudfront.net".to_owned()),
+                        mirror: Some(CDN.to_owned()),
                         version: "4.1.3".to_owned(),
                         cluster_name: None,
                     });
@@ -545,5 +632,44 @@ impl CommandExecutor {
         }
         self.save_deployment_config(&config, false).await?;
         Ok(config)
+    }
+
+    async fn update(&self) -> Result<()> {
+        let os = self.os_pretty();
+        let arch = &self.cpu_arch;
+        let filename = format!("waiter-{os}-{arch}.tar.gz");
+        let url = format!("{CDN}/waiter/{filename}");
+        info!("Fetching latest package {url}");
+        let resp = HTTP_CLIENT.get(&url).send().await?;
+        if !resp.status().is_success() {
+            bail!("Fetch package failed: {}", resp.status());
+        }
+        let len = resp
+            .content_length()
+            .ok_or_else(|| anyhow!("can't know package size"))?;
+        let mut cache_path = self.dir_download();
+        cache_path.push(filename);
+        if cache_path.exists() {
+            let local_len = std::fs::metadata(&cache_path)?.len();
+            info!("latest package length {len}, local package length {local_len}");
+            if len == local_len {
+                println!("cluster_mgr is already latest");
+                return Ok(());
+            }
+        }
+        // start downloading new package
+        let pg_bar = ProgressBar::new(len);
+        let mut file = pg_bar.wrap_write(std::fs::File::create(&cache_path)?);
+        let mut stream_reader = resp.bytes_stream();
+        while let Some(stream_chunk) = stream_reader.next().await {
+            let chunk = stream_chunk.map_err(|e| anyhow!("download failed: {e}"))?;
+            file.write_all(&chunk)
+                .map_err(|e| anyhow!("can't write file: {e}"))?;
+        }
+        println!(
+            "Execute the following command to complete the update:\n tar -xzvf {} -C {} --strip-components 1 --overwrite",
+            cache_path.to_string_lossy(), self.dir_home()
+        );
+        Ok(())
     }
 }

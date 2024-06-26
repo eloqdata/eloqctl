@@ -6,9 +6,9 @@ if [ -n "$MONO_MIRRORS" ]; then
 fi
 
 case $(uname -s) in
-    Linux|linux) os=linux ;;
-    Darwin|darwin) os=darwin ;;
-    *) os= ;;
+Linux | linux) os=linux ;;
+Darwin | darwin) os=darwin ;;
+*) os= ;;
 esac
 
 if [ -z "$os" ]; then
@@ -17,9 +17,9 @@ if [ -z "$os" ]; then
 fi
 
 case $(uname -m) in
-    amd64|x86_64) arch=amd64 ;;
-    arm64|aarch64) arch=arm64 ;;
-    *) arch= ;;
+amd64 | x86_64) arch=amd64 ;;
+arm64 | aarch64) arch=arm64 ;;
+*) arch= ;;
 esac
 
 if [ -z "$arch" ]; then
@@ -52,16 +52,16 @@ chmod 755 "$bin_dir/cluster_mgr"
 
 # "$bin_dir/cluster_mgr" mirror set $repo
 
-ssh-keygen -t ed25519 -f $CLUSTER_MGR_HOME/ed25519 -q -N ""
-if [ ! -d "${HOME}/.ssh" ]; then
-    mkdir ${HOME}/.ssh
-    chmod 700 ${HOME}/.ssh
-fi
-if [ ! -f "${HOME}/.ssh/authorized_keys" ]; then
-    touch ${HOME}/.ssh/authorized_keys
-    chmod 600 ${HOME}/.ssh/authorized_keys
-fi
-cat $CLUSTER_MGR_HOME/ed25519.pub >> ${HOME}/.ssh/authorized_keys
+# ssh-keygen -t ed25519 -f $CLUSTER_MGR_HOME/ed25519 -q -N ""
+# if [ ! -d "${HOME}/.ssh" ]; then
+#     mkdir ${HOME}/.ssh
+#     chmod 700 ${HOME}/.ssh
+# fi
+# if [ ! -f "${HOME}/.ssh/authorized_keys" ]; then
+#     touch ${HOME}/.ssh/authorized_keys
+#     chmod 600 ${HOME}/.ssh/authorized_keys
+# fi
+# cat $CLUSTER_MGR_HOME/ed25519.pub >> ${HOME}/.ssh/authorized_keys
 
 bold=$(tput bold 2>/dev/null)
 sgr0=$(tput sgr0 2>/dev/null)
@@ -81,12 +81,13 @@ fi
 # echo "Shell profile:  ${bold}$PROFILE${sgr0}"
 
 case :$PATH: in
-    *:$bin_dir:*)
-        echo "PATH already contains $bin_dir" ;;
-    *)
-        printf '\nexport PATH=%s:$PATH\nexport CLUSTER_MGR_HOME=%s\n' "$bin_dir" "$CLUSTER_MGR_HOME" >> "$PROFILE"
-        echo "$PROFILE has been modified to add cluster_mgr to PATH"
-        ;;
+*:$bin_dir:*)
+    echo "PATH already contains $bin_dir"
+    ;;
+*)
+    printf '\nexport PATH=%s:$PATH\nexport CLUSTER_MGR_HOME=%s\n' "$bin_dir" "$CLUSTER_MGR_HOME" >>"$PROFILE"
+    echo "$PROFILE has been modified to add cluster_mgr to PATH"
+    ;;
 esac
 
 # echo "Installed path: ${bold}$bin_dir/cluster_mgr${sgr0}"

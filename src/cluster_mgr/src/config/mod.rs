@@ -1,7 +1,6 @@
 use crate::config::ConfigErr::DownloadUrlFormatErr;
 use anyhow::anyhow;
 use itertools::Itertools;
-use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_yaml::Value;
 use std::collections::HashMap;
@@ -52,7 +51,7 @@ pub const CREATE_MONITOR_USER_SQL_FILE: &str = "create_monitor_user.sql";
 pub const MYSQL_EXPORTER_CLIENT_CONFIG: &str = "mysql_exporter.cnf";
 
 pub const CLOUDFRONT: &str = "d143xau9fe26d8.cloudfront.net";
-pub static DOWNLOAD_SRC: Lazy<String> = Lazy::new(|| format!("https://{CLOUDFRONT}"));
+pub const CDN: &str = "https://d143xau9fe26d8.cloudfront.net";
 
 #[macro_export]
 macro_rules! gen_db_script {

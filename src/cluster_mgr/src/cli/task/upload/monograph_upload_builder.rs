@@ -97,7 +97,7 @@ impl MonographUploadBuilder {
         tx_hosts_cloned
             .into_iter()
             .map(|host| {
-                let source_files = list_files_by_host(&host, config.product()).join(" ");
+                let source_files = list_files_by_host(&host, &config.deployment).join(" ");
                 UploadFile {
                     source: source_files,
                     dest: dest_file.clone(),

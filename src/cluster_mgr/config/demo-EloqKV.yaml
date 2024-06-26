@@ -2,7 +2,7 @@ connection:
   username: "${USER}"
   auth_type: "keypair"
   auth:
-    keypair: "${CLUSTER_MGR_HOME}/ed25519"
+    keypair: "/home/${USER}/.ssh/id_rsa"
 deployment:
   cluster_name: "demo-kv"
   product: "EloqKV"

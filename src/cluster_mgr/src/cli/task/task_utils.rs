@@ -85,11 +85,9 @@ where
         return Err(anyhow!("Cmd {} execution fails", find_ps_cmd));
     }
     let cmd_output_value = cmd_exec_rs.get(CMD_OUTPUT).unwrap();
-    let pid_output_string = TaskArgValue::into_inner_value::<String>(cmd_output_value.clone());
-    info!(
-        "check_process_pid cmd={},output={}",
-        find_ps_cmd, pid_output_string
-    );
+    let pid_output_string = TaskArgValue::into_inner_value::<String>(cmd_output_value.clone())
+        .trim()
+        .to_owned();
     if let Some(ref val) = ps_output_parse(pid_output_string) {
         let val_any = val as &dyn Any;
         if val_any.type_id() == TypeId::of::<i32>() {

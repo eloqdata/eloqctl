@@ -9,7 +9,7 @@ use crate::cli::task::upload::upload_task::UploadTask;
 use crate::cli::{upload_dir, upload_host_dir};
 use crate::config::config_base::{DeploymentConfig, UploadFile};
 use crate::config::connection::Connection;
-use crate::config::deployment::Product;
+use crate::config::deployment::{Deployment, Product};
 use crate::config::{CREATE_MONITOR_USER_SQL_FILE, MONOGRAPH_INSTALL_SCRIPT};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -124,17 +124,19 @@ pub(crate) fn get_source_host(host: Option<String>) -> String {
     }
 }
 
-pub(crate) fn list_files_by_host(host: &str, product: Product) -> Vec<String> {
+pub(crate) fn list_files_by_host(host: &str, config: &Deployment) -> Vec<String> {
     let mut paths = WalkDir::new(upload_host_dir(host))
         .min_depth(1)
         .into_iter()
         .filter_map(|entry_rs| entry_rs.ok())
         .map(|entry| entry.into_path())
         .collect_vec();
-    if product == Product::EloqSQL {
+    if config.product() == Product::EloqSQL {
         paths.push(upload_dir().join("my_local.cnf"));
         paths.push(upload_dir().join(MONOGRAPH_INSTALL_SCRIPT));
-        paths.push(upload_dir().join(CREATE_MONITOR_USER_SQL_FILE));
+        if config.monitor.is_some() {
+            paths.push(upload_dir().join(CREATE_MONITOR_USER_SQL_FILE));
+        }
     }
     paths
         .into_iter()

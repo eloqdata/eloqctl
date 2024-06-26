@@ -3,8 +3,12 @@ set -exo pipefail
 
 # prepare environment
 source /etc/os-release
-if [[ "$ID" == "centos" ]]; then
-  sudo yum install -y epel-release && sudo yum update -y && sudo yum install -y sudo openssh-server iproute redis-tools
+if [ "$ID" == "centos" ]; then
+  if [ "$VERSION_ID" == "7" ]; then
+    sudo yum install -y epel-release && sudo yum update -y && sudo yum install -y sudo openssh-server iproute redis-tools
+  else
+    sudo dnf install -y epel-release && sudo dnf update -y && sudo dnf install -y sudo openssh-server iproute redis
+  fi
   sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -N ''
   sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_dsa_key -N ''
   sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_ed25519_key -N ''
@@ -13,7 +17,7 @@ if [[ "$ID" == "centos" ]]; then
   if [ -f "/run/nologin" ]; then
     sudo rm /run/nologin
   fi
-elif [[ "$ID" == "ubuntu" ]]; then
+elif [ "$ID" == "ubuntu" ]; then
   sudo apt update && DEBIAN_FRONTEND=noninteractive sudo apt install -y sudo openssh-server iproute2 redis-tools
   sudo service ssh start
 fi

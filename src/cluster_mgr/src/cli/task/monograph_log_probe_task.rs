@@ -1,3 +1,4 @@
+use crate::cli::cmd_base::HTTP_INTERNAL;
 use crate::cli::task::task_base::CmdErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
@@ -129,16 +130,7 @@ impl MonographLogProbeTask {
     }
 
     async fn action(&self) -> ExecutionValue {
-        let client_rs = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(1))
-            .build();
-        if let Err(client_build_err) = client_rs {
-            let err_msg = client_build_err.to_string();
-            let http_client_init_err = self.build_command_result(-1, err_msg);
-            return http_client_init_err;
-        }
         let expect_leader_count = self.check_health_url.len();
-        let http_client = client_rs.unwrap();
         let mut interval = tokio::time::interval(Duration::from_millis(300));
         let success = self.readiness.success_threshold.unwrap_or(3);
         let mut success_counter = 0_usize;
@@ -149,7 +141,7 @@ impl MonographLogProbeTask {
                 .flat_map(|(group_id, urls)| {
                     urls.iter()
                         .map(|url| {
-                            let send_fut = http_client.clone().get(url).send();
+                            let send_fut = HTTP_INTERNAL.get(url).send();
                             async move { (*group_id, send_fut.await) }
                         })
                         .collect_vec()
