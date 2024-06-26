@@ -22,7 +22,7 @@ cluster_mgr demo eloq-kv --skip-deps --unlimited --ext-cass ${CASSANDRA_ADDR}
 CLIENT=$(cluster_mgr -q connect demo-kv-cassandra)
 cluster_mgr status demo-kv-cassandra --wait 5
 eval ${CLIENT} incr mycounter
-cluster_mgr restart demo-kv-cassandra --all
+cluster_mgr restart demo-kv-cassandra
 cluster_mgr status demo-kv-cassandra --wait 5
 eval ${CLIENT} incr mycounter
 cluster_mgr remove demo-kv-cassandra
