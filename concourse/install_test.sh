@@ -34,7 +34,11 @@ cat ${HOME}/.ssh/id_rsa.pub >>${HOME}/.ssh/authorized_keys
 cat ${CLUSTER_MGR_HOME}/version
 
 bash ${CLUSTER_MGR_HOME}/tests/demo.sh
-sleep 15
+sleep 10
 bash ${CLUSTER_MGR_HOME}/tests/launch.sh
-sleep 15
+
+sleep 10
+wget https://downloads.datastax.com/enterprise/cqlsh-astra.tar.gz
+tar -xzvf cqlsh-astra.tar.gz
+export PATH=$PATH:$HOME/cqlsh-astra/bin
 bash ${CLUSTER_MGR_HOME}/tests/external_cass.sh 172.31.5.203
