@@ -20,9 +20,9 @@ pub mod log_service;
 pub mod monitor;
 pub mod storage_service_config;
 
-pub const ELOQSQL_TEMP: &str = "eloqsql.ini";
-pub const ELOQSQL_DYNAMO_TEMP: &str = "eloqsql_dynamo.ini";
-pub const ELOQKV_TEMP: &str = "eloqkv.ini";
+pub const ELOQSQL_INI: &str = "EloqSql.ini";
+pub const ELOQSQL_DYNAMO_INI: &str = "EloqSqlDynamo.ini";
+pub const ELOQKV_INI: &str = "EloqKv.ini";
 pub const CODIS_PROXY_CNF: &str = "codis_proxy.toml";
 pub const CODIS_DASHBOARD_CNF: &str = "codis_dashboard.toml";
 

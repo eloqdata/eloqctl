@@ -21,17 +21,7 @@ impl TaskGroup for LaunchTaskGroup {
                 skip_deps,
             } => (skip_deps, topology_file),
             CommandArgs::Demo {
-                product,
-                store: _,
-                version: _,
-                skip_deps,
-                unlimited: _,
-                no_monitor: _,
-                union_wal: _,
-                ext_cass: _,
-                ext_cass_port: _,
-                ext_cass_user: _,
-                ext_cass_pwd: _,
+                product, skip_deps, ..
             } => {
                 let topo = format!("{}/demo-{product}.yaml", env::var(CONFIG_PATH_DIR)?);
                 (skip_deps, topo)
@@ -40,18 +30,22 @@ impl TaskGroup for LaunchTaskGroup {
                 unreachable!()
             }
         };
-        let mut exe_ctx = vec![
+        let dep_tasks = if skip_deps {
+            TaskExecutionContext::dummy()
+        } else {
+            let cmd = CommandArgs::RunDeps {
+                topology_file: topo_file.clone(),
+            };
+            InstallRuntimeDepsTaskGroup
+                .tasks(cmd, config.clone())
+                .await?
+        };
+
+        let exe_ctx = vec![
+            dep_tasks,
             CheckTaskGroup
                 .tasks(
                     CommandArgs::Check {
-                        topology_file: topo_file.clone(),
-                    },
-                    config.clone(),
-                )
-                .await?,
-            InstallRuntimeDepsTaskGroup
-                .tasks(
-                    CommandArgs::RunDeps {
                         topology_file: topo_file.clone(),
                     },
                     config.clone(),
@@ -102,9 +96,6 @@ impl TaskGroup for LaunchTaskGroup {
                 )
                 .await?,
         ];
-        if skip_deps {
-            exe_ctx.remove(1);
-        }
         let (barrier, executable) = merge_execution(exe_ctx);
 
         Ok(TaskExecutionContext {

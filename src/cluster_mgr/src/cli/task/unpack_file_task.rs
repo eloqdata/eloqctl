@@ -8,11 +8,10 @@ use crate::config::DownloadUrl;
 use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
+use itertools::Itertools;
 use std::collections::HashMap;
 use tracing::info;
 
-pub(crate) const REMOTE_TAR: &str = "remote_tar";
-pub(crate) const UNPACKED_NAME: &str = "unpacked_name";
 pub(crate) const REMOTE_UNPACKED_NAMES: [&str; 8] = [
     "cassandra",
     "prometheus",
@@ -28,6 +27,9 @@ pub(crate) const REMOTE_UNPACKED_NAMES: [&str; 8] = [
 pub struct UnpackFileTask {
     config: DeploymentConfig,
     task_id: TaskId,
+    tarball: String,
+    unpack_dest: String,
+    exclude: Vec<String>,
 }
 
 fn extract_unpacked_name(raw_file_name: &str) -> String {
@@ -65,7 +67,7 @@ impl UnpackFileTask {
                 let curr_file_name = packed_file.file_name();
                 let remote_host = &unpack_location.host;
 
-                let unpacked_file = if curr_file_name.eq(&log_image) {
+                let unpack_dest = if curr_file_name.eq(&log_image) {
                     LOG_SERVICE_HOME.to_string()
                 } else if curr_file_name.eq(&tx_image) {
                     config.product().home().to_owned()
@@ -73,7 +75,7 @@ impl UnpackFileTask {
                     extract_unpacked_name(curr_file_name.as_str())
                 };
 
-                let remote_tarball = format!("{remote_install_dir}/{curr_file_name}");
+                let tarball = format!("{remote_install_dir}/{curr_file_name}");
                 let task_host = TaskHost::Remote {
                     user: conn_usr.clone(),
                     port: ssh_port as usize,
@@ -87,13 +89,13 @@ impl UnpackFileTask {
                 (
                     task_id.clone(),
                     TaskInstance {
-                        task_input: HashMap::from([
-                            (REMOTE_TAR.to_string(), TaskArgValue::Str(remote_tarball)),
-                            (UNPACKED_NAME.to_string(), TaskArgValue::Str(unpacked_file)),
-                        ]),
+                        task_input: HashMap::default(),
                         task: Box::new(UnpackFileTask {
                             config: config.clone(),
                             task_id,
+                            tarball,
+                            unpack_dest,
+                            exclude: vec![],
                         }),
                         task_host,
                     },
@@ -104,7 +106,7 @@ impl UnpackFileTask {
         Ok(unpack_task_instance)
     }
 
-    pub fn unpack_eloq_servers_image(config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
+    pub fn unpack_eloqservers(config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
         let deploy_ref = &config.deployment;
         let image = deploy_ref.tx_image().split('/').last().unwrap();
         let tx_home = config.product().home().to_owned();
@@ -112,30 +114,42 @@ impl UnpackFileTask {
             .tx_service
             .host
             .iter()
-            .map(|host| Self::make_task_pair(config, host, image, &tx_home))
+            .map(|host| Self::make_task_pair(config, host, image, &tx_home, vec![]))
             .collect::<IndexMap<TaskId, TaskInstance>>();
         if let Some(srv) = &deploy_ref.log_service {
             let image = srv.image.as_ref().unwrap().split('/').last().unwrap();
             let ret = srv
                 .log_host_unique()
                 .iter()
-                .map(|host| Self::make_task_pair(config, host, image, LOG_SERVICE_HOME))
+                .map(|host| Self::make_task_pair(config, host, image, LOG_SERVICE_HOME, vec![]))
                 .collect::<IndexMap<TaskId, TaskInstance>>();
             tasks.extend(ret);
         }
         tasks
     }
 
-    pub fn unpack_cassandra_image(config: &DeploymentConfig) -> IndexMap<TaskId, TaskInstance> {
+    pub fn unpack_cassandra(
+        config: &DeploymentConfig,
+        ex_cnf: bool,
+    ) -> IndexMap<TaskId, TaskInstance> {
         let deploy_ref = &config.deployment;
         if let Some(cass) = &deploy_ref.storage_service.cassandra {
             if let CassKind::Internal(cdp) = &cass.kind {
                 let image = cdp.image_file();
                 let home = extract_unpacked_name(&image);
+                let exclude = if ex_cnf {
+                    vec![
+                        "conf/cassandra.yaml".to_owned(),
+                        "conf/jvm11-server.options".to_owned(),
+                        "conf/cassandra-env.sh".to_owned(),
+                    ]
+                } else {
+                    vec![]
+                };
                 return cass
                     .host
                     .iter()
-                    .map(|host| Self::make_task_pair(config, host, &image, &home))
+                    .map(|host| Self::make_task_pair(config, host, &image, &home, exclude.clone()))
                     .collect();
             }
         }
@@ -147,15 +161,9 @@ impl UnpackFileTask {
         host: &str,
         image: &str,
         home: &str,
+        exclude: Vec<String>,
     ) -> (TaskId, TaskInstance) {
-        let remote_img = format!("{}/{image}", config.deployment.install_dir());
-        let task_input = HashMap::from([
-            (REMOTE_TAR.to_string(), TaskArgValue::Str(remote_img)),
-            (
-                UNPACKED_NAME.to_string(),
-                TaskArgValue::Str(home.to_owned()),
-            ),
-        ]);
+        let tarball = format!("{}/{image}", config.deployment.install_dir());
         let task_host = TaskHost::Remote {
             user: config.connection.username.clone(),
             port: config.connection.ssh_port() as usize,
@@ -169,9 +177,12 @@ impl UnpackFileTask {
         let task = UnpackFileTask {
             config: config.clone(),
             task_id: task_id.clone(),
+            tarball,
+            unpack_dest: home.to_owned(),
+            exclude,
         };
         let inst = TaskInstance {
-            task_input: task_input.clone(),
+            task_input: HashMap::default(),
             task: Box::new(task),
             task_host,
         };
@@ -188,7 +199,7 @@ impl TaskExecutor for UnpackFileTask {
     async fn execute(
         &self,
         task_host: TaskHost,
-        task_input: HashMap<String, TaskArgValue>,
+        _task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         info!("execute {}", self.task_id.pretty_string());
         let ssh_session = SSHSession::from_task_host(
@@ -196,17 +207,22 @@ impl TaskExecutor for UnpackFileTask {
             self.config.connection.ssh_auth_key().unwrap().to_string(),
         )
         .await?;
-        let remote_tar =
-            TaskArgValue::into_inner_value::<String>(task_input.get(REMOTE_TAR).unwrap().clone());
-        let unpacked_name = TaskArgValue::into_inner_value::<String>(
-            task_input.get(UNPACKED_NAME).unwrap().clone(),
-        );
-        let target_dir = format!("{}/{unpacked_name}", self.config.install_dir());
-        let mut unpack_cmd = format!(
-            r#"mkdir -p {target_dir}; tar -zxvf {remote_tar} -C {target_dir} --strip-components 1 --overwrite"#,
-        );
-        unpack_cmd = format!("{unpack_cmd} && rm -rf {remote_tar}");
+        let tarball = &self.tarball;
+        let target = format!("{}/{}", self.config.install_dir(), self.unpack_dest);
+        let exclude = self
+            .exclude
+            .iter()
+            .map(|ex| format!("--exclude='{ex}'"))
+            .join(" ");
+
+        let mut cmds = vec![format!("mkdir -p {target}")];
+        cmds.push(format!(
+            "tar -zxvf {tarball} -C {target} --strip-components 1 --overwrite {exclude}"
+        ));
+        cmds.push(format!("rm -rf {tarball}"));
+        let unpack_cmd = cmds.join(" && ");
         info!("UnpackFileTask cmd={unpack_cmd}");
+
         let task_rs = ssh_session
             .command(unpack_cmd.as_str(), SSHCommandOption::None)
             .await?;

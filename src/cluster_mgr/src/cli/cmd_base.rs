@@ -92,7 +92,7 @@ impl CommandExecutor {
         }
         .to_owned();
         let os_id = sysinfo::System::distribution_id();
-        let os_version = sysinfo::System::os_version().unwrap().replace('.', "");
+        let os_version = sysinfo::System::os_version().unwrap();
         Self {
             task_mgr: Arc::new(TaskMgr::new()),
             state_mgr: Arc::new(STATE_MGR.clone()),
@@ -139,7 +139,7 @@ impl CommandExecutor {
     }
 
     pub fn os_pretty(&self) -> String {
-        format!("{}{}", self.os_id, self.os_version)
+        format!("{}{}", self.os_id, self.os_version.replace('.', ""))
     }
 
     pub fn os_short(&self) -> String {
@@ -196,7 +196,7 @@ impl CommandExecutor {
     }
 
     async fn get_config(&self, cmd: CommandArgs) -> anyhow::Result<DeploymentConfig> {
-        match cmd.clone() {
+        match cmd {
             CommandArgs::Deploy { topology_file }
             | CommandArgs::Launch {
                 topology_file,
@@ -209,33 +209,7 @@ impl CommandExecutor {
                 info!("CmdExecutor Save DeploymentConfig successfully.");
                 Ok(config)
             }
-            CommandArgs::Demo {
-                product,
-                store,
-                version,
-                skip_deps: _,
-                unlimited,
-                no_monitor,
-                union_wal,
-                ext_cass,
-                ext_cass_port,
-                ext_cass_user,
-                ext_cass_pwd,
-            } => {
-                self.gen_demo_config(
-                    product,
-                    store,
-                    version,
-                    unlimited,
-                    no_monitor,
-                    union_wal,
-                    ext_cass,
-                    ext_cass_port,
-                    ext_cass_user,
-                    ext_cass_pwd,
-                )
-                .await
-            }
+            CommandArgs::Demo { .. } => self.gen_demo_config(cmd).await,
             CommandArgs::Install { cluster }
             | CommandArgs::Stop {
                 cluster,
@@ -558,88 +532,104 @@ impl CommandExecutor {
         Ok(())
     }
 
-    async fn gen_demo_config(
-        &self,
-        product: Product,
-        store: StorageProvider,
-        version: String,
-        unlimited: bool,
-        no_monitor: bool,
-        union_wal: bool,
-        ext_cass: Vec<String>,
-        ext_cass_port: Option<u16>,
-        ext_cass_user: Option<String>,
-        ext_cass_pwd: Option<String>,
-    ) -> Result<DeploymentConfig> {
-        let topology = format!(
-            "{}/demo-{product}.yaml",
-            self.dir_config().to_string_lossy()
-        );
-        let mut config = DeploymentConfig::load(Some(topology))?;
-        let deploy = &mut config.deployment;
-        // set storage
-        match store {
-            StorageProvider::Cassandra => {
-                let host;
-                let kind;
-                if !ext_cass.is_empty() {
-                    host = ext_cass;
-                    kind = CassKind::External(CassConnect {
-                        port: ext_cass_port,
-                        user: ext_cass_user,
-                        password: ext_cass_pwd,
-                    });
-                } else {
-                    host = vec!["127.0.0.1".to_owned()];
-                    kind = CassKind::Internal(CassDeploy {
-                        mirror: Some(CDN.to_owned()),
-                        version: "4.1.3".to_owned(),
-                        cluster_name: None,
-                    });
-                };
-                deploy.storage_service.cassandra = Some(Cassandra { host, kind });
+    async fn gen_demo_config(&self, cmd: CommandArgs) -> Result<DeploymentConfig> {
+        match cmd {
+            CommandArgs::Demo {
+                product,
+                store,
+                version,
+                skip_deps: _,
+                unlimited,
+                no_monitor,
+                union_wal,
+                ext_cass,
+                cass_port,
+                cass_auth,
+            } => {
+                let topology = format!(
+                    "{}/demo-{product}.yaml",
+                    self.dir_config().to_string_lossy()
+                );
+                let mut config = DeploymentConfig::load(Some(topology))?;
+                let deploy = &mut config.deployment;
+                // set storage
+                match store {
+                    StorageProvider::Cassandra => {
+                        let host;
+                        let kind;
+                        if !ext_cass.is_empty() {
+                            host = ext_cass;
+                            let mut user = None;
+                            let mut password = None;
+                            if let Some(auth) = cass_auth {
+                                if let Some((u, p)) = auth.split_once(':') {
+                                    if !u.is_empty() {
+                                        user = Some(u.to_owned());
+                                    }
+                                    if !p.is_empty() {
+                                        password = Some(p.to_owned());
+                                    }
+                                }
+                            }
+                            kind = CassKind::External(CassConnect {
+                                port: cass_port,
+                                user,
+                                password,
+                            });
+                        } else {
+                            host = vec!["127.0.0.1".to_owned()];
+                            kind = CassKind::Internal(CassDeploy {
+                                mirror: Some(CDN.to_owned()),
+                                version: "4.1.3".to_owned(),
+                                cluster_name: None,
+                            });
+                        };
+                        deploy.storage_service.cassandra = Some(Cassandra { host, kind });
+                    }
+                    StorageProvider::Dynamodb => unimplemented!(),
+                    StorageProvider::Rocksdb => {
+                        deploy.storage_service.rocksdb = Some(RocksDB::Local);
+                    }
+                }
+                // set log-service
+                if union_wal {
+                    deploy.log_service = None;
+                } else if let Some(log) = deploy.log_service.as_mut() {
+                    // add an unique number (pid) to WAL directory
+                    let pid = std::process::id().to_string();
+                    log.nodes
+                        .first_mut()
+                        .unwrap()
+                        .data_dir
+                        .first_mut()
+                        .unwrap()
+                        .push_str(&pid);
+                }
+                // set monitor
+                if no_monitor {
+                    deploy.monitor = None;
+                }
+                if let Some(monitor) = &mut deploy.monitor {
+                    if store != StorageProvider::Cassandra {
+                        monitor.cassandra_collector = None
+                    }
+                }
+                // set version
+                deploy.version.replace(version);
+                // set image URL
+                self.resolve_version(deploy).await?;
+                // add kv-store name to cluster name suffix
+                let name_suffix = format!("-{store}");
+                deploy.cluster_name.push_str(&name_suffix);
+                if unlimited {
+                    deploy.hardware = None;
+                    config.scan_hardware().await?;
+                }
+                self.save_deployment_config(&config, false).await?;
+                return Ok(config);
             }
-            StorageProvider::Dynamodb => unimplemented!(),
-            StorageProvider::Rocksdb => {
-                deploy.storage_service.rocksdb = Some(RocksDB::Local);
-            }
-        }
-        // set log-service
-        if union_wal {
-            deploy.log_service = None;
-        } else if let Some(log) = deploy.log_service.as_mut() {
-            // add an unique number (pid) to WAL directory
-            let pid = std::process::id().to_string();
-            log.nodes
-                .first_mut()
-                .unwrap()
-                .data_dir
-                .first_mut()
-                .unwrap()
-                .push_str(&pid);
-        }
-        // set monitor
-        if no_monitor {
-            deploy.monitor = None;
-        }
-        if let Some(monitor) = &mut deploy.monitor {
-            if store != StorageProvider::Cassandra {
-                monitor.cassandra_collector = None
-            }
-        }
-        // set version
-        deploy.version.replace(version);
-        // set image URL
-        self.resolve_version(deploy).await?;
-        // add kv-store name to cluster name suffix
-        let name_suffix = format!("-{store}");
-        deploy.cluster_name.push_str(&name_suffix);
-        if unlimited {
-            deploy.hardware = None;
-            config.scan_hardware().await?;
-        }
-        self.save_deployment_config(&config, false).await?;
-        Ok(config)
+            _ => unreachable!(),
+        };
     }
 
     async fn update(&self) -> Result<()> {

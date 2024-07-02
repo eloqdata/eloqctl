@@ -1,6 +1,5 @@
 use crate::cli::upload_dir;
 use crate::config::config_base::CASSANDRA_COLLECTOR_AGENT_FILE_KEY;
-use crate::config::monitor::Monitor;
 use crate::config::{
     config_template, load_yaml_config_template, StorageProvider, CASSANDRA_CONF_TEMPLATE,
     CASSANDRA_ENV_TEMPLATE,
@@ -10,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -149,35 +149,17 @@ impl StorageService {
         name
     }
 
-    pub fn gen_cassandra_env(
-        &self,
-        install_dir: String,
-        monitor_opt: Option<&Monitor>,
-    ) -> anyhow::Result<bool> {
-        if let Some(monitor) = monitor_opt {
-            if monitor.cassandra_collector.is_some() {
-                // let install_dir = self.install_dir();
-                let mcac_root =
-                    format!("MCAC_ROOT={install_dir}/{CASSANDRA_COLLECTOR_AGENT_FILE_KEY}\n",);
-                let append_jvm_opts =
-                    r#"JVM_OPTS="$JVM_OPTS -javaagent:${MCAC_ROOT}/lib/datastax-mcac-agent.jar""#;
-
-                let cass_env_file_path = config_template(CASSANDRA_ENV_TEMPLATE)?;
-                let final_cass_env = upload_dir().join("cassandra-env.sh");
-                fs::copy(cass_env_file_path, final_cass_env.clone())?;
-                let mut cass_env_file = File::options()
-                    .write(true)
-                    .append(true)
-                    .open(final_cass_env)?;
-                cass_env_file.write_all(mcac_root.as_bytes())?;
-                cass_env_file.write_all(append_jvm_opts.as_bytes())?;
-                cass_env_file.flush()?;
-                Ok(true)
-            } else {
-                Ok(false)
-            }
-        } else {
-            Ok(false)
-        }
+    pub fn gen_cassandra_env(&self, install_dir: String) -> Result<PathBuf> {
+        let mcac_root = format!("MCAC_ROOT={install_dir}/{CASSANDRA_COLLECTOR_AGENT_FILE_KEY}\n",);
+        let append_jvm_opts =
+            r#"JVM_OPTS="$JVM_OPTS -javaagent:${MCAC_ROOT}/lib/datastax-mcac-agent.jar""#;
+        let cass_env_file_path = config_template(CASSANDRA_ENV_TEMPLATE)?;
+        let env_sh = upload_dir().join("cassandra-env.sh");
+        fs::copy(cass_env_file_path, env_sh.clone())?;
+        let mut cass_env_file = File::options().write(true).append(true).open(&env_sh)?;
+        cass_env_file.write_all(mcac_root.as_bytes())?;
+        cass_env_file.write_all(append_jvm_opts.as_bytes())?;
+        cass_env_file.flush()?;
+        Ok(env_sh)
     }
 }

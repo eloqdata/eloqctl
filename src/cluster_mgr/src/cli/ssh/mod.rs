@@ -49,6 +49,7 @@ impl SSHSession {
     pub async fn from_task_host(host: TaskHost, key_path: String) -> anyhow::Result<Self> {
         match host {
             TaskHost::Remote { user, port, hosts } => {
+                info!("ssh connect key {key_path}");
                 SSHSession::connect(key_path, user.as_str(), hosts.as_str(), port).await
             }
             _ => {
@@ -85,7 +86,7 @@ impl SSHSession {
             .authenticate_publickey(user, Arc::new(key_pair))
             .await?
         {
-            bail!("SSH auth failed {user}@{host}")
+            bail!("ssh auth failed {user}@{ssh_addr}")
         }
         Ok(Self {
             session: Arc::new(Mutex::new(session)),

@@ -166,14 +166,12 @@ pub enum CommandArgs {
         no_monitor: bool,
         #[arg(long, default_value_t = false)]
         union_wal: bool,
-        #[arg(long, value_delimiter = ';', value_name = "CONTACT-POINTS")]
+        #[arg(long, value_delimiter = ';', value_name = "contact-points")]
         ext_cass: Vec<String>,
         #[arg(long)]
-        ext_cass_port: Option<u16>,
-        #[arg(long)]
-        ext_cass_user: Option<String>,
-        #[arg(long)]
-        ext_cass_pwd: Option<String>,
+        cass_port: Option<u16>,
+        #[arg(long, value_name = "user:password")]
+        cass_auth: Option<String>,
     },
     #[command(long_about = "List created clusters")]
     #[strum(serialize = "list")]

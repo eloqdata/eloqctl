@@ -37,6 +37,14 @@ impl TaskExecutionContext {
     pub fn list_task_ids(&self) -> Vec<TaskId> {
         self.executable.keys().cloned().collect_vec()
     }
+
+    pub fn dummy() -> Self {
+        Self {
+            task_group: "dummy".to_owned(),
+            barrier: None,
+            executable: IndexMap::new(),
+        }
+    }
 }
 
 #[macro_export]
