@@ -6,7 +6,6 @@ jobs:
           limit: 2
           steps:
             - get: monograph_waiter
-              trigger: true
             - get: image_centos7
       - task: build_waiter
         file: monograph_waiter/concourse/task_build.yaml
@@ -64,7 +63,6 @@ jobs:
           limit: 2
           steps:
             - get: monograph_waiter
-              trigger: true
             - get: image_ubuntu2004
       - task: build_waiter
         file: monograph_waiter/concourse/task_build.yaml
