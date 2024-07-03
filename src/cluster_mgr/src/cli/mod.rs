@@ -15,10 +15,10 @@ pub const CMD_OUTPUT: &str = "_cmd_output_";
 pub const CMD: &str = "_cmd_";
 
 #[derive(Parser, Default, Debug)]
-#[command(author, version = "1.0.0", about = "MonographDB Cluster Manager Cli")]
+#[command(author, version = "0.0.0", about = "EloqData cluster management tool")]
 #[command(next_line_help = true)]
 pub struct ClusterMgrCommandArgs {
-    #[arg(long, value_name = "HOME_DIR")]
+    #[arg(long, value_name = "home-dir")]
     pub home: Option<PathBuf>,
     #[arg(short, long, default_value_t = false)]
     pub quiet: bool,

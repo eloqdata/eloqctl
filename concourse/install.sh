@@ -7,18 +7,16 @@ if [ -n "$MONO_MIRRORS" ]; then
 fi
 
 case $(uname -m) in
-amd64 | x86_64) arch=amd64 ;;
-arm64 | aarch64) arch=arm64 ;;
-*) arch= ;;
+amd64 | x86_64) ARCH=amd64 ;;
+arm64 | aarch64) ARCH=arm64 ;;
+*) ARCH= $(uname -m) ;;
 esac
 
-if [ -z "$arch" ]; then
-    echo "Architecture  $(uname -m) not supported." >&2
-    exit 1
+if [[ "$ID" == "centos" ]] || [[ "$ID" == "rocky" ]]; then
+    OS_ID="rhel${VERSION_ID%.*}"
+else
+    OS_ID="${ID}${VERSION_ID%.*}"
 fi
-
-OS_ID="${ID}${VERSION_ID%.*}"
-echo $OS_ID
 
 if [ -z "$CLUSTER_MGR_HOME" ]; then
     CLUSTER_MGR_HOME=${HOME}/.eloqwaiter
@@ -27,7 +25,7 @@ bin_dir=$CLUSTER_MGR_HOME
 mkdir -p "$bin_dir"
 
 install_binary() {
-    curl "$repo/waiter/waiter-${OS_ID}-${arch}.tar.gz?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqwaiter.tar.gz" || return 1
+    curl "$repo/waiter/waiter-${OS_ID}-${ARCH}.tar.gz?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqwaiter.tar.gz" || return 1
     tar -zxf "/tmp/eloqwaiter.tar.gz" -C "$CLUSTER_MGR_HOME" --strip-components 1 --overwrite || return 1
     rm "/tmp/eloqwaiter.tar.gz"
     return 0
@@ -39,19 +37,6 @@ if ! install_binary; then
 fi
 
 chmod 755 "$bin_dir/cluster_mgr"
-
-# "$bin_dir/cluster_mgr" mirror set $repo
-
-# ssh-keygen -t ed25519 -f $CLUSTER_MGR_HOME/ed25519 -q -N ""
-# if [ ! -d "${HOME}/.ssh" ]; then
-#     mkdir ${HOME}/.ssh
-#     chmod 700 ${HOME}/.ssh
-# fi
-# if [ ! -f "${HOME}/.ssh/authorized_keys" ]; then
-#     touch ${HOME}/.ssh/authorized_keys
-#     chmod 600 ${HOME}/.ssh/authorized_keys
-# fi
-# cat $CLUSTER_MGR_HOME/ed25519.pub >> ${HOME}/.ssh/authorized_keys
 
 bold=$(tput bold 2>/dev/null)
 sgr0=$(tput sgr0 2>/dev/null)

@@ -138,16 +138,17 @@ impl CommandExecutor {
         &self.state_mgr
     }
 
-    pub fn os_pretty(&self) -> String {
-        format!("{}{}", self.os_id, self.os_version.replace('.', ""))
-    }
-
-    pub fn os_short(&self) -> String {
-        let short = match self.os_version.find('.') {
+    pub fn os_vers(&self) -> String {
+        let version = match self.os_version.find('.') {
             Some(i) => &self.os_version[..i],
             None => &self.os_version,
         };
-        format!("{}{}", self.os_id, short)
+        let os = if self.os_id.contains("centos") || self.os_id.contains("rocky") {
+            "rhel"
+        } else {
+            &self.os_id
+        };
+        format!("{os}{version}")
     }
 
     fn dir_home(&self) -> &str {
@@ -462,7 +463,7 @@ impl CommandExecutor {
         }
 
         let list = client
-            .query(&sql, &[&self.cpu_arch, &self.os_pretty()])
+            .query(&sql, &[&self.cpu_arch, &self.os_vers()])
             .await?
             .into_iter()
             .map(|row| {
@@ -487,6 +488,7 @@ impl CommandExecutor {
     pub async fn resolve_version(&self, cnf: &mut Deployment) -> Result<()> {
         let product = cnf.product().name().to_owned();
         let arch = &self.cpu_arch;
+        let os = self.os_vers();
         let store = cnf.storage_service.pretty_name();
         if cnf.version.is_some() && cnf.version_str().to_ascii_lowercase() == "latest" {
             // request latest release version ID
@@ -495,7 +497,7 @@ impl CommandExecutor {
                 .query_one(
                     "SELECT * FROM tx_release WHERE product=$1 AND arch=$2 AND os=$3 AND store=$4
                          ORDER BY version_major DESC,version_minor DESC,version_build DESC LIMIT 1",
-                    &[&product, &arch, &self.os_pretty(), &store],
+                    &[&product, &arch, &os, &store],
                 )
                 .await
                 .map_err(|e| anyhow!("fetch latest version failed: {e}"))?;
@@ -513,18 +515,17 @@ impl CommandExecutor {
 
         let mut prefix = PathBuf::from(CDN);
         prefix.push(&product);
-        prefix.push(self.os_pretty());
         let prefix = prefix.as_path().to_str().unwrap();
         if cnf.tx_service.image.is_none() {
             let vers = cnf.version.as_deref().expect("version is missing");
-            let img = format!("{prefix}/{store}/{product}-{vers}-{arch}.tar.gz");
+            let img = format!("{prefix}/{store}/{product}-{vers}-{os}-{arch}.tar.gz");
             info!("tx service image is set: {img}");
             cnf.tx_service.image = Some(img);
         }
         if let Some(logsrv) = &mut cnf.log_service {
             if logsrv.image.is_none() {
                 let vers = cnf.version.as_deref().expect("version is missing");
-                let img = format!("{prefix}/logservice/log-service-{vers}-{arch}.tar.gz");
+                let img = format!("{prefix}/logservice/log-service-{vers}-{os}-{arch}.tar.gz");
                 info!("log service image is set: {img}");
                 logsrv.image = Some(img);
             }
@@ -626,14 +627,14 @@ impl CommandExecutor {
                     config.scan_hardware().await?;
                 }
                 self.save_deployment_config(&config, false).await?;
-                return Ok(config);
+                Ok(config)
             }
             _ => unreachable!(),
-        };
+        }
     }
 
     async fn update(&self) -> Result<()> {
-        let os = self.os_short();
+        let os = self.os_vers();
         let arch = &self.cpu_arch;
         let filename = format!("waiter-{os}-{arch}.tar.gz");
         let url = format!("{CDN}/waiter/{filename}");

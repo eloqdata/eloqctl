@@ -59,11 +59,7 @@ pub struct ResponseData {
 }
 
 #[derive(Parser, Default, Debug)]
-#[command(
-    author,
-    version = "1.0.0",
-    about = "MonographDB Cluster Manager REST API"
-)]
+#[command(author, version = "0.0.0", about = "EloqData cluster manager REST API")]
 #[command(next_line_help = true)]
 pub struct ServerCommandArgs {
     #[arg(long, value_name = "HOME_DIR")]

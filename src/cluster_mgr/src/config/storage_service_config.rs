@@ -142,8 +142,8 @@ impl StorageService {
         if let Some(rocks) = &self.rocksdb {
             name = match rocks {
                 RocksDB::Local => name,
-                RocksDB::S3(_) => format!("{name}_s3"),
-                RocksDB::GCS(_) => format!("{name}_gcs"),
+                RocksDB::S3(_) => "rocks_s3".to_owned(),
+                RocksDB::GCS(_) => "rocks_gcs".to_owned(),
             }
         }
         name

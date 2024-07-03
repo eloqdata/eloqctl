@@ -6,7 +6,6 @@ jobs:
           limit: 2
           steps:
             - get: monograph_waiter
-              trigger: true
             - get: image_centos7
       - task: build_waiter
         file: monograph_waiter/concourse/task_build.yaml
@@ -64,7 +63,6 @@ jobs:
           limit: 2
           steps:
             - get: monograph_waiter
-              trigger: true
             - get: image_ubuntu2004
       - task: build_waiter
         file: monograph_waiter/concourse/task_build.yaml
@@ -146,7 +144,7 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-centos7-amd64.tar.gz
+      versioned_file: waiter/waiter-rhel7-amd64.tar.gz
   - name: out_s3_centos8
     type: s3
     source:
@@ -154,7 +152,7 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-centos8-amd64.tar.gz
+      versioned_file: waiter/waiter-rhel8-amd64.tar.gz
   - name: out_s3_rocky9
     type: s3
     source:
@@ -162,7 +160,7 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-rocky9-amd64.tar.gz
+      versioned_file: waiter/waiter-rhel9-amd64.tar.gz
   - name: out_s3_ubuntu18
     type: s3
     source:
