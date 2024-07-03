@@ -627,10 +627,10 @@ impl CommandExecutor {
                     config.scan_hardware().await?;
                 }
                 self.save_deployment_config(&config, false).await?;
-                return Ok(config);
+                Ok(config)
             }
             _ => unreachable!(),
-        };
+        }
     }
 
     async fn update(&self) -> Result<()> {
