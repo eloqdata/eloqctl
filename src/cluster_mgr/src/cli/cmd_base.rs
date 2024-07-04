@@ -17,10 +17,10 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use owo_colors::OwoColorize;
 use std::collections::HashSet;
-use std::env;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, OnceLock};
+use std::{env, fs};
 use tokio_postgres::config::SslMode;
 use tokio_postgres::NoTls;
 use tracing::{error, info, warn};
@@ -363,7 +363,11 @@ impl CmdExecutor {
             _ => {
                 let task_mgr = self.task_mgr.clone();
                 let outfile = if quiet {
-                    let f = std::fs::File::create(self.home.join("task-result"))?;
+                    let f = fs::OpenOptions::new()
+                        .create(true)
+                        .truncate(true)
+                        .append(true)
+                        .open(self.home.join("task-result"))?;
                     Some(f)
                 } else {
                     None
