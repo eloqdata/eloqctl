@@ -21,7 +21,9 @@ macro_rules! wait_command_complete {
             $cmd,
             $process_cmd,
             $ssh_session,
-            async move |cmd, ssh_conn| ssh_conn.command(cmd.as_str(), CollectOutput).await,
+            async move |cmd: String, ssh_conn: SSHSession| {
+                ssh_conn.command(cmd.as_str(), CollectOutput).await
+            },
             |output| -> bool { parse_process_pid(output).$check_fn() },
         )
         .await

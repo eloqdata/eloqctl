@@ -77,7 +77,6 @@ impl TaskController {
             if is_finish {
                 break;
             }
-            yield task_pair;
         }
     }
 

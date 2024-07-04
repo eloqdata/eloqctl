@@ -15,7 +15,6 @@ use crate::{get_ctl_cmd_string, task_return_value, wait_command_complete};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use indexmap::IndexMap;
-use redis::Commands;
 use sqlx::{Connection, Executor, Row};
 use std::collections::HashMap;
 use std::io;
@@ -212,8 +211,7 @@ impl RedisProbe {
         let client = redis::Client::open(url.clone())?;
         loop {
             match client.get_connection() {
-                Ok(mut con) => {
-                    con.get("probe")?;
+                Ok(_) => {
                     return Ok(HashMap::from([
                         (CMD.to_string(), TaskArgValue::Str("GET probe".to_string())),
                         (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
