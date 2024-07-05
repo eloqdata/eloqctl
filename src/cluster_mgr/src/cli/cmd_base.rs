@@ -86,6 +86,10 @@ impl CmdExecutor {
         if !up_dir.exists() {
             std::fs::create_dir(up_dir)?;
         }
+        let log_dir = home.join("logs");
+        if !log_dir.exists() {
+            std::fs::create_dir(log_dir)?;
+        }
         Ok(home)
     }
 
