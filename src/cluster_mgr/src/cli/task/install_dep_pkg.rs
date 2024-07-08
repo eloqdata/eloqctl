@@ -31,30 +31,30 @@ impl DepPkgTask {
         let (prepare, head);
         match os_name.as_str() {
             "ubuntu" => {
-                prepare = vec!["apt update"];
-                head = "DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends";
+                prepare = vec!["sudo apt update", "export DEBIAN_FRONTEND=noninteractive"];
+                head = "sudo apt install -y --no-install-recommends";
             }
             "rhel" => match version.as_str() {
                 "7" => {
-                    prepare = vec!["yum install -y epel-release", "yum update -y"];
-                    head = "yum install -y";
+                    prepare = vec!["sudo yum install -y epel-release", "sudo yum update -y"];
+                    head = "sudo yum install -y";
                 }
                 "8" => {
                     prepare = vec![
-                        "dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm", 
-                        "/usr/bin/crb enable", 
-                        "dnf install -y epel-release", 
-                        "dnf update -y"];
-                    head = "dnf install -y";
+                        "sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm", 
+                        "sudo /usr/bin/crb enable", 
+                        "sudo dnf install -y epel-release", 
+                        "sudo dnf update -y"];
+                    head = "sudo dnf install -y";
                 }
                 "9" => {
                     prepare = vec![
-                        "dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm", 
-                        "/usr/bin/crb enable", 
-                        "dnf install -y epel-release", 
-                        "dnf update -y"
+                        "sudo dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm", 
+                        "sudo /usr/bin/crb enable", 
+                        "sudo dnf install -y epel-release", 
+                        "sudo dnf update -y"
                         ];
-                    head = "dnf install -y";
+                    head = "sudo dnf install -y";
                 }
                 _ => unreachable!(),
             },
@@ -62,16 +62,22 @@ impl DepPkgTask {
                 bail!("for now only support ubuntu/rhel linux");
             }
         };
-        let (prepare, head) = if config.connection.username == "root" {
-            let p = prepare.into_iter().map(|s| s.to_owned()).collect_vec();
-            (p, head.to_owned())
+        let is_root = config.connection.username == "root";
+        let prepare = prepare
+            .into_iter()
+            .map(|s| {
+                if &s[..6] == "sudo " && is_root {
+                    &s[5..]
+                } else {
+                    s
+                }
+                .to_owned()
+            })
+            .collect_vec();
+        let head = if &head[..6] == "sudo " && is_root {
+            &head[5..]
         } else {
-            let p = prepare
-                .into_iter()
-                .map(|s| format!("sudo {s}"))
-                .collect_vec();
-            let h = format!("sudo {head}");
-            (p, h)
+            head
         };
         let pkgs = DeployConfig::load_runtime_deps_by_os(&os_name)?;
 
@@ -92,7 +98,7 @@ impl DepPkgTask {
                     task_id: task_id.clone(),
                     config: config.clone(),
                     prepare: prepare.clone(),
-                    head: head.clone(),
+                    head: head.to_owned(),
                     pkgs: pkgs.clone(),
                     pg_bar,
                 };
@@ -139,13 +145,13 @@ impl TaskExecutor for DepPkgTask {
             .iter()
             .map(|s| format!("{} {s}", self.head))
             .collect_vec();
-        let temp = "[{pos}/{len}] {elapsed} {bar:80.cyan/grey} {wide_msg}";
+        let temp = "[{pos}/{len}] {elapsed} {bar:60.cyan/grey} {wide_msg}";
         let style = ProgressStyle::default_bar().template(temp)?;
         self.pg_bar.set_style(style);
         self.pg_bar
             .set_length((self.prepare.len() + pkg_cmds.len()) as u64);
         for cmd in self.prepare.iter().chain(pkg_cmds.iter()) {
-            let msg = format!("{host} '{cmd}'");
+            let msg = format!("{host} $ {cmd}");
             self.pg_bar.set_message(msg);
             let (code, out) = session.execute(&cmd).await?;
             if code != 0 {
@@ -153,7 +159,7 @@ impl TaskExecutor for DepPkgTask {
             }
             self.pg_bar.inc(1);
         }
-        let msg = format!("{host} finished");
+        let msg = format!("{host} Finished");
         self.pg_bar.finish_with_message(msg);
         session.close().await?;
         Ok(None)
