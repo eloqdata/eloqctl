@@ -13,3 +13,5 @@ for ((i = 2; i <= "$#"; i++)); do
     IMG_OS=${!i}
     build_image
 done
+
+echo "Done!"
