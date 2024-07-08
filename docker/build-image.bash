@@ -1,7 +1,7 @@
 #!/bin/bash
-set -eu
+set -e
 
-PLATFORM='linux/amd64,linux/arm64'
+# PLATFORM='linux/amd64,linux/arm64'
 build_image() {
     ln -s ${IMG_KIND}-${IMG_OS}.dockerfile Dockerfile
     if [ -z "$PLATFORM" ]; then
