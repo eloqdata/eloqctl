@@ -6,6 +6,9 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     RUST_VERSION=1.79.0
 
 RUN set -eux; \
+    # https://stackoverflow.com/questions/70963985/error-failed-to-download-metadata-for-repo-appstream-cannot-prepare-internal
+    sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* ; \
+    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-* ; \
     dnf -y update; \
     dnf install -y \
     wget git \
