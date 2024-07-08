@@ -17,7 +17,7 @@ USER eloquser
 WORKDIR /home/eloquser
 
 COPY ssh /home/eloquser/.ssh
-RUN sudo chown -R eloquser /home/eloquser/.ssh && chmod 400 /home/eloquser/.ssh/* \
+RUN sudo chown -R eloquser /home/eloquser/.ssh && chmod 400 /home/eloquser/.ssh/* && \
     sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -N '' && \
     sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_dsa_key -N '' && \
     sudo ssh-keygen -t rsa -f /etc/ssh/ssh_host_ed25519_key -N '' && \
