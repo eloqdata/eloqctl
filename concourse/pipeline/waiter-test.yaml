@@ -118,36 +118,36 @@ resources:
     source:
       username: monographdb
       password: Mono_cz158#
-      repository: monographdb/monograph-dev-ci-rocky9
+      repository: monographdb/waiter-test-rocky9
   - name: image_ubuntu1804
     type: registry-image
     source:
       username: monographdb
       password: Mono_cz158#
-      repository: monographdb/monograph-dev-ci-ubuntu1804
+      repository: monographdb/waiter-test-ubuntu18
   - name: image_ubuntu2004
     type: registry-image
     source:
       username: monographdb
       password: Mono_cz158#
-      repository: monographdb/monograph-dev-ci-ubuntu2004
+      repository: monographdb/waiter-test-ubuntu20
   - name: image_ubuntu2204
     type: registry-image
     source:
       username: monographdb
       password: Mono_cz158#
-      repository: monographdb/monograph-dev-ci-ubuntu2204
+      repository: monographdb/waiter-test-ubuntu22
   - name: image_ubuntu2404
     type: registry-image
     source:
       username: monographdb
       password: Mono_cz158#
-      repository: monographdb/monograph-dev-ci-ubuntu2404
+      repository: monographdb/waiter-test-ubuntu24
 
   - name: alarm-clock
     type: time
     source:
-      start: 4:00 AM
-      stop: 4:00 AM
+      start: 7:00 AM
+      stop: 7:00 AM
       location: Asia/Shanghai
       days: [Monday, Tuesday, Wednesday, Thursday, Friday]
