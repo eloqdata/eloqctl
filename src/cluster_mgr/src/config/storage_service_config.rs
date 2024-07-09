@@ -156,7 +156,7 @@ impl StorageService {
         let cass_env_file_path = config_template(CASSANDRA_ENV_TEMPLATE)?;
         let env_sh = upload_dir().join("cassandra-env.sh");
         fs::copy(cass_env_file_path, env_sh.clone())?;
-        let mut cass_env_file = File::options().write(true).append(true).open(&env_sh)?;
+        let mut cass_env_file = File::options().append(true).open(&env_sh)?;
         cass_env_file.write_all(mcac_root.as_bytes())?;
         cass_env_file.write_all(append_jvm_opts.as_bytes())?;
         cass_env_file.flush()?;

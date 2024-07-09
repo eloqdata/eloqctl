@@ -26,11 +26,12 @@ struct MemberLeaderInfo {
     check_health: String,
 }
 
-impl ToString for MemberLeaderInfo {
-    fn to_string(&self) -> String {
-        format!(
-            "group_id={},leader_count={},addr={}",
-            self.group_id, self.leader_count, &self.check_health
+impl std::fmt::Display for MemberLeaderInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "(group:{}, leaders:{}, addr:{})",
+            self.group_id, self.leader_count, self.check_health
         )
     }
 }

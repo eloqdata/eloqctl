@@ -12,11 +12,7 @@ pub struct Connection {
 
 impl Connection {
     pub fn ssh_port(&self) -> u16 {
-        if let Some(ssh_port) = self.port {
-            ssh_port
-        } else {
-            22_u16
-        }
+        self.port.unwrap_or(22)
     }
 
     pub fn ssh_auth_key(&self) -> Option<String> {

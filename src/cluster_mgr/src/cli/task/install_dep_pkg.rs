@@ -153,7 +153,7 @@ impl TaskExecutor for DepPkgTask {
         for cmd in self.prepare.iter().chain(pkg_cmds.iter()) {
             let msg = format!("{host} $ {cmd}");
             self.pg_bar.set_message(msg);
-            let (code, out) = session.execute(&cmd).await?;
+            let (code, out) = session.execute(cmd).await?;
             if code != 0 {
                 bail!("install package failed on {host}: '{cmd}' :{code}, {out}")
             }

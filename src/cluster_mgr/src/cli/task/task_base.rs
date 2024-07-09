@@ -198,12 +198,12 @@ pub enum TaskArgValue {
     List(Vec<String>),
 }
 
-impl ToString for TaskArgValue {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for TaskArgValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TaskArgValue::Str(string_value) => string_value.to_string(),
-            TaskArgValue::Number(num_value) => num_value.to_string(),
-            TaskArgValue::List(list_value) => list_value.join(","),
+            TaskArgValue::Str(string_value) => write!(f, "{}", string_value),
+            TaskArgValue::Number(num_value) => write!(f, "{}", num_value),
+            TaskArgValue::List(list_value) => write!(f, "{}", list_value.join(",")),
         }
     }
 }

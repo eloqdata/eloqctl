@@ -1,6 +1,6 @@
 use crate::cli::task::task_base::TaskMgr;
 use crate::cli::util::{cpu_arch, os_id, os_major_version};
-use crate::cli::{upload_dir, SubCommand, HOME_DIR};
+use crate::cli::{file_pg_bar, upload_dir, SubCommand, HOME_DIR};
 use crate::config::config_base::{DeployConfig, VersionRow};
 use crate::config::deployment::{Deployment, Product};
 use crate::config::storage_service_config::{
@@ -13,7 +13,6 @@ use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, STATE_MGR};
 use crate::StateValue;
 use anyhow::{anyhow, bail, Result};
 use futures::StreamExt;
-use indicatif::ProgressBar;
 use itertools::Itertools;
 use owo_colors::OwoColorize;
 use std::collections::HashSet;
@@ -370,7 +369,6 @@ impl CmdExecutor {
                     let f = fs::OpenOptions::new()
                         .create(true)
                         .truncate(true)
-                        .append(true)
                         .open(self.home.join("task-result"))?;
                     Some(f)
                 } else {
@@ -648,14 +646,17 @@ impl CmdExecutor {
             }
         }
         // start downloading new package
-        let pg_bar = ProgressBar::new(len);
+        let pg_bar = file_pg_bar();
+        pg_bar.set_length(len);
+        pg_bar.set_message("downloading");
         let mut file = pg_bar.wrap_write(std::fs::File::create(&cached)?);
-        let mut stream_reader = resp.bytes_stream();
-        while let Some(stream_chunk) = stream_reader.next().await {
+        let mut stream = resp.bytes_stream();
+        while let Some(stream_chunk) = stream.next().await {
             let chunk = stream_chunk.map_err(|e| anyhow!("download failed: {e}"))?;
             file.write_all(&chunk)
-                .map_err(|e| anyhow!("can't write file: {e}"))?;
+                .map_err(|e| anyhow!("write file failed: {e}"))?;
         }
+        pg_bar.finish_with_message("downloaded");
         let tar_cmd = format!(
             "tar -xzvf {} -C {} --strip-components 1 --overwrite",
             cached.to_string_lossy(),

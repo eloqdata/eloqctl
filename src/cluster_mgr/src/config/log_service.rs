@@ -30,11 +30,9 @@ pub struct LogProcessKey {
     pub port: u16,
 }
 
-impl ToString for LogProcessKey {
-    fn to_string(&self) -> String {
-        let port = self.port;
-        let host = &self.host;
-        format!("{host}:{port}")
+impl std::fmt::Display for LogProcessKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.host, self.port)
     }
 }
 
