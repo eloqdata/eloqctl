@@ -225,18 +225,10 @@ pub fn upload_host_dir(host: &str) -> PathBuf {
     dir
 }
 
-pub fn file_process_progress(file_name: String, process_chars: &str) -> ProgressBar {
+pub fn file_pg_bar() -> ProgressBar {
+    let temp =
+        "{spinner:.green} {elapsed} {bar:80.cyan/grey} {wide_msg} {bytes}/{total_bytes} ({eta})";
     let cmd_pb = ProgressBar::hidden();
-    let sty = format!(
-        "{{spinner:.green}} {file_name:14}: [{{elapsed_precise}}] \
-        [{{wide_bar:.green/white}}] \
-        {{bytes}}/{{total_bytes}} ({{eta}})",
-    );
-    cmd_pb.set_style(
-        ProgressStyle::default_spinner()
-            .template(sty.as_str())
-            .unwrap()
-            .progress_chars(process_chars),
-    );
+    cmd_pb.set_style(ProgressStyle::default_spinner().template(temp).unwrap());
     cmd_pb
 }

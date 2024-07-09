@@ -3,7 +3,7 @@ use crate::cli::task::task_base::CmdErr::DownloadErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::cli::{file_process_progress, CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::cli::{file_pg_bar, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::DeployConfig;
 use crate::config::deployment::Codis;
 use crate::config::DownloadUrl;
@@ -34,15 +34,15 @@ impl DownloadTask {
         let tx_download_str = deployment_ref.tx_image();
         let tx_download_url = DownloadUrl::from_url_str(tx_download_str)?;
 
-        let mut download_url_vec = vec![];
+        let mut urls = vec![];
         if !tx_download_url.is_local() {
-            download_url_vec.push(tx_download_str.to_owned());
+            urls.push(tx_download_str.to_owned());
         }
 
         if let Some(log_image_url) = deployment_ref.log_image() {
             let log_download_url = DownloadUrl::from_url_str(log_image_url)?;
             if !log_download_url.is_local() {
-                download_url_vec.push(log_image_url.to_owned());
+                urls.push(log_image_url.to_owned());
             }
         }
 
@@ -52,7 +52,7 @@ impl DownloadTask {
                 let cass_download_url =
                     DownloadUrl::from_url_str(cass_download_url_string.as_str())?;
                 if !cass_download_url.is_local() {
-                    download_url_vec.push(cass_download_url_string.to_owned());
+                    urls.push(cass_download_url_string.to_owned());
                 }
             }
         }
@@ -64,14 +64,14 @@ impl DownloadTask {
                 .filter(|url| !url.is_local())
                 .map(|download_url| download_url.get_url())
                 .collect_vec();
-            download_url_vec.extend(monitor_download_string_vec);
+            urls.extend(monitor_download_string_vec);
         }
 
         if config.deployment.codis.is_some() {
-            download_url_vec.push(Codis::download_url());
+            urls.push(Codis::download_url());
         }
 
-        Ok(Self::instances(Self::from_urls(download_url_vec)))
+        Ok(Self::instances(Self::from_urls(urls)))
     }
 
     pub fn from_urls(urls: Vec<String>) -> Vec<Self> {
@@ -86,10 +86,7 @@ impl DownloadTask {
                     task: format!("{filename}_download"),
                     host: "127.0.0.1".to_owned(),
                 };
-                let pg_bar = mpg_bar.add(file_process_progress(
-                    format!("DOWNLOAD [{filename}]"),
-                    "#>-",
-                ));
+                let pg_bar = mpg_bar.add(file_pg_bar());
                 DownloadTask {
                     task_id,
                     url,
@@ -165,6 +162,8 @@ impl TaskExecutor for DownloadTask {
 
         // start downloading
         self.pg_bar.set_length(file_len);
+        self.pg_bar
+            .set_message(format!("[{} downloading]", self.name));
         let mut stream_reader = response.bytes_stream();
         while let Some(stream_chunk) = stream_reader.next().await {
             if let Err(err) = stream_chunk {
@@ -178,7 +177,8 @@ impl TaskExecutor for DownloadTask {
             }
             self.pg_bar.inc(chunk.len() as u64);
         }
-        // self.pg_bar.finish();
+        self.pg_bar
+            .finish_with_message(format!("[{} downloaded]", self.name));
         fs::rename(part_path, save_path.as_path())
             .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
 
