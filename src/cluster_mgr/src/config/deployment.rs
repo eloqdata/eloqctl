@@ -283,9 +283,10 @@ impl Deployment {
     }
 
     pub fn client_bin(&self) -> String {
+        let tx_home = self.tx_srv_home();
         match self.product() {
-            Product::EloqSQL => format!("{}/bin/mariadb", &self.tx_srv_home()),
-            Product::EloqKV => "redis-cli".to_owned(),
+            Product::EloqSQL => format!("{tx_home}/bin/mariadb"),
+            Product::EloqKV => format!("{tx_home}/bin/eloqkv-cli"),
         }
     }
 
