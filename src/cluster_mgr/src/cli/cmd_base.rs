@@ -409,7 +409,7 @@ impl CmdExecutor {
             }
             SubCommand::Remove { cluster } => {
                 let n = self.state_mgr.delete_cluster(&cluster).await?;
-                info!("cluster state cleared rows={}", n);
+                info!("cluster state cleared rows={n}");
             }
             SubCommand::Update {
                 cluster: Some(cluster),

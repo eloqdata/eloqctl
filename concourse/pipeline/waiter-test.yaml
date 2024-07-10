@@ -5,7 +5,7 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: alarm-clock
+            - get: clock-rhel
               trigger: true
             - get: waiter_src
             - get: image_centos7
@@ -18,7 +18,7 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: alarm-clock
+            - get: clock-rhel
               trigger: true
             - get: waiter_src
             - get: image_centos8
@@ -31,7 +31,7 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: alarm-clock
+            - get: clock-rhel
               trigger: true
             - get: waiter_src
             - get: image_rocky9
@@ -45,7 +45,7 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: alarm-clock
+            - get: clock-ubuntu
               trigger: true
             - get: waiter_src
             - get: image_ubuntu1804
@@ -58,7 +58,7 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: alarm-clock
+            - get: clock-ubuntu
               trigger: true
             - get: waiter_src
             - get: image_ubuntu2004
@@ -71,7 +71,7 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: alarm-clock
+            - get: clock-ubuntu
               trigger: true
             - get: waiter_src
             - get: image_ubuntu2204
@@ -84,7 +84,7 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: alarm-clock
+            - get: clock-ubuntu
               trigger: true
             - get: waiter_src
             - get: image_ubuntu2404
@@ -144,7 +144,14 @@ resources:
       password: 
       repository: monographdb/waiter-test-ubuntu24
 
-  - name: alarm-clock
+  - name: clock-rhel
+    type: time
+    source:
+      start: 6:00 AM
+      stop: 6:00 AM
+      location: Asia/Shanghai
+      days: [Monday, Tuesday, Wednesday, Thursday, Friday]
+  - name: clock-ubuntu
     type: time
     source:
       start: 7:00 AM
