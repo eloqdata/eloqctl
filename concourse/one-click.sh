@@ -4,6 +4,8 @@ list_jobs() {
     fly -t ${TARGET} jobs -p ${PIPELINE}
 }
 
+list_jobs
+
 list_jobs | awk '{print $1}' |
     while read JOB; do
         echo "trigger job => ${PIPELINE}/${JOB}"
