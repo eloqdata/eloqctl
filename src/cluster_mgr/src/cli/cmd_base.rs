@@ -531,7 +531,7 @@ impl CmdExecutor {
                 skip_deps: _,
                 unlimited,
                 no_monitor,
-                union_wal,
+                joint_wal,
                 ext_cass,
                 cass_port,
                 cass_auth,
@@ -581,8 +581,8 @@ impl CmdExecutor {
                         deploy.storage_service.rocksdb = Some(RocksDB::Local);
                     }
                 }
-                // set log-service
-                if union_wal {
+                // deploy log-service jointly
+                if joint_wal {
                     deploy.log_service = None;
                 } else if let Some(log) = deploy.log_service.as_mut() {
                     // add an unique number (pid) to WAL directory

@@ -166,7 +166,7 @@ pub enum SubCommand {
         #[arg(long, default_value_t = false)]
         no_monitor: bool,
         #[arg(long, default_value_t = false)]
-        union_wal: bool,
+        joint_wal: bool,
         #[arg(long, value_delimiter = ';', value_name = "contact-points")]
         ext_cass: Vec<String>,
         #[arg(long)]

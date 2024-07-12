@@ -23,12 +23,12 @@ cluster_mgr status demo-sql-cassandra --wait 30
 cluster_mgr remove demo-sql-cassandra
 
 sleep 15
-cluster_mgr demo eloq-sql --skip-deps --union-wal
+cluster_mgr demo eloq-sql --skip-deps --joint-wal
 cluster_mgr status demo-sql-cassandra --wait 30
 cluster_mgr remove demo-sql-cassandra
 
 sleep 15
-cluster_mgr demo eloq-sql --skip-deps --union-wal --no-monitor
+cluster_mgr demo eloq-sql --skip-deps --joint-wal --no-monitor
 cluster_mgr status demo-sql-cassandra --wait 30
 cluster_mgr remove demo-sql-cassandra
 
@@ -60,12 +60,12 @@ cluster_mgr status demo-kv-cassandra --wait 30
 cluster_mgr remove demo-kv-cassandra
 
 sleep 15
-cluster_mgr demo eloq-kv --skip-deps --union-wal
+cluster_mgr demo eloq-kv --skip-deps --joint-wal
 cluster_mgr status demo-kv-cassandra --wait 30
 cluster_mgr remove demo-kv-cassandra
 
 sleep 15
-cluster_mgr demo eloq-kv --skip-deps --union-wal --no-monitor
+cluster_mgr demo eloq-kv --skip-deps --joint-wal --no-monitor
 cluster_mgr status demo-kv-cassandra --wait 30
 cluster_mgr remove demo-kv-cassandra
 

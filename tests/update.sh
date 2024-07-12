@@ -3,7 +3,7 @@ set -exo pipefail
 
 echo ">>> Test Update command"
 
-cluster_mgr demo eloq-kv --store rocksdb --skip-deps --union-wal --no-monitor
+cluster_mgr demo eloq-kv --store rocksdb --skip-deps --joint-wal --no-monitor
 cluster_mgr status demo-kv-rocksdb --wait 30
 cluster_mgr update demo-kv-rocksdb latest
 cluster_mgr status demo-kv-rocksdb --wait 30
