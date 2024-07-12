@@ -1,0 +1,23 @@
+platform: linux
+image_resource:
+  type: registry-image
+inputs:
+  - name: monograph_waiter
+params:
+  PIPELINE: ""
+  ADDRESS: http://13.115.58.127:8080
+  ERR_EXIT: false
+run:
+  path: /bin/bash
+  args:
+    - -cxe
+    - |
+      export TARGET='eloq'
+      export WAITER_SRC="${PWD}/monograph_waiter"
+      cd ${HOME}
+      ln -s ${WAITER_SRC} monograph_waiter
+      curl "${ADDRESS}/api/v1/cli?arch=amd64&platform=linux" -o "fly"
+      chmod +x fly
+      sudo mv fly /usr/local/bin/
+      fly --target ${TARGET} login --concourse-url ${ADDRESS} --username mono --password cz123321Cz
+      bash monograph_waiter/concourse/one-click.sh
