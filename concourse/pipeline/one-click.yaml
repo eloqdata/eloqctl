@@ -1,0 +1,110 @@
+resources:
+  - name: monograph_waiter
+    icon: github
+    source:
+      branch: main
+      private_key: ((git-key))
+      uri: git@github.com:monographdb/monograph_waiter.git
+    type: git
+  - name: base_image
+    source:
+      username: monographdb
+      password: Mono_cz158#
+      repository: monographdb/monograph-dev-ci-ubuntu2004
+    type: registry-image
+
+jobs:
+  - name: waiter-build
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: base_image
+      - task: waiter-build
+        image: base_image
+        params:
+          PIPELINE: "waiter-build"
+        file: monograph_waiter/concourse/one-click.yaml
+  - name: waiter-test
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: base_image
+      - task: waiter-test
+        image: base_image
+        params:
+          PIPELINE: "waiter-test"
+        file: monograph_waiter/concourse/one-click.yaml
+
+  - name: eloqkv-release
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: base_image
+      - task: eloqkv-release
+        image: base_image
+        params:
+          PIPELINE: "eloqkv-release"
+        file: monograph_waiter/concourse/one-click.yaml
+  - name: eloqkv-nightly
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: base_image
+      - task: eloqkv-nightly
+        image: base_image
+        params:
+          PIPELINE: "eloqkv-nightly"
+        file: monograph_waiter/concourse/one-click.yaml
+
+  - name: eloqsql-release
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: base_image
+      - task: eloqsql-release
+        image: base_image
+        params:
+          PIPELINE: "eloqsql-release"
+        file: monograph_waiter/concourse/one-click.yaml
+  - name: eloqsql-nightly
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: base_image
+      - task: eloqsql-nightly
+        image: base_image
+        params:
+          PIPELINE: "eloqsql-nightly"
+        file: monograph_waiter/concourse/one-click.yaml
+
+  - name: build-ci-docker-images
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: base_image
+      - task: build-ci-images
+        image: base_image
+        params:
+          PIPELINE: "build-ci-docker-images"
+        file: monograph_waiter/concourse/one-click.yaml
