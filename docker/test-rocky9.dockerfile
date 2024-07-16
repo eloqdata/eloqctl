@@ -3,7 +3,7 @@ FROM rockylinux:9
 RUN set -eux; \
     dnf install -y epel-release; \
     dnf update -y; \
-    dnf install -y sudo openssh-clients openssh-server iproute redis; \
+    dnf install -y sudo openssh-clients openssh-server iproute procps; \
     dnf clean all;
 
 RUN useradd -rm -s /bin/bash -g root -G wheel eloquser && \
