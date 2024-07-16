@@ -1,4 +1,5 @@
-FROM ubuntu:20.04
+ARG OS_ID
+FROM ubuntu:${OS_ID}.04
 
 RUN set -eux; \
     apt update; \
