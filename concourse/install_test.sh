@@ -19,8 +19,11 @@ sleep 15
 bash tests/launch.sh
 sleep 15
 bash tests/update.sh
-sleep 15
-wget https://downloads.datastax.com/enterprise/cqlsh-astra.tar.gz
-tar -xzvf cqlsh-astra.tar.gz
-export PATH=$PATH:${PWD}/cqlsh-astra/bin
-bash tests/external_cass.sh 172.31.5.203
+
+if [[ ! "$(python3 --version)" =~ "Python 3.12" ]]; then
+  sleep 15
+  wget https://downloads.datastax.com/enterprise/cqlsh-astra.tar.gz
+  tar -xzvf cqlsh-astra.tar.gz
+  export PATH=$PATH:${PWD}/cqlsh-astra/bin
+  bash tests/external_cass.sh 172.31.5.203
+fi
