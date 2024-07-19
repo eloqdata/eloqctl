@@ -260,7 +260,8 @@ impl DeployConfig {
         let bin = self.deployment.client_bin();
         match self.product() {
             Product::EloqSQL => format!(
-                "{bin} --user={} -S /tmp/eloqsql{}.sock",
+                "LD_LIBRARY_PATH={}/lib:$LD_LIBRARY_PATH {bin} --user={} -S /tmp/eloqsql{}.sock",
+                self.deployment.tx_srv_home(),
                 self.connection.username,
                 self.deployment.client_port()
             ),

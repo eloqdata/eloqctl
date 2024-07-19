@@ -268,7 +268,7 @@ impl CassandraCtlTask {
         ssh_conn: &SSHSession,
     ) -> anyhow::Result<ExecutionValue> {
         let (host, user) = ssh_conn.ssh_conn_info();
-        println!("starting cassandra server {user}@{host}, this may take a long time...");
+        println!("starting cassandra server {user}@{host}, this may take minutes");
         let check_status =
             CassandraCmd::from_string("status", self.config.deployment.cassandra_home(), user);
         info!(
