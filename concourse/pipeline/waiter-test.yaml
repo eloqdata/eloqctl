@@ -5,8 +5,6 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: clock-rhel
-              trigger: true
             - get: waiter_src
             - get: image_centos7
       - task: install-test
@@ -18,8 +16,6 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: clock-rhel
-              trigger: true
             - get: waiter_src
             - get: image_centos8
       - task: install-test
@@ -31,8 +27,6 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: clock-rhel
-              trigger: true
             - get: waiter_src
             - get: image_rocky9
       - task: install-test
@@ -45,8 +39,6 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: clock-ubuntu
-              trigger: true
             - get: waiter_src
             - get: image_ubuntu1804
       - task: install-test
@@ -58,8 +50,6 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: clock-ubuntu
-              trigger: true
             - get: waiter_src
             - get: image_ubuntu2004
       - task: install-test
@@ -71,8 +61,6 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: clock-ubuntu
-              trigger: true
             - get: waiter_src
             - get: image_ubuntu2204
       - task: install-test
@@ -84,8 +72,6 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
-            - get: clock-ubuntu
-              trigger: true
             - get: waiter_src
             - get: image_ubuntu2404
       - task: install-test
@@ -143,18 +129,3 @@ resources:
       username: monographdb
       password: 
       repository: monographdb/waiter-test-ubuntu24
-
-  - name: clock-rhel
-    type: time
-    source:
-      start: 6:00 AM
-      stop: 6:00 AM
-      location: Asia/Shanghai
-      days: [Monday, Tuesday, Wednesday, Thursday, Friday]
-  - name: clock-ubuntu
-    type: time
-    source:
-      start: 7:00 AM
-      stop: 7:00 AM
-      location: Asia/Shanghai
-      days: [Monday, Tuesday, Wednesday, Thursday, Friday]

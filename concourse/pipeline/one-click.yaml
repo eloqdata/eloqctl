@@ -12,6 +12,13 @@ resources:
       password: 
       repository: monographdb/monograph-dev-ci-ubuntu2004
     type: registry-image
+  - name: clock-waiter-test
+    type: time
+    source:
+      start: 8:00 AM
+      stop: 8:00 AM
+      location: Asia/Shanghai
+      days: [Monday, Tuesday, Wednesday, Thursday, Friday]
 
 jobs:
   - name: waiter-build
@@ -33,6 +40,8 @@ jobs:
       - in_parallel:
           limit: 2
           steps:
+            - get: clock-waiter-test
+              trigger: true
             - get: monograph_waiter
             - get: base_image
       - task: waiter-test
