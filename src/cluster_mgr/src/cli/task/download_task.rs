@@ -3,7 +3,8 @@ use crate::cli::task::task_base::CmdErr::DownloadErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::cli::{file_pg_bar, CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::cli::util::file_pg_bar;
+use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::DeployConfig;
 use crate::config::deployment::Codis;
 use crate::config::DownloadUrl;
