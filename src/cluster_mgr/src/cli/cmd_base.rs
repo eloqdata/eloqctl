@@ -1,6 +1,6 @@
 use crate::cli::task::task_base::TaskMgr;
-use crate::cli::util::{cpu_arch, os_id, os_major_version};
-use crate::cli::{file_pg_bar, upload_dir, SubCommand, HOME_DIR};
+use crate::cli::util::{cpu_arch, file_pg_bar, os_id, os_major_version};
+use crate::cli::{upload_dir, SubCommand, HOME_DIR};
 use crate::config::config_base::{DeployConfig, VersionRow};
 use crate::config::deployment::{Deployment, Product};
 use crate::config::storage_service_config::{
