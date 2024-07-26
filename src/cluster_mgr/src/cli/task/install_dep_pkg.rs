@@ -145,7 +145,7 @@ impl TaskExecutor for DepPkgTask {
             .iter()
             .map(|s| format!("{} {s}", self.head))
             .collect_vec();
-        let temp = "[{pos}/{len}] {elapsed} {bar:60.cyan/grey} {wide_msg}";
+        let temp = "[{pos}/{len}] {elapsed} {bar:40.cyan/grey} {wide_msg}";
         let style = ProgressStyle::default_bar().template(temp)?;
         self.pg_bar.set_style(style);
         self.pg_bar

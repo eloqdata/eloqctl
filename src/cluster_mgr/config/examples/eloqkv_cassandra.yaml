@@ -16,7 +16,7 @@ deployment:
       - host: 127.0.0.1
         port: 9000
         data_dir:
-          - "/home/${USER}/disk_wal_kv"
+          - "/home/${USER}/eloqkv-cluster/wal_eloqkv"
     replica: 1
   storage_service:
     cassandra:
@@ -26,7 +26,6 @@ deployment:
         # mirror: "https://mirrors.aliyun.com/apache"
         # mirror: "https://dlcdn.apache.org"
         version: "4.1.3"
-        storage_cluster: "eloqkv-cluster"
   monitor:
     data_dir: ""
     monograph_metrics:
