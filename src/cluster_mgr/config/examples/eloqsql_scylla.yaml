@@ -1,0 +1,50 @@
+connection:
+  username: "${USER}"
+  auth_type: "keypair"
+  auth:
+    keypair: "/home/${USER}/.ssh/id_rsa"
+deployment:
+  cluster_name: "eloqsql-cluster"
+  product: "EloqSQL"
+  version: "latest"
+  install_dir: "/home/${USER}"
+  tx_service:
+    host: [127.0.0.1]
+    port: 8000
+    client_port: 3316
+  log_service:
+    nodes:
+      - host: 127.0.0.1
+        port: 9000
+        data_dir:
+          - "/home/${USER}/eloqsql-cluster/wal_eloqsql"
+    replica: 1
+  storage_service:
+    cassandra:
+      host: [127.0.0.1]
+      kind: !External
+        port: 9042
+        user: cassuser
+        password: casspwd
+  monitor:
+    data_dir: ""
+    monograph_metrics:
+      path: "/mono_metrics"
+      port: 18081
+    prometheus:
+      download_url: "https://download.eloqdata.com/others/prometheus-2.42.0.linux-amd64.tar.gz"
+      port: 9500
+      host: 127.0.0.1
+    grafana:
+      download_url: "https://download.eloqdata.com/others/grafana-9.3.6.linux-amd64.tar.gz"
+      port: 3301
+      host: 127.0.0.1
+    node_exporter:
+      url: "https://download.eloqdata.com/others/node_exporter-1.5.0.linux-amd64.tar.gz"
+      port: 9200
+    mysql_exporter:
+      url: "https://download.eloqdata.com/others/mysqld_exporter-0.14.0.linux-amd64.tar.gz"
+      port: 9300
+    cassandra_collector:
+      mcac_agent: "https://download.eloqdata.com/others/datastax-mcac-agent-0.3.4-4.1-beta1.tar.gz"
+      mcac_port: 9103
