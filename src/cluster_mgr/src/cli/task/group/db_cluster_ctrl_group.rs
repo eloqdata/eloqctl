@@ -27,17 +27,11 @@ impl TaskGroup for CtrlDBTaskGroup {
         };
         let cmd_ref = cmd_arg.as_ref();
         let is_start_cmd = cmd_ref == "start" || cmd_ref == "restart";
-        let has_cass = config
-            .deployment
-            .storage_service
-            .cassandra
-            .as_ref()
-            .map(|cass| cass.internal().is_some())
-            .unwrap_or(false);
-
+        let has_cass = config.deployment.storage_service.inner_cass().is_some();
+        // FIXME: stop order
         let (mut executable, mut barrier) = if has_cass && (is_start_cmd || stop_all) {
             let exe = CassandraCtlTask::from_config(cmd_arg.clone(), &config);
-            let ba = CassandraCtlTask::barrier(exe.len());
+            let ba = CassandraCtlTask::start_barrier(exe.len());
             (exe, ba)
         } else {
             (IndexMap::new(), vec![])

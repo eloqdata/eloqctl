@@ -211,7 +211,7 @@ impl CassandraCtlTask {
     }
 
     // DataStax recommends starting the seed nodes one at a time, and then starting the rest of the nodes.
-    pub fn barrier(size: usize) -> Vec<usize> {
+    pub fn start_barrier(size: usize) -> Vec<usize> {
         let mut barrier = vec![];
         for i in 1..=size {
             if i <= Cassandra::MAX_SEED {

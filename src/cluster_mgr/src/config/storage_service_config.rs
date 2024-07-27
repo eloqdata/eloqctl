@@ -162,4 +162,11 @@ impl StorageService {
         cass_env_file.flush()?;
         Ok(env_sh)
     }
+
+    pub fn inner_cass(&self) -> Option<&CassDeploy> {
+        self.cassandra
+            .as_ref()
+            .map(|cass| cass.internal())
+            .unwrap_or(None)
+    }
 }

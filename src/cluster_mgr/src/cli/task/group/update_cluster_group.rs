@@ -1,3 +1,4 @@
+use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
 use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::group::{TaskGroup, UpdateClusterTaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
@@ -33,7 +34,6 @@ impl TaskGroup for UpdateClusterTaskGroup {
         let mut downloads = vec![];
         let mut upload_img = IndexMap::new();
         let mut unpack_tasks = IndexMap::new();
-        // let mut upload_cnf = IndexMap::new();
         if update_eloq {
             downloads.push(config.deployment.tx_image().to_owned());
             if let Some(img) = config.deployment.log_image() {
@@ -41,58 +41,60 @@ impl TaskGroup for UpdateClusterTaskGroup {
             }
             upload_img.extend(upload_tasks(UploadTaskBuilderType::EloqImage, &config));
             unpack_tasks.extend(UnpackFileTask::unpack_eloqservers(&config));
-            // upload_cnf.extend(upload_tasks(UploadTaskBuilderType::TxConf, &config));
         }
         if update_cass {
-            downloads.push(
-                deployment
-                    .storage_service
-                    .cassandra
-                    .as_ref()
-                    .unwrap()
-                    .internal()
-                    .unwrap()
-                    .image_url(),
-            );
+            downloads.push(deployment.storage_service.inner_cass().unwrap().image_url());
             upload_img.extend(upload_tasks(UploadTaskBuilderType::CassImage, &config));
             unpack_tasks.extend(UnpackFileTask::unpack_cassandra(&config, true));
-            // upload_cnf.extend(upload_tasks(UploadTaskBuilderType::CassConf, &config));
         }
         let download_task = DownloadTask::instances(DownloadTask::from_urls(downloads));
+        let mut barrier = vec![download_task.len(), upload_img.len()];
+        let mut executable = IndexMap::new();
+        executable.extend(download_task);
+        executable.extend(upload_img);
 
-        // stop tx-service and log-service
+        // stop order: tx-server -> log-server -> cassandra
         let stop_cmd = SubCommand::Stop {
             cluster: cluster.clone(),
             force: false,
             all: update_cass,
         };
-        let mut stop_tasks = MonographTxCtlTask::from_config(stop_cmd.clone(), &config);
+        let stop_tx = MonographTxCtlTask::from_config(stop_cmd.clone(), &config);
+        barrier.push(stop_tx.len());
+        executable.extend(stop_tx);
         if deployment.log_service.is_some() {
-            stop_tasks.extend(MonographLogCtlTask::from_config(stop_cmd, &config));
+            let stop_log = MonographLogCtlTask::from_config(stop_cmd.clone(), &config);
+            barrier.push(stop_log.len());
+            executable.extend(stop_log);
+        }
+        if update_cass {
+            let tasks = CassandraCtlTask::from_config(stop_cmd, &config);
+            barrier.push(tasks.len());
+            executable.extend(tasks);
         }
 
-        // start log-service and tx-service
-        let start_cmd = SubCommand::Start { cluster };
-        let mut start_tasks = IndexMap::new();
-        if deployment.log_service.is_some() {
-            start_tasks.extend(MonographLogCtlTask::from_config(start_cmd.clone(), &config));
-            start_tasks.extend(MonographLogProbeTask::from_config(&config));
-        }
-        start_tasks.extend(MonographTxCtlTask::from_config(start_cmd, &config));
-
-        let barrier = vec![
-            download_task.len(),
-            upload_img.len(),
-            stop_tasks.len(),
-            unpack_tasks.len(),
-            start_tasks.len(),
-        ];
-        let mut executable = IndexMap::new();
-        executable.extend(download_task);
-        executable.extend(upload_img);
-        executable.extend(stop_tasks);
+        barrier.push(unpack_tasks.len());
         executable.extend(unpack_tasks);
-        executable.extend(start_tasks);
+
+        // start order: cassandra -> log-server -> tx-server
+        let start_cmd = SubCommand::Start { cluster };
+        if deployment.storage_service.inner_cass().is_some() {
+            let tasks = CassandraCtlTask::from_config(start_cmd.clone(), &config);
+            let ba = CassandraCtlTask::start_barrier(tasks.len());
+            barrier.extend(ba);
+            executable.extend(tasks);
+        }
+        if deployment.log_service.is_some() {
+            let start_log = MonographLogCtlTask::from_config(start_cmd.clone(), &config);
+            barrier.push(start_log.len());
+            executable.extend(start_log);
+            let probe = MonographLogProbeTask::from_config(&config);
+            barrier.push(probe.len());
+            executable.extend(probe);
+        }
+        let start_tx = MonographTxCtlTask::from_config(start_cmd, &config);
+        barrier.push(start_tx.len());
+        executable.extend(start_tx);
         Ok(TaskExecutionContext {
             task_group: cmd_arg.as_ref().to_string(),
             barrier: Some(barrier),

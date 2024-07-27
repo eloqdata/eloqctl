@@ -58,7 +58,7 @@ impl TaskGroup for InstallDBTaskGroup {
                     }
                 }
                 let cassandra_start = CassandraCtlTask::from_config(install_cmd, &config);
-                barrier.extend(CassandraCtlTask::barrier(cassandra_start.len()));
+                barrier.extend(CassandraCtlTask::start_barrier(cassandra_start.len()));
                 executable.extend(cassandra_start);
             }
         }

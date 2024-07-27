@@ -25,4 +25,12 @@ cluster_mgr update demo-sql-cassandra latest --cass-mirror "https://dlcdn.apache
 cluster_mgr status demo-sql-cassandra --wait 30
 cluster_mgr remove demo-sql-cassandra
 
+sleep 15
+cluster_mgr demo eloq-sql --version 0.4.4 --skip-deps --joint-wal --no-monitor
+cluster_mgr status demo-sql-cassandra --wait 30
+cluster_mgr stop --all demo-sql-cassandra
+cluster_mgr update demo-sql-cassandra 0.4.6
+cluster_mgr status demo-sql-cassandra --wait 30
+cluster_mgr remove demo-sql-cassandra
+
 echo "Update tests PASSED !!!"
