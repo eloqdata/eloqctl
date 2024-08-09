@@ -1010,9 +1010,8 @@ impl Deployment {
                 format!("cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --defaults-file={tx_ini} > {logout} 2>&1 &")
             }
             Product::EloqKV => {
-                let logout = "/dev/null";
                 format!(
-                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={tx_ini} --graceful_quit_on_sigterm=true > {logout} 2>&1 &"
+                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={tx_ini} --graceful_quit_on_sigterm=true > logs/output 2>&1 &"
                 )
             }
         }
