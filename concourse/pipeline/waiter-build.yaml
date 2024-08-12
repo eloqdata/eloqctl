@@ -12,7 +12,7 @@ jobs:
         image: image_centos7
       - put: out_s3_centos7
         params:
-          file: the-output/waiter.tar.gz
+          file: the-output/eloqctl.tar.gz
   - name: centos8
     serial: true
     plan:
@@ -26,7 +26,7 @@ jobs:
         image: image_centos8
       - put: out_s3_centos8
         params:
-          file: the-output/waiter.tar.gz
+          file: the-output/eloqctl.tar.gz
   - name: rocky9
     serial: true
     plan:
@@ -40,7 +40,7 @@ jobs:
         image: image_rocky9
       - put: out_s3_rocky9
         params:
-          file: the-output/waiter.tar.gz
+          file: the-output/eloqctl.tar.gz
 
   - name: ubuntu18
     serial: true
@@ -55,7 +55,7 @@ jobs:
         image: image_ubuntu1804
       - put: out_s3_ubuntu18
         params:
-          file: the-output/waiter.tar.gz
+          file: the-output/eloqctl.tar.gz
   - name: ubuntu20
     serial: true
     plan:
@@ -69,7 +69,7 @@ jobs:
         image: image_ubuntu2004
       - put: out_s3_ubuntu20
         params:
-          file: the-output/waiter.tar.gz
+          file: the-output/eloqctl.tar.gz
   - name: ubuntu22
     serial: true
     plan:
@@ -83,7 +83,7 @@ jobs:
         image: image_ubuntu2204
       - put: out_s3_ubuntu22
         params:
-          file: the-output/waiter.tar.gz
+          file: the-output/eloqctl.tar.gz
   - name: ubuntu24
     serial: true
     plan:
@@ -97,7 +97,7 @@ jobs:
         image: image_ubuntu2404
       - put: out_s3_ubuntu24
         params:
-          file: the-output/waiter.tar.gz
+          file: the-output/eloqctl.tar.gz
 
 resources:
   - name: monograph_waiter
@@ -144,7 +144,7 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-rhel7-amd64.tar.gz
+      versioned_file: eloqctl/eloqctl-rhel7-amd64.tar.gz
   - name: out_s3_centos8
     type: s3
     source:
@@ -152,7 +152,7 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-rhel8-amd64.tar.gz
+      versioned_file: eloqctl/eloqctl-rhel8-amd64.tar.gz
   - name: out_s3_rocky9
     type: s3
     source:
@@ -160,7 +160,7 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-rhel9-amd64.tar.gz
+      versioned_file: eloqctl/eloqctl-rhel9-amd64.tar.gz
   - name: out_s3_ubuntu18
     type: s3
     source:
@@ -168,7 +168,7 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-ubuntu18-amd64.tar.gz
+      versioned_file: eloqctl/eloqctl-ubuntu18-amd64.tar.gz
   - name: out_s3_ubuntu20
     type: s3
     source:
@@ -176,7 +176,7 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-ubuntu20-amd64.tar.gz
+      versioned_file: eloqctl/eloqctl-ubuntu20-amd64.tar.gz
   - name: out_s3_ubuntu22
     type: s3
     source:
@@ -184,7 +184,7 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-ubuntu22-amd64.tar.gz
+      versioned_file: eloqctl/eloqctl-ubuntu22-amd64.tar.gz
   - name: out_s3_ubuntu24
     type: s3
     source:
@@ -192,4 +192,4 @@ resources:
       secret_access_key: ((aws-secret))
       bucket: eloq-release
       region_name: ap-northeast-1
-      versioned_file: waiter/waiter-ubuntu24-amd64.tar.gz
+      versioned_file: eloqctl/eloqctl-ubuntu24-amd64.tar.gz

@@ -20,7 +20,7 @@ command = "cargo"
 args = ["test", "--tests"]
 dependencies = ["clippy"]
 
-[tasks.cluster_mgr_build]
+[tasks.build_eloqctl]
 command = "cargo"
 args = ["build", "--package", "cluster_mgr", "--release"]
 dependencies = ["format"]
@@ -59,24 +59,25 @@ dependencies = ["devtools_build"]
 script = '''
 #!/bin/bash
 WORKSPACE_DIR=${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
-cp ${WORKSPACE_DIR}/target/release/rest_api EloqWaiter/
+cp ${WORKSPACE_DIR}/target/release/rest_api eloqctl/bin/
 '''
-dependencies = ["cluster_mgr_build", "rest_api_build", "cluster_mgr_pkg"]
+dependencies = ["rest_api_build", "pkg_eloqctl"]
 
-[tasks.cluster_mgr_pkg]
+[tasks.pkg_eloqctl]
 script = '''
 #!/bin/bash
 WORKSPACE_DIR="${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}"
 CLUSTER_MGR_RELEASE=${WORKSPACE_DIR}/target/release/cluster_mgr
-echo "cluster_mgr_pkg.workspace = ${WORKSPACE_DIR}"
-mkdir -p EloqWaiter
-cd EloqWaiter
+echo "pkg_eloqctl.workspace = ${WORKSPACE_DIR}"
+mkdir -p eloqctl/bin
+cd eloqctl
 ../version.sh > version
 cp -r ${WORKSPACE_DIR}/src/cluster_mgr/config ./
 cp -r ${WORKSPACE_DIR}/tests ./
+cd bin
 cp "$CLUSTER_MGR_RELEASE" ./
-if [ ! -f eloqmgr ]; then
-  ln -s cluster_mgr eloqmgr
+if [ ! -f eloqctl ]; then
+  ln -s cluster_mgr eloqctl
 fi
 '''
-dependencies = ["cluster_mgr_build"]
+dependencies = ["build_eloqctl"]
