@@ -3,6 +3,8 @@ set -exo pipefail
 
 echo ">>> Test Demo command"
 
+eloqctl --version
+
 # test eloq-sql
 eloqctl demo eloq-sql
 CLIENT=$(eloqctl -q connect demo-sql-cassandra)
