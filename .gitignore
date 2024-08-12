@@ -4,8 +4,7 @@
 # Visual Studio Code
 .vscode/
 .devcontainer/
-EloqWaiter/
-EloqWaiterRest/
+eloqctl/
 mono_devtools_dist/
 #*.json
 *.log
