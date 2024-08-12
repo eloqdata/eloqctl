@@ -13,5 +13,5 @@ run:
       WORK_DIR=$(pwd)
       cd monograph_waiter
       cargo make --no-workspace --makefile Makefile.toml rest_api_pkg
-      tar -czvf waiter.tar.gz EloqWaiter/
-      mv waiter.tar.gz ${WORK_DIR}/the-output/
+      tar -czvf eloqctl.tar.gz eloqctl
+      mv eloqctl.tar.gz ${WORK_DIR}/the-output/

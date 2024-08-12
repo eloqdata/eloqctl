@@ -7,7 +7,7 @@ deployment:
   cluster_name: "demo-sql"
   product: "EloqSQL"
   version: "latest"
-  install_dir: "${CLUSTER_MGR_HOME}"
+  install_dir: "${ELOQCTL_HOME}"
   tx_service:
     host: [127.0.0.1]
     port: 8000
