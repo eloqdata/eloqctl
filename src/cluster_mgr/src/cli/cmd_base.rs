@@ -625,8 +625,8 @@ impl CmdExecutor {
     async fn update(&self) -> Result<()> {
         let os = self.os_vers();
         let arch = cpu_arch();
-        let filename = format!("waiter-{os}-{arch}.tar.gz");
-        let url = format!("{CDN}/waiter/{filename}");
+        let filename = format!("eloqctl-{os}-{arch}.tar.gz");
+        let url = format!("{CDN}/eloqctl/{filename}");
         info!("Fetching latest package {url}");
         let resp = HTTP_CLIENT.get(&url).send().await?;
         if !resp.status().is_success() {
@@ -641,7 +641,7 @@ impl CmdExecutor {
             let local_len = std::fs::metadata(&cached)?.len();
             info!("latest package length {len}, local package length {local_len}");
             if len == local_len {
-                println!("cluster_mgr is already latest");
+                println!("eloqctl is already latest");
                 return Ok(());
             }
         }
