@@ -19,6 +19,8 @@ sleep 15
 bash tests/launch.sh
 sleep 15
 bash tests/update.sh
+sleep 15
+bash tests/control.sh
 
 if [[ ! "$(python3 --version)" =~ "Python 3.12" ]]; then
   sleep 15
