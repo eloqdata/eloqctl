@@ -141,10 +141,10 @@ pub enum SubCommand {
 
     #[command(long_about = "monitor control component")]
     #[strum(serialize = "monitor")]
-    Monitor { cluster: String, command: String },
+    Monitor { command: String, cluster: String },
     #[command(long_about = "LogService control component")]
     #[strum(serialize = "log-srv")]
-    LogService { cluster: String, command: String },
+    LogService { command: String, cluster: String },
 
     #[command(long_about = "Execute custom shell commands")]
     #[strum(serialize = "exec_cmd")]

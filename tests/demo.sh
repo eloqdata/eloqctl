@@ -10,7 +10,7 @@ eloqctl demo eloq-sql
 CLIENT=$(eloqctl -q connect demo-sql-cassandra)
 eloqctl status demo-sql-cassandra --wait 30
 eval "${CLIENT} --execute 'SHOW DATABASES'"
-eloqctl monitor demo-sql-cassandra stop
+eloqctl monitor stop demo-sql-cassandra
 eloqctl stop demo-sql-cassandra
 eloqctl update-conf demo-sql-cassandra
 eloqctl start demo-sql-cassandra
@@ -51,7 +51,7 @@ eval ${CLIENT} incr mycounter
 eval ${CLIENT} get mycounter
 eval ${CLIENT} incr mycounter
 eval ${CLIENT} get mycounter
-eloqctl monitor demo-kv-rocksdb stop
+eloqctl monitor stop demo-kv-rocksdb
 eloqctl list
 eloqctl stop demo-kv-rocksdb --all
 eloqctl remove demo-kv-rocksdb

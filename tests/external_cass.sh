@@ -15,7 +15,7 @@ eloqctl demo eloq-sql --skip-deps --unlimited --ext-cass ${CASSANDRA_HOST}
 CLIENT=$(eloqctl -q connect demo-sql-cassandra)
 eloqctl status demo-sql-cassandra --wait 30
 eval "${CLIENT} --execute 'SHOW DATABASES'"
-eloqctl monitor demo-sql-cassandra stop
+eloqctl monitor stop demo-sql-cassandra
 eloqctl stop demo-sql-cassandra --all
 eloqctl remove demo-sql-cassandra
 

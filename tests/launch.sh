@@ -11,7 +11,6 @@ eloqctl launch ${ELOQCTL_HOME}/config/examples/eloqsql_cassandra.yaml --skip-dep
 CLIENT=$(eloqctl -q connect eloqsql-cluster)
 eloqctl status eloqsql-cluster --wait 30
 eval "${CLIENT} --execute 'SHOW DATABASES'"
-eloqctl monitor eloqsql-cluster stop
 eloqctl stop eloqsql-cluster --all
 
 sleep 15
@@ -22,7 +21,6 @@ eval ${CLIENT} incr mycounter
 eval ${CLIENT} get mycounter
 eval ${CLIENT} incr mycounter
 eval ${CLIENT} get mycounter
-eloqctl monitor eloqkv-cluster stop
 eloqctl stop eloqkv-cluster --all
 eloqctl inspect eloqkv-cluster
 
