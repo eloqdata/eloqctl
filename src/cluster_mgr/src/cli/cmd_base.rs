@@ -568,7 +568,7 @@ impl CmdExecutor {
                         } else {
                             host = vec!["127.0.0.1".to_owned()];
                             kind = CassKind::Internal(CassDeploy {
-                                mirror: Some("https://dlcdn.apache.org".to_owned()),
+                                mirror: None,
                                 version: "4.1.3".to_owned(),
                                 cluster_name: None,
                             });
