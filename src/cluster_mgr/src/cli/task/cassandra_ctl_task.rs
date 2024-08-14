@@ -165,11 +165,7 @@ impl CassandraCtlTask {
                     host: "_NONE".to_string(),
                 },
             ),
-            SubCommand::Stop {
-                cluster: _,
-                force: _,
-                all: _,
-            } => (
+            SubCommand::Stop { .. } => (
                 "stop",
                 TaskId {
                     cmd: "stop".to_string(),
@@ -369,7 +365,22 @@ impl TaskExecutor for CassandraCtlTask {
                     info!("cassandra is not running");
                     Ok(exec_rs)
                 } else {
-                    ssh_session.command(&cmd, CollectOutput).await
+                    let kill_ret = ssh_session.command(&cmd, CollectOutput).await?;
+                    loop {
+                        let ret = self
+                            .cassandra_pid(ssh_session.clone(), task_host.clone())
+                            .await?;
+                        let pid = TaskArgValue::into_inner_value::<String>(
+                            ret.get(PROCESS_PID).unwrap().clone(),
+                        );
+                        if pid == "NONE" {
+                            break;
+                        } else {
+                            info!("cassandra process ({pid}) still exist");
+                            tokio::time::sleep(Duration::from_secs(3)).await;
+                        }
+                    }
+                    Ok(kill_ret)
                 }
             }
             _ => unreachable!(),

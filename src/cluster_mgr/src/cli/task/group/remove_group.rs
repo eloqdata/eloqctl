@@ -2,10 +2,8 @@ use std::collections::HashMap;
 
 use crate::cli::task::cassandra_op_task::CassandraOpTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
-use crate::cli::task::group::{CtrlDBTaskGroup, MonitorCtlTaskGroup, RemoveTaskGroup, TaskGroup};
-use crate::cli::task::task_base::{
-    merge_execution, TaskExecutionContext, TaskHost, TaskId, TaskInstance,
-};
+use crate::cli::task::group::{CtrlDBTaskGroup, RemoveTaskGroup, TaskGroup};
+use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
 use crate::config::StorageProvider;
@@ -26,28 +24,29 @@ impl TaskGroup for RemoveTaskGroup {
                 unreachable!()
             }
         };
+        let mut barrier = vec![];
+        let mut executable;
         // terminate all process
-        let (mut barrier, mut executable) = merge_execution(vec![
-            MonitorCtlTaskGroup
-                .tasks(
-                    SubCommand::Monitor {
-                        cluster: cluster.clone(),
-                        command: "stop".to_string(),
-                    },
-                    config.clone(),
-                )
-                .await?,
-            CtrlDBTaskGroup
-                .tasks(
-                    SubCommand::Stop {
-                        cluster: cluster.clone(),
-                        force: true,
-                        all: true,
-                    },
-                    config.clone(),
-                )
-                .await?,
-        ]);
+        let stop = CtrlDBTaskGroup
+            .tasks(
+                SubCommand::Stop {
+                    cluster: cluster.clone(),
+                    tx: Some(true),
+                    log: true,
+                    store: true,
+                    monitor: true,
+                    force: true,
+                    all: true,
+                },
+                config.clone(),
+            )
+            .await?;
+        if let Some(ba) = stop.barrier {
+            barrier.extend(ba);
+        } else {
+            barrier.push(stop.executable.len());
+        }
+        executable = stop.executable;
 
         if let Some(logsv) = &config.deployment.log_service {
             // clean log service data

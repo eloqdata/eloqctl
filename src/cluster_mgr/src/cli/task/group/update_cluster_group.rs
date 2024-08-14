@@ -56,8 +56,12 @@ impl TaskGroup for UpdateClusterTaskGroup {
         // stop order: tx-server -> log-server -> cassandra
         let stop_cmd = SubCommand::Stop {
             cluster: cluster.clone(),
+            tx: Some(true),
+            log: true,
+            store: update_cass,
+            monitor: false,
             force: false,
-            all: update_cass,
+            all: false,
         };
         let stop_tx = MonographTxCtlTask::from_config(stop_cmd.clone(), &config);
         barrier.push(stop_tx.len());

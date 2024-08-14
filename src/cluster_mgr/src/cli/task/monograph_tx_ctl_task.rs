@@ -258,11 +258,7 @@ impl MonographTxCtlTask {
         let mut db_pwd = "_NONE".to_string();
         let mut is_force_stop = false;
         match cmd_arg.clone() {
-            SubCommand::Stop {
-                cluster: _,
-                force,
-                all: _,
-            } => is_force_stop = force,
+            SubCommand::Stop { force, .. } => is_force_stop = force,
             SubCommand::Status {
                 cluster: _,
                 user,

@@ -63,12 +63,20 @@ pub enum SubCommand {
         skip_deps: bool,
     },
     #[strum(serialize = "start")]
-    #[command(long_about = "Start the specified cluster(TxService/LogService/Storage)")]
+    #[command(long_about = "Start cluster(TxService/LogService/Storage)")]
     Start { cluster: String },
-    #[command(long_about = "Stop the specified cluster(TxService/LogService/Storage)")]
+    #[command(long_about = "Stop cluster components")]
     #[strum(serialize = "stop")]
     Stop {
         cluster: String,
+        #[arg(long, default_value = "true")]
+        tx: Option<bool>,
+        #[arg(long, default_value_t = false)]
+        log: bool,
+        #[arg(long, default_value_t = false)]
+        store: bool,
+        #[arg(long, default_value_t = false)]
+        monitor: bool,
         #[arg(short, long, default_value_t = false)]
         force: bool,
         #[arg(short, long, default_value_t = false)]
@@ -98,9 +106,7 @@ pub enum SubCommand {
         #[arg(long, value_name = "url")]
         cass_mirror: Option<String>,
     },
-    #[command(
-        long_about = "Update the configuration file and restart the tx service. Note: Please edit config/Eloq**.cnf first"
-    )]
+    #[command(long_about = "Update config file by config/Eloq**.ini and restart")]
     #[strum(serialize = "update-conf")]
     UpdateConf {
         cluster: String,
@@ -135,10 +141,10 @@ pub enum SubCommand {
 
     #[command(long_about = "monitor control component")]
     #[strum(serialize = "monitor")]
-    Monitor { cluster: String, command: String },
+    Monitor { command: String, cluster: String },
     #[command(long_about = "LogService control component")]
     #[strum(serialize = "log-srv")]
-    LogService { cluster: String, command: String },
+    LogService { command: String, cluster: String },
 
     #[command(long_about = "Execute custom shell commands")]
     #[strum(serialize = "exec_cmd")]

@@ -14,14 +14,11 @@ export PATH="$PATH:$ELOQCTL_HOME/bin"
 
 cd $ELOQCTL_HOME
 cat version
-bash tests/demo.sh
-sleep 15
 bash tests/launch.sh
-sleep 15
+bash tests/demo.sh
 bash tests/update.sh
-
+bash tests/control.sh
 if [[ ! "$(python3 --version)" =~ "Python 3.12" ]]; then
-  sleep 15
   wget https://downloads.datastax.com/enterprise/cqlsh-astra.tar.gz
   tar -xzvf cqlsh-astra.tar.gz
   export PATH=$PATH:${PWD}/cqlsh-astra/bin

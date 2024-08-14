@@ -94,11 +94,7 @@ impl LogCtlCmd {
                         password: _,
                         wait: _,
                     } => LogCtlCmd::Status(ps_cmd_part),
-                    SubCommand::Stop {
-                        cluster: _,
-                        force,
-                        all: _,
-                    } => {
+                    SubCommand::Stop { force, .. } => {
                         let ps_log_info = ps_cmd_part;
                         let stop_cmd_string = if *force {
                             format!("{ps_log_info} | xargs kill -9")

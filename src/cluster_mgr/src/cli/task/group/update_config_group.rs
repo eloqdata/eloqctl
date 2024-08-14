@@ -30,6 +30,10 @@ impl TaskGroup for UpdateConfigTaskGroup {
             let stop_tx_task = MonographTxCtlTask::from_config(
                 SubCommand::Stop {
                     cluster: cluster_name.clone(),
+                    tx: Some(true),
+                    log: true,
+                    store: false,
+                    monitor: false,
                     force: false,
                     all: false,
                 },

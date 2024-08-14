@@ -15,8 +15,8 @@ resources:
   - name: clock-waiter-test
     type: time
     source:
-      start: 8:00 AM
-      stop: 8:00 AM
+      start: 6:00 AM
+      stop: 6:00 AM
       location: Asia/Shanghai
       days: [Monday, Tuesday, Wednesday, Thursday, Friday]
   - name: clock-midnight
@@ -25,7 +25,7 @@ resources:
       start: 12:00 AM
       stop: 12:00 AM
       location: Asia/Shanghai
-      days: [Monday]
+      days: [Monday, Tuesday, Wednesday, Thursday, Friday]
 
 jobs:
   - name: waiter-build

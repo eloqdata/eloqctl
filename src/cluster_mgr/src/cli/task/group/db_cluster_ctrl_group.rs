@@ -10,32 +10,68 @@ use crate::config::config_base::DeployConfig;
 use anyhow::Result;
 use indexmap::IndexMap;
 
+use super::MonitorCtlTaskGroup;
+
 #[async_trait::async_trait]
 impl TaskGroup for CtrlDBTaskGroup {
-    async fn tasks(
-        &self,
-        cmd_arg: SubCommand,
-        config: DeployConfig,
-    ) -> Result<TaskExecutionContext> {
-        let cmd_str = cmd_arg.as_ref().to_owned();
-        let (barrier, executable) = match cmd_arg {
+    async fn tasks(&self, cmd: SubCommand, config: DeployConfig) -> Result<TaskExecutionContext> {
+        let cmd_str = cmd.as_ref().to_owned();
+        let (barrier, executable) = match cmd.clone() {
             SubCommand::Restart { cluster } => {
                 let stop_cmd = SubCommand::Stop {
                     cluster: cluster.clone(),
+                    tx: Some(true),
+                    log: true,
+                    store: false,
+                    monitor: false,
                     force: false,
                     all: false,
                 };
-                let (mut barrier, mut executable) = self.stop_tasks(stop_cmd, &config);
+                let (mut barrier, mut executable) =
+                    self.stop_tasks(true, true, false, stop_cmd, &config);
                 let start_cmd = SubCommand::Start { cluster };
                 let (b, exe) = self.start_tasks(start_cmd, &config);
                 barrier.extend(b);
                 executable.extend(exe);
                 (barrier, executable)
             }
-            SubCommand::Start { .. } => self.start_tasks(cmd_arg, &config),
-            SubCommand::Stop { .. } => self.stop_tasks(cmd_arg, &config),
+            SubCommand::Start { .. } => self.start_tasks(cmd, &config),
+            SubCommand::Stop {
+                cluster,
+                tx,
+                log,
+                store,
+                monitor,
+                force: _,
+                all,
+            } => {
+                let (cluster, tx, log, store, monitor) = if all {
+                    (cluster, true, true, true, true)
+                } else {
+                    (cluster, tx.unwrap_or(true), log, store, monitor)
+                };
+                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config);
+                if monitor && config.deployment.monitor.is_some() {
+                    let stop_moni = SubCommand::Monitor {
+                        cluster: cluster.clone(),
+                        command: "stop".to_string(),
+                    };
+                    let TaskExecutionContext {
+                        task_group: _,
+                        barrier: ba,
+                        executable,
+                    } = MonitorCtlTaskGroup.tasks(stop_moni, config.clone()).await?;
+                    if let Some(ba) = ba {
+                        barrier.extend(ba);
+                    } else {
+                        barrier.push(executable.len());
+                    }
+                    tasks.extend(executable);
+                }
+                (barrier, tasks)
+            }
             SubCommand::Status { .. } => {
-                let tasks = self.status_tasks(cmd_arg, &config);
+                let tasks = self.status_tasks(cmd, &config);
                 (vec![tasks.len()], tasks)
             }
             _ => unreachable!(),
@@ -52,13 +88,12 @@ impl TaskGroup for CtrlDBTaskGroup {
 impl CtrlDBTaskGroup {
     fn stop_tasks(
         &self,
-        stop_cmd: SubCommand,
+        tx: bool,
+        log: bool,
+        store: bool,
+        cmd: SubCommand,
         config: &DeployConfig,
     ) -> (Vec<usize>, IndexMap<TaskId, TaskInstance>) {
-        let stop_cass = match stop_cmd {
-            SubCommand::Stop { all, .. } => all,
-            _ => unreachable!(),
-        };
         let deployment = &config.deployment;
         let mut barrier = vec![];
         let mut executable = IndexMap::new();
@@ -72,16 +107,18 @@ impl CtrlDBTaskGroup {
         }
 
         // stop order: tx-server -> log-server -> cassandra
-        let stop_tx = MonographTxCtlTask::from_config(stop_cmd.clone(), &config);
-        barrier.push(stop_tx.len());
-        executable.extend(stop_tx);
-        if deployment.log_service.is_some() {
-            let stop_log = MonographLogCtlTask::from_config(stop_cmd.clone(), &config);
+        if tx {
+            let stop_tx = MonographTxCtlTask::from_config(cmd.clone(), &config);
+            barrier.push(stop_tx.len());
+            executable.extend(stop_tx);
+        }
+        if log && deployment.log_service.is_some() {
+            let stop_log = MonographLogCtlTask::from_config(cmd.clone(), &config);
             barrier.push(stop_log.len());
             executable.extend(stop_log);
         }
-        if stop_cass && deployment.storage_service.inner_cass().is_some() {
-            let tasks = CassandraCtlTask::from_config(stop_cmd, &config);
+        if store && deployment.storage_service.inner_cass().is_some() {
+            let tasks = CassandraCtlTask::from_config(cmd, &config);
             barrier.push(tasks.len());
             executable.extend(tasks);
         }

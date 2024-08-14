@@ -6,8 +6,6 @@ function log_start() {
   export GLOG_max_log_size=1024
   if [ "${VERSION}" = "debug" ]; then
     export ASAN_OPTIONS=${ASAN_OPTS}:log_path=${log_dir}/asan
-  else
-    export LD_PRELOAD=${LOG_INSTALL_DIR}/lib/libmimalloc.so.2
   fi
   export LD_LIBRARY_PATH=${LOG_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
   log_start_cmd="${LOG_INSTALL_DIR}/bin/launch_sv -conf=${GROUP_MEMBERS} -raft_max_parallel_append_entries_rpc_num=64 \

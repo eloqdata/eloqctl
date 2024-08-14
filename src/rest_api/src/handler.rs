@@ -61,6 +61,10 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> SubCommand 
         },
         "stop" => SubCommand::Stop {
             cluster: cluster.unwrap(),
+            tx: Some(true),
+            log: true,
+            store: false,
+            monitor: false,
             force: false,
             all: false,
         },

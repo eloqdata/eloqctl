@@ -19,6 +19,7 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, OnceLock};
+use std::time::Duration;
 use std::{env, fs};
 use tokio_postgres::config::SslMode;
 use tokio_postgres::NoTls;
@@ -28,12 +29,14 @@ pub static NOT_PRINT_TASK_RESULT: &str = "NOT_PRINT_TASK_RESULT";
 
 pub static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(30))
         .build()
         .expect("can't init http client")
 });
 
 pub static HTTP_INTERNAL: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
         .no_proxy()
         .build()
         .expect("can't init http client for internal use")
@@ -191,11 +194,7 @@ impl CmdExecutor {
             }
             SubCommand::Demo { .. } => self.gen_demo_config(cmd).await,
             SubCommand::Install { cluster }
-            | SubCommand::Stop {
-                cluster,
-                force: _,
-                all: _,
-            }
+            | SubCommand::Stop { cluster, .. }
             | SubCommand::Start { cluster }
             | SubCommand::LogService {
                 cluster,
@@ -569,8 +568,8 @@ impl CmdExecutor {
                         } else {
                             host = vec!["127.0.0.1".to_owned()];
                             kind = CassKind::Internal(CassDeploy {
-                                mirror: Some(CDN.to_owned()),
-                                version: "4.1.3".to_owned(),
+                                mirror: None,
+                                version: "4.1.5".to_owned(),
                                 cluster_name: None,
                             });
                         };

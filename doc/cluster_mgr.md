@@ -3,6 +3,8 @@
 ### Install
 ```shell
 bash src/cluster_mgr/install.sh
+# Or
+curl http://download.eloqdata.com/eloqctl/install.sh | bash
 ```
 
 ### Design and implementation
