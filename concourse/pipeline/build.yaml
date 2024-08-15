@@ -1,3 +1,8 @@
+aws-access: &aws-access
+  AWS_ACCESS_KEY_ID: ((aws_access_key_id))
+  AWS_SECRET_ACCESS_KEY: ((aws_secret_access_key))
+  AWS_DEFAULT_REGION: ((aws-region))
+
 jobs:
   - name: centos7
     serial: true
@@ -8,11 +13,10 @@ jobs:
             - get: monograph_waiter
             - get: image_centos7
       - task: build_waiter
+        params:
+          <<: *aws-access
         file: monograph_waiter/concourse/task_build.yaml
         image: image_centos7
-      - put: out_s3_centos7
-        params:
-          file: the-output/eloqctl.tar.gz
   - name: centos8
     serial: true
     plan:
@@ -22,11 +26,10 @@ jobs:
             - get: monograph_waiter
             - get: image_centos8
       - task: build_waiter
+        params:
+          <<: *aws-access
         file: monograph_waiter/concourse/task_build.yaml
         image: image_centos8
-      - put: out_s3_centos8
-        params:
-          file: the-output/eloqctl.tar.gz
   - name: rocky9
     serial: true
     plan:
@@ -36,11 +39,10 @@ jobs:
             - get: monograph_waiter
             - get: image_rocky9
       - task: build_waiter
+        params:
+          <<: *aws-access
         file: monograph_waiter/concourse/task_build.yaml
         image: image_rocky9
-      - put: out_s3_rocky9
-        params:
-          file: the-output/eloqctl.tar.gz
 
   - name: ubuntu18
     serial: true
@@ -51,11 +53,10 @@ jobs:
             - get: monograph_waiter
             - get: image_ubuntu1804
       - task: build_waiter
+        params:
+          <<: *aws-access
         file: monograph_waiter/concourse/task_build.yaml
         image: image_ubuntu1804
-      - put: out_s3_ubuntu18
-        params:
-          file: the-output/eloqctl.tar.gz
   - name: ubuntu20
     serial: true
     plan:
@@ -65,11 +66,10 @@ jobs:
             - get: monograph_waiter
             - get: image_ubuntu2004
       - task: build_waiter
+        params:
+          <<: *aws-access
         file: monograph_waiter/concourse/task_build.yaml
         image: image_ubuntu2004
-      - put: out_s3_ubuntu20
-        params:
-          file: the-output/eloqctl.tar.gz
   - name: ubuntu22
     serial: true
     plan:
@@ -79,11 +79,10 @@ jobs:
             - get: monograph_waiter
             - get: image_ubuntu2204
       - task: build_waiter
+        params:
+          <<: *aws-access
         file: monograph_waiter/concourse/task_build.yaml
         image: image_ubuntu2204
-      - put: out_s3_ubuntu22
-        params:
-          file: the-output/eloqctl.tar.gz
   - name: ubuntu24
     serial: true
     plan:
@@ -93,11 +92,10 @@ jobs:
             - get: monograph_waiter
             - get: image_ubuntu2404
       - task: build_waiter
+        params:
+          <<: *aws-access
         file: monograph_waiter/concourse/task_build.yaml
         image: image_ubuntu2404
-      - put: out_s3_ubuntu24
-        params:
-          file: the-output/eloqctl.tar.gz
 
 resources:
   - name: monograph_waiter
@@ -136,60 +134,3 @@ resources:
     source:
       repository: eloqdata/eloqctl-build-ubuntu24
     type: registry-image
-
-  - name: out_s3_centos7
-    type: s3
-    source:
-      access_key_id: ((aws-access))
-      secret_access_key: ((aws-secret))
-      bucket: eloq-release
-      region_name: ap-northeast-1
-      versioned_file: eloqctl/eloqctl-rhel7-amd64.tar.gz
-  - name: out_s3_centos8
-    type: s3
-    source:
-      access_key_id: ((aws-access))
-      secret_access_key: ((aws-secret))
-      bucket: eloq-release
-      region_name: ap-northeast-1
-      versioned_file: eloqctl/eloqctl-rhel8-amd64.tar.gz
-  - name: out_s3_rocky9
-    type: s3
-    source:
-      access_key_id: ((aws-access))
-      secret_access_key: ((aws-secret))
-      bucket: eloq-release
-      region_name: ap-northeast-1
-      versioned_file: eloqctl/eloqctl-rhel9-amd64.tar.gz
-  - name: out_s3_ubuntu18
-    type: s3
-    source:
-      access_key_id: ((aws-access))
-      secret_access_key: ((aws-secret))
-      bucket: eloq-release
-      region_name: ap-northeast-1
-      versioned_file: eloqctl/eloqctl-ubuntu18-amd64.tar.gz
-  - name: out_s3_ubuntu20
-    type: s3
-    source:
-      access_key_id: ((aws-access))
-      secret_access_key: ((aws-secret))
-      bucket: eloq-release
-      region_name: ap-northeast-1
-      versioned_file: eloqctl/eloqctl-ubuntu20-amd64.tar.gz
-  - name: out_s3_ubuntu22
-    type: s3
-    source:
-      access_key_id: ((aws-access))
-      secret_access_key: ((aws-secret))
-      bucket: eloq-release
-      region_name: ap-northeast-1
-      versioned_file: eloqctl/eloqctl-ubuntu22-amd64.tar.gz
-  - name: out_s3_ubuntu24
-    type: s3
-    source:
-      access_key_id: ((aws-access))
-      secret_access_key: ((aws-secret))
-      bucket: eloq-release
-      region_name: ap-northeast-1
-      versioned_file: eloqctl/eloqctl-ubuntu24-amd64.tar.gz
