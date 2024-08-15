@@ -1,5 +1,5 @@
-ARG OS_ID
-FROM ubuntu:${OS_ID}.04
+ARG UBT_ID=24.04
+FROM ubuntu:$UBT_ID
 
 RUN set -eux; \
     apt update; \
