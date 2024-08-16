@@ -1,35 +1,48 @@
 #!/bin/bash
+# Example:
+#   ./build.bash build centos7 centos8 rocky9 ubuntu
+#   ./build.bash test centos7 centos8 rocky9 ubuntu
 set -e
 
-# PLATFORM='linux/amd64,linux/arm64'
+case $(uname -m) in
+amd64 | x86_64) ARCH=amd64 ;;
+arm64 | aarch64) ARCH=arm64 ;;
+*) ARCH= $(uname -m) ;;
+esac
+
+BUILDX_PLATFORM='linux/amd64,linux/arm64'
 build_image() {
     ln -s ${IMG_KIND}-${IMG_OS}.dockerfile Dockerfile
     BUILD_ARGS=""
     if [ $IMG_OS = "ubuntu" ]; then
-        IMG_NAME="monographdb/waiter-${IMG_KIND}-${IMG_OS}${UBUNTU_ID}"
-        BUILD_ARGS="--build-arg OS_ID=${UBUNTU_ID}"
+        IMG_NAME="eloqdata/eloqctl-${IMG_KIND}-${IMG_OS}${UBUNTU_ID}"
+        BUILD_ARGS="--build-arg UBT_ID=${UBUNTU_ID}.04"
     else
-        IMG_NAME="monographdb/waiter-${IMG_KIND}-${IMG_OS}"
+        IMG_NAME="eloqdata/eloqctl-${IMG_KIND}-${IMG_OS}"
     fi
-    if [ -n "$PLATFORM" ]; then
-        docker buildx build --platform $PLATFORM -t $IMG_NAME $BUILD_ARGS --push .
+    if [ -n "$BUILDX_PLATFORM" ]; then
+        docker buildx build -t $IMG_NAME $BUILD_ARGS --platform $BUILDX_PLATFORM --push .
     else
-        docker build -t $IMG_NAME $BUILD_ARGS .
+        docker build -t ${IMG_NAME}-${ARCH} $BUILD_ARGS --platform linux/$ARCH .
         docker push $IMG_NAME
     fi
     rm Dockerfile
 }
 
-IMG_KIND=$1
-for ((i = 2; i <= "$#"; i++)); do
-    IMG_OS=${!i}
-    if [ $IMG_OS = "ubuntu" ]; then
-        for UBUNTU_ID in 18 20 22 24; do
+if [ -n "$1" ]; then
+    IMG_KIND=$1
+    for ((i = 2; i <= "$#"; i++)); do
+        IMG_OS=${!i}
+        if [ $IMG_OS = "ubuntu" ]; then
+            for UBUNTU_ID in 18 20 22 24; do
+                build_image
+            done
+        else
             build_image
-        done
-    else
-        build_image
-    fi
-done
+        fi
+    done
+else
+    build_image
+fi
 
 echo "Done!"

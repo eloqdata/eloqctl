@@ -3,18 +3,21 @@ FROM rockylinux:9
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.79.0
+    RUST_VERSION=1.80.0
 
-RUN set -eux; \
-    dnf -y update; \
-    dnf install -y \
-    wget git \
-    ca-certificates \
-    gcc \
-    glibc-devel \
-    pkg-config \
-    openssl-devel && \
+RUN set -ex; \
+    dnf update -y; \
+    dnf install -y dnf-plugins-core; \
+    dnf install -y epel-release; \
+    dnf config-manager --set-enabled crb; \
+    dnf install -y ca-certificates gcc glibc-devel pkg-config openssl-devel; \
+    dnf install -y wget git unzip; \
     dnf clean all; \
+    # install aws cli
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o "awscliv2.zip"; \
+    unzip awscliv2.zip && rm awscliv2.zip; \
+    ./aws/install && rm -r aws; \
+    # install rust
     dpkgArch="$(uname -m)"; \
     case "${dpkgArch}" in \
     amd64 | x86_64) rustArch='x86_64-unknown-linux-gnu'; rustupSha256='0b2f6c8f85a3d02fde2efc0ced4657869d73fccfce59defb4e8d29233116e6db' ;; \
@@ -31,5 +34,5 @@ RUN set -eux; \
     rustup --version; \
     cargo --version; \
     rustc --version; \
-    cargo install --force cargo-make; \
-    dnf autoremove -y wget;
+    # install cargo make
+    cargo install --force cargo-make; 

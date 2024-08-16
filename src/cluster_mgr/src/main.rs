@@ -17,7 +17,7 @@ async fn main() {
         info!("command: {:#?}", sub);
         if let Err(e) = executor.run(sub, None, cmd.quiet).await {
             error!("{}", e);
-            eprintln!("{}: {e}\n logfile: {}", "FAIL".red(), log_path.display());
+            eprintln!("{}: {e}\nlogfile: {}", "FAIL".red(), log_path.display());
             exit(1);
         }
     }

@@ -6,4 +6,4 @@ inputs:
 run:
   path: /bin/bash
   args:
-    - waiter_src/concourse/install_test.sh
+    - waiter_src/concourse/task_test.sh

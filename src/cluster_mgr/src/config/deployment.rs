@@ -1022,7 +1022,7 @@ impl Deployment {
             }
             Product::EloqKV => {
                 format!(
-                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={tx_ini} --graceful_quit_on_sigterm=true > logs/output 2>&1 &"
+                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={tx_ini} --graceful_quit_on_sigterm=true > logs/std-out 2>&1 &"
                 )
             }
         }

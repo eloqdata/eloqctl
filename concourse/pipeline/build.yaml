@@ -1,0 +1,136 @@
+aws-access: &aws-access
+  AWS_ACCESS_KEY_ID: ((aws_access_key_id))
+  AWS_SECRET_ACCESS_KEY: ((aws_secret_access_key))
+  AWS_DEFAULT_REGION: ((aws-region))
+
+jobs:
+  - name: centos7
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: image_centos7
+      - task: build_waiter
+        params:
+          <<: *aws-access
+        file: monograph_waiter/concourse/task_build.yaml
+        image: image_centos7
+  - name: centos8
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: image_centos8
+      - task: build_waiter
+        params:
+          <<: *aws-access
+        file: monograph_waiter/concourse/task_build.yaml
+        image: image_centos8
+  - name: rocky9
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: image_rocky9
+      - task: build_waiter
+        params:
+          <<: *aws-access
+        file: monograph_waiter/concourse/task_build.yaml
+        image: image_rocky9
+
+  - name: ubuntu18
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: image_ubuntu1804
+      - task: build_waiter
+        params:
+          <<: *aws-access
+        file: monograph_waiter/concourse/task_build.yaml
+        image: image_ubuntu1804
+  - name: ubuntu20
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: image_ubuntu2004
+      - task: build_waiter
+        params:
+          <<: *aws-access
+        file: monograph_waiter/concourse/task_build.yaml
+        image: image_ubuntu2004
+  - name: ubuntu22
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: image_ubuntu2204
+      - task: build_waiter
+        params:
+          <<: *aws-access
+        file: monograph_waiter/concourse/task_build.yaml
+        image: image_ubuntu2204
+  - name: ubuntu24
+    serial: true
+    plan:
+      - in_parallel:
+          limit: 2
+          steps:
+            - get: monograph_waiter
+            - get: image_ubuntu2404
+      - task: build_waiter
+        params:
+          <<: *aws-access
+        file: monograph_waiter/concourse/task_build.yaml
+        image: image_ubuntu2404
+
+resources:
+  - name: monograph_waiter
+    icon: github
+    source:
+      branch: main
+      private_key: ((git-key))
+      uri: git@github.com:monographdb/monograph_waiter.git
+    type: git
+
+  - name: image_centos7
+    source:
+      repository: eloqdata/eloqctl-build-centos7
+    type: registry-image
+  - name: image_centos8
+    source:
+      repository: eloqdata/eloqctl-build-centos8
+    type: registry-image
+  - name: image_rocky9
+    source:
+      repository: eloqdata/eloqctl-build-rocky9
+    type: registry-image
+  - name: image_ubuntu1804
+    source:
+      repository: eloqdata/eloqctl-build-ubuntu18
+    type: registry-image
+  - name: image_ubuntu2004
+    source:
+      repository: eloqdata/eloqctl-build-ubuntu20
+    type: registry-image
+  - name: image_ubuntu2204
+    source:
+      repository: eloqdata/eloqctl-build-ubuntu22
+    type: registry-image
+  - name: image_ubuntu2404
+    source:
+      repository: eloqdata/eloqctl-build-ubuntu24
+    type: registry-image

@@ -92,40 +92,40 @@ resources:
     source:
       username: monographdb
       password: 
-      repository: monographdb/waiter-test-centos7
+      repository: eloqdata/eloqctl-test-centos7
   - name: image_centos8
     type: registry-image
     source:
       username: monographdb
       password: 
-      repository: monographdb/waiter-test-centos8
+      repository: eloqdata/eloqctl-test-centos8
   - name: image_rocky9
     type: registry-image
     source:
       username: monographdb
       password: 
-      repository: monographdb/waiter-test-rocky9
+      repository: eloqdata/eloqctl-test-rocky9
   - name: image_ubuntu1804
     type: registry-image
     source:
       username: monographdb
       password: 
-      repository: monographdb/waiter-test-ubuntu18
+      repository: eloqdata/eloqctl-test-ubuntu18
   - name: image_ubuntu2004
     type: registry-image
     source:
       username: monographdb
       password: 
-      repository: monographdb/waiter-test-ubuntu20
+      repository: eloqdata/eloqctl-test-ubuntu20
   - name: image_ubuntu2204
     type: registry-image
     source:
       username: monographdb
       password: 
-      repository: monographdb/waiter-test-ubuntu22
+      repository: eloqdata/eloqctl-test-ubuntu22
   - name: image_ubuntu2404
     type: registry-image
     source:
       username: monographdb
       password: 
-      repository: monographdb/waiter-test-ubuntu24
+      repository: eloqdata/eloqctl-test-ubuntu24
