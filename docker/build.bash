@@ -15,15 +15,15 @@ build_image() {
     ln -s ${IMG_KIND}-${IMG_OS}.dockerfile Dockerfile
     BUILD_ARGS=""
     if [ $IMG_OS = "ubuntu" ]; then
-        IMG_NAME="eloqdata/eloqctl-${IMG_KIND}-${IMG_OS}${UBUNTU_ID}-${ARCH}"
+        IMG_NAME="eloqdata/eloqctl-${IMG_KIND}-${IMG_OS}${UBUNTU_ID}"
         BUILD_ARGS="--build-arg UBT_ID=${UBUNTU_ID}.04"
     else
-        IMG_NAME="eloqdata/eloqctl-${IMG_KIND}-${IMG_OS}-${ARCH}"
+        IMG_NAME="eloqdata/eloqctl-${IMG_KIND}-${IMG_OS}"
     fi
     if [ -n "$BUILDX_PLATFORM" ]; then
         docker buildx build -t $IMG_NAME $BUILD_ARGS --platform $BUILDX_PLATFORM --push .
     else
-        docker build -t $IMG_NAME $BUILD_ARGS --platform linux/$ARCH .
+        docker build -t ${IMG_NAME}-${ARCH} $BUILD_ARGS --platform linux/$ARCH .
         docker push $IMG_NAME
     fi
     rm Dockerfile
