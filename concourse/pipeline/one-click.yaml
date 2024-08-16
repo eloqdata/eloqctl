@@ -12,7 +12,7 @@ resources:
       password: Mono_cz158#
       repository: monographdb/monograph-dev-ci-ubuntu2004
     type: registry-image
-  - name: clock-waiter-test
+  - name: clock-eloqctl-test
     type: time
     source:
       start: 6:00 AM
@@ -28,7 +28,7 @@ resources:
       days: [Monday, Tuesday, Wednesday, Thursday, Friday]
 
 jobs:
-  - name: waiter-build
+  - name: eloqctl-build
     serial: true
     plan:
       - in_parallel:
@@ -36,25 +36,25 @@ jobs:
           steps:
             - get: monograph_waiter
             - get: base_image
-      - task: waiter-build
+      - task: eloqctl-build
         image: base_image
         params:
-          PIPELINE: "waiter-build"
+          PIPELINE: "eloqctl-build"
         file: monograph_waiter/concourse/one-click.yaml
-  - name: waiter-test
+  - name: eloqctl-test
     serial: true
     plan:
       - in_parallel:
           limit: 2
           steps:
-            - get: clock-waiter-test
+            - get: clock-eloqctl-test
               trigger: true
             - get: monograph_waiter
             - get: base_image
-      - task: waiter-test
+      - task: eloqctl-test
         image: base_image
         params:
-          PIPELINE: "waiter-test"
+          PIPELINE: "eloqctl-test"
         file: monograph_waiter/concourse/one-click.yaml
 
   - name: eloqkv-release
