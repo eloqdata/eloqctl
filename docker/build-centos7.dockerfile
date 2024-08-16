@@ -3,7 +3,7 @@ FROM centos:7
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.79.0
+    RUST_VERSION=1.80.0
 
 RUN set -ex; \
     sed -i s/mirror.centos.org/vault.centos.org/g /etc/yum.repos.d/*.repo; \

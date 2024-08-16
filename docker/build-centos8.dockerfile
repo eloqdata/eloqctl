@@ -3,7 +3,7 @@ FROM centos:8
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.79.0
+    RUST_VERSION=1.80.0
 
 RUN set -ex; \
     # https://stackoverflow.com/questions/70963985/error-failed-to-download-metadata-for-repo-appstream-cannot-prepare-internal
