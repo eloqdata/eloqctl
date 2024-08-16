@@ -1,4 +1,5 @@
 #!/bin/bash
+set -exo pipefail
 
 cargo install cargo-make
 cd monograph_waiter
