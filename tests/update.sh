@@ -13,13 +13,13 @@ eloqctl demo eloq-kv --skip-deps
 eloqctl status demo-kv-cassandra --wait 30
 eloqctl update demo-kv-cassandra latest
 eloqctl status demo-kv-cassandra --wait 30
-eloqctl update demo-kv-cassandra --cassandra 4.0.13
+eloqctl update demo-kv-cassandra --cassandra 4.1.5
 eloqctl status demo-kv-cassandra --wait 30
 eloqctl remove demo-kv-cassandra
 
 eloqctl demo eloq-sql --skip-deps
 eloqctl status demo-sql-cassandra --wait 30
-eloqctl update demo-sql-cassandra latest --cassandra 4.0.13
+eloqctl update demo-sql-cassandra latest --cassandra 4.1.5
 eloqctl status demo-sql-cassandra --wait 30
 eloqctl remove demo-sql-cassandra
 

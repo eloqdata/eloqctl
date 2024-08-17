@@ -266,7 +266,7 @@ impl CmdExecutor {
                     if let CassKind::Internal(cass) = &mut cass.as_mut().unwrap().kind {
                         if let Some(v) = cassandra {
                             if v == cass.version {
-                                bail!("cassandra version not changed")
+                                warn!("cassandra version not changed")
                             }
                             cass.version = v;
                         }
