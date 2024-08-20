@@ -92,6 +92,7 @@ jobs:
             - get: monograph_waiter
             - get: image_ubuntu2404
       - task: build_waiter
+        privileged: true
         params:
           <<: *aws-access
         file: monograph_waiter/concourse/task_build.yaml
