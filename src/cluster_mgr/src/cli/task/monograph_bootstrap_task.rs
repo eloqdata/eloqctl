@@ -105,7 +105,7 @@ impl TaskExecutor for MonographInstall {
                 .await?;
         let insdir = self.config.install_dir();
         let txsv_dir = self.config.deployment.tx_srv_home();
-        let bootstarp_sh = match self.config.product() {
+        let bootstarp_sh = match self.config.product().unwrap() {
             Product::EloqSQL => {
                 format!(
                     "cd {txsv_dir}; mkdir logs; /bin/bash {insdir}/{MONOGRAPH_INSTALL_SCRIPT} > logs/bootstrap.log 2>&1 ",

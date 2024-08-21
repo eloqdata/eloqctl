@@ -182,7 +182,7 @@ impl MySQLProbe {
         mut wait_secs: i32,
     ) -> anyhow::Result<ExecutionValue> {
         info!("Probe whether EloqSQL is ready to be connected locally");
-        let mut cmd = config.client_conn();
+        let mut cmd = config.client_conn().expect("no-tx");
         cmd.push_str(" --execute 'SHOW DATABASES'");
         loop {
             let ret = ssh_sess.command(&cmd, CollectOutput).await?;
@@ -366,6 +366,7 @@ impl TaskExecutor for MonographTxCtlTask {
         task_host: TaskHost,
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
+        let txsrv = self.config.deployment.tx_service.as_ref().expect("no-tx");
         info!("execute {}", self.task_id.pretty_string());
         let ssh_session =
             SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
@@ -379,7 +380,7 @@ impl TaskExecutor for MonographTxCtlTask {
             "status" => {
                 let wait_secs =
                     TaskArgValue::into_inner_value::<i32>(task_arg.get(WAIT_SECS).unwrap().clone());
-                match self.config.product() {
+                match txsrv.product {
                     Product::EloqSQL => {
                         let db_user = TaskArgValue::into_inner_value::<String>(
                             task_arg.get(MONO_DB_USER).unwrap().clone(),
@@ -388,7 +389,7 @@ impl TaskExecutor for MonographTxCtlTask {
                             let db_pwd = TaskArgValue::into_inner_value::<String>(
                                 task_arg.get(MONO_DB_PWD).unwrap().clone(),
                             );
-                            let mysql_port = self.config.deployment.client_port();
+                            let mysql_port = txsrv.client_port();
                             MySQLProbe::new(host_value, mysql_port, db_user, db_pwd)
                                 .probe(wait_secs)
                                 .await
@@ -400,7 +401,7 @@ impl TaskExecutor for MonographTxCtlTask {
                     }
                     Product::EloqKV => {
                         if wait_secs >= 0 {
-                            let cs_port = self.config.deployment.client_port();
+                            let cs_port = txsrv.client_port();
                             RedisProbe::new(host_value, cs_port).probe(wait_secs).await
                         } else {
                             check_process_status

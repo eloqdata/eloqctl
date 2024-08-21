@@ -32,10 +32,11 @@ impl TaskGroup for MonitorCtlTaskGroup {
         };
         let mut executable = IndexMap::new();
         let mut barrier = vec![];
-        if monitor_ctl_cmd.to_lowercase().eq("start") && config.product() == Product::EloqSQL {
+        if monitor_ctl_cmd.to_lowercase().eq("start") && config.product() == Some(Product::EloqSQL)
+        {
+            let cli_conn = config.client_conn().unwrap();
             let create_monitor_user_cmd = format!(
-                "{} < {}/{CREATE_MONITOR_USER_SQL_FILE}",
-                config.client_conn(),
+                "{cli_conn} < {}/{CREATE_MONITOR_USER_SQL_FILE}",
                 config.install_dir()
             );
             let monograph_hosts = config.get_host_list(DeploymentPackage::MonographTx);
@@ -49,7 +50,7 @@ impl TaskGroup for MonitorCtlTaskGroup {
             barrier.push(create_user_task.len());
             executable.extend(create_user_task);
 
-            let flush_privileges = format!("{} -e  'FLUSH PRIVILEGES'", config.client_conn());
+            let flush_privileges = format!("{cli_conn} -e  'FLUSH PRIVILEGES'");
             let flush_privilege_task = ExecCustomCommand::build_task_by_host(
                 flush_privileges,
                 &config,

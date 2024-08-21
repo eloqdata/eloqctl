@@ -14,7 +14,7 @@ use crate::config::{
     JVM_SETTING_HOLDER, SECTION_CLUSTER, SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC,
     SECTION_STORE,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use configparser::ini::Ini;
 use core::panic;
 use indexmap::IndexMap;
@@ -114,10 +114,25 @@ pub struct MonographPort {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct MonographService {
+    pub product: Product,
+    pub version: Option<String>,
     pub image: Option<String>,
     pub host: Vec<String>,
     pub port: Option<u16>,
     pub client_port: u16,
+}
+
+impl MonographService {
+    pub fn client_port(&self) -> u16 {
+        self.client_port
+    }
+
+    pub fn bootstrap_host(&self) -> String {
+        let mut all_hosts = self.host.clone();
+        assert!(!all_hosts.is_empty());
+        all_hosts.sort();
+        all_hosts.first().unwrap().to_string()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, clap::ValueEnum, Display)]
@@ -190,11 +205,9 @@ pub enum Version {
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Deployment {
-    pub product: Option<Product>,
-    pub version: Option<String>,
     pub cluster_name: String,
     pub install_dir: String,
-    pub tx_service: MonographService,
+    pub tx_service: Option<MonographService>,
     pub log_service: Option<LogService>,
     pub storage_service: StorageService,
     pub monitor: Option<Monitor>,
@@ -203,8 +216,12 @@ pub struct Deployment {
 }
 
 impl Deployment {
-    pub fn tx_image(&self) -> &str {
-        self.tx_service.image.as_ref().unwrap()
+    pub fn tx_image(&self) -> Option<&str> {
+        if let Some(srv) = &self.tx_service {
+            srv.image.as_deref()
+        } else {
+            None
+        }
     }
 
     pub fn log_image(&self) -> Option<&str> {
@@ -223,24 +240,12 @@ impl Deployment {
         }
     }
 
-    pub fn product(&self) -> Product {
-        if let Some(p) = self.product.clone() {
-            p
-        } else {
-            Product::EloqSQL
-        }
-    }
-
-    pub fn version_str(&self) -> &str {
-        self.version.as_ref().unwrap()
-    }
-
     pub fn version(&self) -> Option<Version> {
-        self.version.as_ref().map(|ver| parse_version(ver))
-    }
-
-    pub fn client_port(&self) -> u16 {
-        self.tx_service.client_port
+        if let Some(txsrv) = &self.tx_service {
+            txsrv.version.as_ref().map(|ver| parse_version(ver))
+        } else {
+            None
+        }
     }
 
     pub fn install_dir(&self) -> String {
@@ -248,7 +253,7 @@ impl Deployment {
     }
 
     pub fn tx_srv_home(&self) -> String {
-        format!("{}/{}", &self.install_dir(), self.product().home())
+        format!("{}/{}", &self.install_dir(), self.product().unwrap().home())
     }
 
     pub fn log_srv_home(&self) -> String {
@@ -261,10 +266,14 @@ impl Deployment {
 
     pub fn tx_srv_ini(&self) -> String {
         let home = self.tx_srv_home();
-        match self.product() {
+        match self.product().unwrap() {
             Product::EloqSQL => format!("{home}/{ELOQSQL_INI}"),
             Product::EloqKV => format!("{home}/{ELOQKV_INI}"),
         }
+    }
+
+    pub fn product(&self) -> Option<Product> {
+        self.tx_service.as_ref().map(|tx| tx.product.clone())
     }
 
     pub fn tx_srv_logs(&self) -> String {
@@ -272,7 +281,7 @@ impl Deployment {
     }
 
     pub fn tx_srv_bin(&self) -> String {
-        match self.product() {
+        match self.product().unwrap() {
             Product::EloqSQL => format!("{}/bin/mariadbd", &self.tx_srv_home()),
             Product::EloqKV => format!("{}/bin/eloqkv", &self.tx_srv_home()),
         }
@@ -280,7 +289,7 @@ impl Deployment {
 
     pub fn client_bin(&self) -> String {
         let tx_home = self.tx_srv_home();
-        match self.product() {
+        match self.product().unwrap() {
             Product::EloqSQL => format!("{tx_home}/bin/mariadb"),
             Product::EloqKV => format!("{tx_home}/bin/eloqkv-cli"),
         }
@@ -315,7 +324,7 @@ impl Deployment {
     }
 
     pub fn get_keyspace(&self) -> Result<String> {
-        match self.product() {
+        match self.product().unwrap() {
             Product::EloqSQL => self.get_monograph_keyspace(),
             Product::EloqKV => self.get_redis_keyspace(),
         }
@@ -336,11 +345,11 @@ impl Deployment {
         let node_group = Vec::from_iter(ordered_members.values())
             .into_iter()
             .join(",");
-        let key_list = match self.product() {
+        let key_list = match self.product().unwrap() {
             Product::EloqSQL => "monograph_txlog_service_list".to_string(),
             Product::EloqKV => "txlog_service_list".to_string(),
         };
-        let key_replica = match self.product() {
+        let key_replica = match self.product().unwrap() {
             Product::EloqSQL => "monograph_txlog_group_replica_num".to_string(),
             Product::EloqKV => "txlog_group_replica_num".to_string(),
         };
@@ -348,13 +357,6 @@ impl Deployment {
             (key_replica, replica_num.to_string()),
             (key_list, node_group),
         ])
-    }
-
-    pub fn bootstrap_host(&self) -> String {
-        let mut all_hosts = self.tx_service.host.clone();
-        assert!(!all_hosts.is_empty());
-        all_hosts.sort();
-        all_hosts.first().unwrap().to_string()
     }
 
     pub fn build_eloqsql_config(&self, set_ip_list: bool) -> anyhow::Result<Ini> {
@@ -413,6 +415,7 @@ impl Deployment {
         // );
 
         let txsrv_home = self.tx_srv_home();
+        let txsrv = self.tx_service.as_ref().unwrap();
         my_ini.set(
             SECTION_MARIADB,
             "datadir",
@@ -431,18 +434,18 @@ impl Deployment {
         my_ini.set(
             SECTION_MARIADB,
             "port",
-            Some(self.client_port().to_string()),
+            Some(txsrv.client_port().to_string()),
         );
         my_ini.set(
             SECTION_MARIADB,
             "socket",
-            Some(format!("/tmp/eloqsql{}.sock", self.client_port())),
+            Some(format!("/tmp/eloqsql{}.sock", txsrv.client_port())),
         );
 
-        let use_port = self.tx_service.port.unwrap();
-        let monograph_hosts = &self.tx_service.host;
+        let use_port = txsrv.port.unwrap();
         if set_ip_list {
-            let ip_list = monograph_hosts
+            let ip_list = txsrv
+                .host
                 .iter()
                 .map(|host| format!("{}:{}", host.clone(), use_port))
                 .join(",");
@@ -469,7 +472,8 @@ impl Deployment {
     }
 
     pub fn gen_eloqsql_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
-        let port = self.tx_service.port.unwrap();
+        let txsrv = self.tx_service.as_ref().unwrap();
+        let port = txsrv.port.unwrap();
         let is_host = tx_host.is_some();
         let mut my_ini = self.build_eloqsql_config(is_host)?;
         let (host, cnf_path) = if let Some(host) = tx_host {
@@ -517,7 +521,7 @@ impl Deployment {
 
         let mut core = 1;
         if let Some(hw) = opt_hw {
-            if self.tx_service.host.len() == 1 {
+            if txsrv.host.len() == 1 {
                 core = core.max((hw.cpu * 3) / 4);
             } else {
                 core = core.max((hw.cpu * 2) / 5);
@@ -536,7 +540,7 @@ impl Deployment {
         if val.is_none() {
             my_ini.set(SECTION_MARIADB, key, Some(core.to_string()));
         }
-        if self.tx_service.host.len() > 1 {
+        if txsrv.host.len() > 1 {
             let key = "monograph_bthread_worker_num";
             let val = set_by_user!(my_ini.get(SECTION_MARIADB, key), u16);
             if val.is_none() {
@@ -650,10 +654,11 @@ impl Deployment {
                 }
             },
         }
-        let use_port = self.client_port();
-        let monograph_hosts = &self.tx_service.host;
+        let txsrv = self.tx_service.as_ref().unwrap();
+        let use_port = txsrv.client_port();
         if set_ip_list {
-            let ip_list = monograph_hosts
+            let ip_list = txsrv
+                .host
                 .iter()
                 .map(|host| format!("{}:{}", host.clone(), use_port))
                 .join(",");
@@ -680,13 +685,14 @@ impl Deployment {
     }
 
     pub fn gen_eloqkv_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
+        let txsrv = self.tx_service.as_ref().unwrap();
         let is_host = tx_host.is_some();
         let mut ini = self.build_eloqkv_config(is_host)?;
         let (host, cnf_path) = if let Some(host) = tx_host {
             (host.clone(), upload_host_dir(&host).join(ELOQKV_INI))
         } else {
             ini.set(SECTION_LOCAL, "ip", Some("127.0.0.1".to_owned()));
-            ini.set(SECTION_LOCAL, "port", Some(self.client_port().to_string()));
+            ini.set(SECTION_LOCAL, "port", Some(txsrv.client_port().to_string()));
             ini.set(SECTION_LOCAL, "core_number", Some("1".to_owned()));
             ini.set(SECTION_LOCAL, "event_dispatcher_num", Some("1".to_owned()));
             ini.set(
@@ -706,7 +712,7 @@ impl Deployment {
                 });
         }
         ini.set(SECTION_LOCAL, "ip", Some(host.clone()));
-        ini.set(SECTION_LOCAL, "port", Some(self.client_port().to_string()));
+        ini.set(SECTION_LOCAL, "port", Some(txsrv.client_port().to_string()));
 
         let opt_hw = self.get_hardware(&host);
         if opt_hw.is_none() {
@@ -753,6 +759,10 @@ impl Deployment {
 
     // generate proxy config file
     pub fn codis_proxy_config(&self) -> anyhow::Result<PathBuf> {
+        if self.tx_service.is_none() {
+            bail!("codis: tx service not configured");
+        }
+        let txsrv = self.tx_service.as_ref().unwrap();
         let temp = fs::read_to_string(config_template(CODIS_PROXY_CNF)?)?;
         let mut cnf = toml::Table::from_str(&temp)?;
         cnf.insert(
@@ -760,8 +770,7 @@ impl Deployment {
             toml::Value::String(self.cluster_name.clone()),
         );
         // calculate backend_primary_parallel
-        let ncpu = &self
-            .tx_service
+        let ncpu = &txsrv
             .host
             .iter()
             .map(|host| {
@@ -812,7 +821,9 @@ impl Deployment {
 
     pub fn monograph_download_links(&self) -> anyhow::Result<HashMap<String, DownloadUrl>> {
         let mut links = HashMap::new();
-        download_urls!(links,{MONOGRAPH_FILE_KEY, self.tx_image()});
+        if let Some(img) = self.tx_image() {
+            download_urls!(links,{MONOGRAPH_FILE_KEY, img});
+        }
         if let Some(img) = self.log_image() {
             download_urls!(links,{MONOGRAPH_LOG_FILE_KEY, img});
         }
@@ -854,7 +865,13 @@ impl Deployment {
                     vec![]
                 }
             }
-            DeploymentPackage::MonographTx => self.tx_service.host.to_vec(),
+            DeploymentPackage::MonographTx => {
+                if let Some(tx) = &self.tx_service {
+                    tx.host.clone()
+                } else {
+                    vec![]
+                }
+            }
             DeploymentPackage::Prometheus => {
                 extract_monitor_host!(self, prometheus)
             }
@@ -1010,7 +1027,7 @@ impl Deployment {
         ld_lib.push_str(&format!(
             "; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH"
         ));
-        match self.product() {
+        match self.product().unwrap() {
             Product::EloqSQL => {
                 let mut logout = "/dev/null".to_owned();
                 if let Some(Version::Tag(nums)) = self.version() {

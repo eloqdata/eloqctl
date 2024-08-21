@@ -131,7 +131,7 @@ pub(crate) fn list_files_by_host(host: &str, config: &Deployment) -> Vec<String>
         .filter_map(|entry_rs| entry_rs.ok())
         .map(|entry| entry.into_path())
         .collect_vec();
-    if config.product() == Product::EloqSQL {
+    if config.product() == Some(Product::EloqSQL) {
         paths.push(upload_dir().join("my_local.cnf"));
         paths.push(upload_dir().join(MONOGRAPH_INSTALL_SCRIPT));
         if config.monitor.is_some() {

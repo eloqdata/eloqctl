@@ -32,12 +32,12 @@ pub struct DownloadTask {
 impl DownloadTask {
     pub fn from_config(config: &DeployConfig) -> Result<IndexMap<TaskId, TaskInstance>> {
         let deployment_ref = &config.deployment;
-        let tx_download_str = deployment_ref.tx_image();
-        let tx_download_url = DownloadUrl::from_url_str(tx_download_str)?;
-
         let mut urls = vec![];
-        if !tx_download_url.is_local() {
-            urls.push(tx_download_str.to_owned());
+
+        if let Some(img) = deployment_ref.tx_image() {
+            if !DownloadUrl::from_url_str(img)?.is_local() {
+                urls.push(img.to_owned());
+            }
         }
 
         if let Some(log_image_url) = deployment_ref.log_image() {

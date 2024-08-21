@@ -12,12 +12,15 @@ impl UploadTaskBuilder for DataDirUploadBuilder {
     /// Upload the MonographDB data_dir to the remote host.
     fn build(&self, config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
         let deployment_ref = &config.deployment;
-        let bootstrap_host = deployment_ref.bootstrap_host();
+        if deployment_ref.tx_service.is_none() {
+            return IndexMap::new();
+        }
+        let txsrv = deployment_ref.tx_service.as_ref().unwrap();
+        let bootstrap_host = txsrv.bootstrap_host();
         let local = get_source_host(None);
         let txsrv_home = config.deployment.tx_srv_home();
         let datafarm = upload_dir().join("datafarm").to_string_lossy().to_string();
-        deployment_ref
-            .tx_service
+        txsrv
             .host
             .iter()
             .filter(|host| !host.as_str().eq(bootstrap_host.as_str()))

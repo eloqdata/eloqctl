@@ -8,7 +8,7 @@ use crate::config::{
 };
 use crate::config::{ConfigErr, DownloadUrl};
 use crate::gen_db_misc_files;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -118,10 +118,20 @@ impl DeployConfig {
                         }
                     }
                     DeploymentPackage::MonographTx => {
-                        extract_monitor_link!(monitor_link, NODE_EXPORTER_FILE_KEY, unpack_files);
-                        extract_monitor_link!(monitor_link, MYSQL_EXPORTER_FILE_KEY, unpack_files);
-                        let tx_image = DownloadUrl::from_url_str(tx_image).unwrap();
-                        unpack_files.push(tx_image);
+                        if let Some(img) = tx_image {
+                            extract_monitor_link!(
+                                monitor_link,
+                                NODE_EXPORTER_FILE_KEY,
+                                unpack_files
+                            );
+                            extract_monitor_link!(
+                                monitor_link,
+                                MYSQL_EXPORTER_FILE_KEY,
+                                unpack_files
+                            );
+                            let tx_image = DownloadUrl::from_url_str(img).unwrap();
+                            unpack_files.push(tx_image);
+                        }
                     }
                     DeploymentPackage::MonographLog => {
                         if let Some(img) = log_image {
@@ -175,39 +185,35 @@ impl DeployConfig {
     }
 
     pub fn gen_all_monograph_configs(&self) -> anyhow::Result<Vec<PathBuf>> {
-        let mut path_vec = match self.product() {
-            Product::EloqSQL => vec![self.deployment.gen_eloqsql_config_by_host(None)?],
-            Product::EloqKV => vec![self.deployment.gen_eloqkv_config_by_host(None)?],
+        let deploy = &self.deployment;
+        if deploy.tx_service.is_none() {
+            return Ok(vec![]);
+        }
+        let txsrv = deploy.tx_service.as_ref().unwrap();
+        let mut path_vec = match txsrv.product {
+            Product::EloqSQL => vec![deploy.gen_eloqsql_config_by_host(None)?],
+            Product::EloqKV => vec![deploy.gen_eloqkv_config_by_host(None)?],
         };
-        let db_hosts = &self.deployment.tx_service.host;
-        let all_config_path = match self.product() {
-            Product::EloqSQL => db_hosts
-                .iter()
-                .map(|host| {
-                    self.deployment
-                        .gen_eloqsql_config_by_host(Some(host.to_string()))
-                        .unwrap()
-                })
-                .collect_vec(),
-            Product::EloqKV => db_hosts
-                .iter()
-                .map(|host| {
-                    self.deployment
-                        .gen_eloqkv_config_by_host(Some(host.to_string()))
-                        .unwrap()
-                })
-                .collect_vec(),
-        };
-        path_vec.extend(all_config_path);
+        for h in txsrv.host.clone().into_iter().map(|h| Some(h.to_string())) {
+            let cfg = match txsrv.product {
+                Product::EloqSQL => deploy.gen_eloqsql_config_by_host(h).unwrap(),
+                Product::EloqKV => deploy.gen_eloqkv_config_by_host(h).unwrap(),
+            };
+            path_vec.push(cfg);
+        }
         Ok(path_vec)
     }
 
     pub fn gen_all_mysql_exporter_config(&self) -> anyhow::Result<Option<Vec<PathBuf>>> {
-        let deployment_ref = &self.deployment;
-        if let Some(monitor) = deployment_ref.monitor.as_ref() {
-            let mysql_port = deployment_ref.client_port();
-            let db_hosts = &deployment_ref.tx_service.host;
-            let config_path = db_hosts
+        let deploy = &self.deployment;
+        if deploy.tx_service.is_none() {
+            bail!("tx service is not configured");
+        }
+        let txsrv = deploy.tx_service.as_ref().unwrap();
+        if let Some(monitor) = deploy.monitor.as_ref() {
+            let mysql_port = txsrv.client_port();
+            let config_path = txsrv
+                .host
                 .iter()
                 .map(|host| {
                     monitor
@@ -256,30 +262,32 @@ impl DeployConfig {
         self.deployment.install_dir()
     }
 
-    pub fn client_conn(&self) -> String {
+    pub fn client_conn(&self) -> Option<String> {
+        if self.deployment.tx_service.is_none() {
+            return None;
+        }
+        let txsrv = self.deployment.tx_service.as_ref().unwrap();
         let bin = self.deployment.client_bin();
-        match self.product() {
+        let s = match txsrv.product {
             Product::EloqSQL => format!(
                 "LD_LIBRARY_PATH={}/lib:$LD_LIBRARY_PATH {bin} --user={} -S /tmp/eloqsql{}.sock",
                 self.deployment.tx_srv_home(),
                 self.connection.username,
-                self.deployment.client_port()
+                txsrv.client_port()
             ),
             Product::EloqKV => {
                 let (host, port) = if let Some(codis) = &self.deployment.codis {
                     (codis.proxy.first().unwrap(), 19000)
                 } else {
-                    (
-                        self.deployment.tx_service.host.first().unwrap(),
-                        self.deployment.client_port(),
-                    )
+                    (txsrv.host.first().unwrap(), txsrv.client_port())
                 };
                 format!("{bin} -h {} -p {}", host, port)
             }
-        }
+        };
+        Some(s)
     }
 
-    pub fn product(&self) -> Product {
+    pub fn product(&self) -> Option<Product> {
         self.deployment.product()
     }
 
@@ -307,7 +315,11 @@ impl DeployConfig {
             let log_start_template = fs::read_to_string(log_start_template_path.as_path())?;
             let all_start_cmd_by_hosts = log_srv.log_start_cmd();
             let log_home_dir = self.deployment.log_srv_home();
-            let version = self.deployment.version.as_ref().unwrap();
+            let version = if let Some(txsrv) = &self.deployment.tx_service {
+                txsrv.version.as_deref().unwrap_or("")
+            } else {
+                ""
+            };
             let cmd_scripts = all_start_cmd_by_hosts
                 .iter()
                 .flat_map(|(host, cmd_items)| {
@@ -512,11 +524,21 @@ impl DeployConfig {
     }
 
     pub fn abstract_info(&self) -> DeployAbstract {
+        let product = if let Some(p) = self.product() {
+            p.to_string()
+        } else {
+            "".to_owned()
+        };
+        let version = if let Some(tx) = &self.deployment.tx_service {
+            tx.version.clone().unwrap_or_default()
+        } else {
+            "".to_owned()
+        };
         DeployAbstract {
             name: self.deployment.cluster_name.clone(),
-            product: self.deployment.product(),
+            product,
             store: self.deployment.storage_service.pretty_name(),
-            version: self.deployment.version.clone().unwrap_or_default(),
+            version,
             user: self.connection.username.clone(),
         }
     }
@@ -525,7 +547,7 @@ impl DeployConfig {
 #[derive(tabled::Tabled, Clone, Debug)]
 pub struct DeployAbstract {
     name: String,
-    product: Product,
+    product: String,
     store: String,
     version: String,
     user: String,

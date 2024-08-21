@@ -46,13 +46,15 @@ impl UnpackFileTask {
     pub fn from_config(config: &DeployConfig) -> anyhow::Result<IndexMap<TaskId, TaskInstance>> {
         let deployment_ref = &config.deployment;
 
-        let tx_image = DownloadUrl::from_url_str(deployment_ref.tx_image())
-            .unwrap()
-            .file_name();
+        let tx_image = if let Some(img) = deployment_ref.tx_image() {
+            DownloadUrl::from_url_str(img).unwrap().file_name()
+        } else {
+            "_NONE".to_owned()
+        };
         let log_image = if let Some(img) = deployment_ref.log_image() {
             DownloadUrl::from_url_str(img).unwrap().file_name()
         } else {
-            "".to_string()
+            "_NONE".to_string()
         };
         let remote_install_dir = config.install_dir();
         let conn_usr = config.connection.clone().username;
@@ -68,7 +70,7 @@ impl UnpackFileTask {
                 let unpack_dest = if curr_file_name.eq(&log_image) {
                     LOG_SERVICE_HOME.to_string()
                 } else if curr_file_name.eq(&tx_image) {
-                    config.product().home().to_owned()
+                    config.product().unwrap().home().to_owned()
                 } else {
                     extract_unpacked_name(curr_file_name.as_str())
                 };
@@ -105,15 +107,17 @@ impl UnpackFileTask {
     }
 
     pub fn unpack_eloqservers(config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
+        let mut tasks = IndexMap::new();
         let deploy_ref = &config.deployment;
-        let image = deploy_ref.tx_image().split('/').last().unwrap();
-        let tx_home = config.product().home().to_owned();
-        let mut tasks = deploy_ref
-            .tx_service
-            .host
-            .iter()
-            .map(|host| Self::make_task_pair(config, host, image, &tx_home, vec![]))
-            .collect::<IndexMap<TaskId, TaskInstance>>();
+        if let Some(txsrv) = &deploy_ref.tx_service {
+            let image = txsrv.image.as_ref().unwrap().split('/').last().unwrap();
+            let tx_home = txsrv.product.home().to_owned();
+            tasks = txsrv
+                .host
+                .iter()
+                .map(|host| Self::make_task_pair(config, host, image, &tx_home, vec![]))
+                .collect::<IndexMap<TaskId, TaskInstance>>();
+        }
         if let Some(srv) = &deploy_ref.log_service {
             let image = srv.image.as_ref().unwrap().split('/').last().unwrap();
             let ret = srv

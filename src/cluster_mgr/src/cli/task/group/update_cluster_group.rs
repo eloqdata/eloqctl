@@ -9,6 +9,7 @@ use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
+use anyhow::bail;
 use indexmap::IndexMap;
 
 #[async_trait::async_trait]
@@ -35,7 +36,11 @@ impl TaskGroup for UpdateClusterTaskGroup {
         let mut upload_img = IndexMap::new();
         let mut unpack_tasks = IndexMap::new();
         if update_eloq {
-            downloads.push(config.deployment.tx_image().to_owned());
+            if deployment.tx_image().is_none() {
+                bail!("tx service is not configured");
+            }
+            let tximg = deployment.tx_image().unwrap().to_owned();
+            downloads.push(tximg);
             if let Some(img) = config.deployment.log_image() {
                 downloads.push(img.to_owned());
             }

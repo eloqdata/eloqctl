@@ -5,10 +5,10 @@ connection:
     keypair: "/home/${USER}/.ssh/id_rsa"
 deployment:
   cluster_name: "eloqkv-cluster"
-  product: "EloqKV"
-  version: "latest"
   install_dir: "/home/${USER}"
   tx_service:
+    product: "EloqKV"
+    version: "latest"
     host: [127.0.0.1]
     client_port: 6389
   log_service:

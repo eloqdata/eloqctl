@@ -5,10 +5,10 @@ connection:
     keypair: "/home/${USER}/.ssh/id_rsa"
 deployment:
   cluster_name: "demo-sql"
-  product: "EloqSQL"
-  version: "latest"
   install_dir: "${ELOQCTL_HOME}"
   tx_service:
+    product: "EloqSQL"
+    version: "latest"
     host: [127.0.0.1]
     port: 8000
     client_port: 3316

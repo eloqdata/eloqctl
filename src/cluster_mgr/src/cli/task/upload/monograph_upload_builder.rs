@@ -79,7 +79,7 @@ impl MonographUploadBuilder {
             all_files_path.extend(log_start_path);
         }
 
-        if config.product() == Product::EloqSQL {
+        if config.product() == Some(Product::EloqSQL) {
             let all_mysql_exporter_conf = config.gen_all_mysql_exporter_config().unwrap();
             if let Some(mysql_exporter_conf) = all_mysql_exporter_conf {
                 all_files_path.extend(mysql_exporter_conf);
@@ -165,21 +165,21 @@ impl EloqUpload {
 
     pub fn eloq_image_upload(config: &Deployment) -> Vec<UploadFile> {
         let install_dir = config.install_dir();
-        let img = config.tx_image();
-        let url = DownloadUrl::from_url_str(img).unwrap();
-        let img_src = format!("{}/{}", url.cache_dir().unwrap(), url.file_name());
-        let mut uploads = config
-            .tx_service
-            .host
-            .iter()
-            .map(|host| UploadFile {
-                source: img_src.clone(),
-                dest: install_dir.clone(),
-                extension: "gz".to_string(),
-                host: host.to_string(),
-                copy_dir: false,
-            })
-            .collect_vec();
+        let mut uploads = vec![];
+        if let Some(txsrv) = &config.tx_service {
+            let img = txsrv.image.as_deref().unwrap();
+            let url = DownloadUrl::from_url_str(img).unwrap();
+            let img_src = format!("{}/{}", url.cache_dir().unwrap(), url.file_name());
+            for host in &txsrv.host {
+                uploads.push(UploadFile {
+                    source: img_src.clone(),
+                    dest: install_dir.clone(),
+                    extension: "gz".to_string(),
+                    host: host.to_string(),
+                    copy_dir: false,
+                });
+            }
+        }
         if let Some(srv) = &config.log_service {
             let img = srv.image.as_ref().unwrap();
             let url = DownloadUrl::from_url_str(img).unwrap();

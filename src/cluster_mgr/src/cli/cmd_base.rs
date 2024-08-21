@@ -247,12 +247,14 @@ impl CmdExecutor {
                     .load_deployment_from_state(&cluster)
                     .await?
                     .ok_or(anyhow!("cluster {} not found", cluster))?;
+                let deploy = &mut config.deployment;
                 if let Some(v) = version {
-                    if config.deployment.version.is_some() && config.deployment.version_str() == v {
+                    let txsrv = deploy.tx_service.as_mut().expect("tx srv missing");
+                    if txsrv.version == Some(v.clone()) {
                         warn!("cluster version not changed")
                     }
-                    config.deployment.version = Some(v);
-                    config.deployment.tx_service.image = None;
+                    txsrv.version = Some(v);
+                    txsrv.image = None;
                     if let Some(logsrv) = &mut config.deployment.log_service {
                         logsrv.image = None;
                     }
@@ -322,7 +324,11 @@ impl CmdExecutor {
 
         match cmd.clone() {
             SubCommand::Connect { .. } => {
-                println!("{}", config.client_conn());
+                if let Some(s) = config.client_conn() {
+                    println!("{s}");
+                } else {
+                    bail!("no tx service");
+                }
             }
             SubCommand::Inspect { cluster: _, format } => match format {
                 Some(fmt) => match fmt {
@@ -336,13 +342,13 @@ impl CmdExecutor {
                 add_tx_node,
                 del_tx_node,
             } => {
+                let txsrv = config.deployment.tx_service.as_ref().unwrap();
                 let add: HashSet<String> = HashSet::from_iter(add_tx_node.clone().into_iter());
                 let del: HashSet<String> = HashSet::from_iter(del_tx_node.clone().into_iter());
                 if add.intersection(&del).count() > 0 {
                     bail!("add_tx_node is overlaped with del_tx_node")
                 }
-                let hosts: HashSet<String> =
-                    HashSet::from_iter(config.deployment.tx_service.host.clone().into_iter());
+                let hosts: HashSet<String> = HashSet::from_iter(txsrv.host.clone().into_iter());
                 if add.intersection(&hosts).count() > 0 {
                     bail!("can't add node already in cluster")
                 }
@@ -355,9 +361,9 @@ impl CmdExecutor {
                 }
                 // TODO(zhanghao): scale cluster
                 let mut config = config;
-                let tx_hosts = &mut config.deployment.tx_service.host;
-                tx_hosts.retain(|h| !del_tx_node.contains(h));
-                tx_hosts.extend(add_tx_node);
+                let txsrv = config.deployment.tx_service.as_mut().unwrap();
+                txsrv.host.retain(|h| !del_tx_node.contains(h));
+                txsrv.host.extend(add_tx_node);
                 // self.save_deployment_config(&config, true).await?;
                 // println!("cluster {cluster} is scaled!");
                 unimplemented!()
@@ -394,7 +400,9 @@ impl CmdExecutor {
         match cmd {
             SubCommand::Launch { .. } | SubCommand::Demo { .. } => {
                 println!("Launch cluster finished, Enjoy!");
-                println!("Connect to server: \n\t{}", config.client_conn());
+                if let Some(c) = config.client_conn() {
+                    println!("Connect to server: \n\t{c}",);
+                }
                 if let Some(moni) = &config.deployment.monitor {
                     println!(
                         "Prometheus: http://{}:{}",
@@ -474,45 +482,49 @@ impl CmdExecutor {
     }
 
     pub async fn resolve_version(&self, cnf: &mut Deployment) -> Result<()> {
-        let product = cnf.product().name().to_owned();
         let arch = cpu_arch();
         let os = self.os_vers();
         let store = cnf.storage_service.pretty_name();
-        if cnf.version.is_some() && cnf.version_str().to_ascii_lowercase() == "latest" {
-            // request latest release version ID
-            let client = self.pg_client().await?;
-            let row = client
-                .query_one(
-                    "SELECT * FROM tx_release WHERE product=$1 AND arch=$2 AND os=$3 AND store=$4
-                         ORDER BY version_major DESC,version_minor DESC,version_build DESC LIMIT 1",
-                    &[&product, &arch, &os, &store],
-                )
-                .await
-                .map_err(|e| anyhow!("fetch latest version failed: {e}"))?;
-            if row.is_empty() {
-                bail!("no available release found")
-            }
-            let major: i32 = row.get("version_major");
-            let minor: i32 = row.get("version_minor");
-            let build: i32 = row.get("version_build");
-            let latest: String = format!("{major}.{minor}.{build}");
-            info!("latest release version = {latest}");
-            cnf.version = Some(latest);
-        }
-        // cnf.version.as_mut().unwrap().make_ascii_lowercase();
-
+        let mut tx_vers = None;
         let mut prefix = PathBuf::from(CDN);
-        prefix.push(&product);
-        let prefix = prefix.as_path().to_str().unwrap();
-        if cnf.tx_service.image.is_none() {
-            let vers = cnf.version.as_deref().expect("version is missing");
-            let img = format!("{prefix}/{store}/{product}-{vers}-{os}-{arch}.tar.gz");
-            info!("tx service image is set: {img}");
-            cnf.tx_service.image = Some(img);
+        if let Some(txsrv) = &mut cnf.tx_service {
+            let product = txsrv.product.name();
+            if let Some("latest") = txsrv.version.as_deref() {
+                // request latest release version ID
+                let client = self.pg_client().await?;
+                let row = client
+                                    .query_one(
+                                        "SELECT * FROM tx_release WHERE product=$1 AND arch=$2 AND os=$3 AND store=$4
+                                             ORDER BY version_major DESC,version_minor DESC,version_build DESC LIMIT 1",
+                                        &[&product, &arch, &os, &store],
+                                    )
+                                    .await
+                                    .map_err(|e| anyhow!("fetch latest version failed: {e}"))?;
+                if row.is_empty() {
+                    bail!("no available release found")
+                }
+                let major: i32 = row.get("version_major");
+                let minor: i32 = row.get("version_minor");
+                let build: i32 = row.get("version_build");
+                let latest: String = format!("{major}.{minor}.{build}");
+                info!("latest release version = {latest}");
+                txsrv.version = Some(latest);
+            }
+            tx_vers = txsrv.version.clone();
+
+            prefix.push(product);
+            if txsrv.image.is_none() {
+                let prefix = prefix.as_path().to_str().unwrap();
+                let vers = txsrv.version.as_deref().expect("tx version is missing");
+                let img = format!("{prefix}/{store}/{product}-{vers}-{os}-{arch}.tar.gz");
+                info!("tx service image is set: {img}");
+                txsrv.image = Some(img);
+            }
         }
         if let Some(logsrv) = &mut cnf.log_service {
+            let prefix = prefix.as_path().to_str().unwrap();
             if logsrv.image.is_none() {
-                let vers = cnf.version.as_deref().expect("version is missing");
+                let vers = tx_vers.as_deref().expect("tx version is missing");
                 let img = format!("{prefix}/logservice/log-service-{vers}-{os}-{arch}.tar.gz");
                 info!("log service image is set: {img}");
                 logsrv.image = Some(img);
@@ -604,7 +616,8 @@ impl CmdExecutor {
                     }
                 }
                 // set version
-                deploy.version.replace(version);
+                let txsrv = deploy.tx_service.as_mut().expect("tx srv missing");
+                txsrv.version.replace(version);
                 // set image URL
                 self.resolve_version(deploy).await?;
                 // add kv-store name to cluster name suffix
