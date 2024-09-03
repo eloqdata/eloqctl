@@ -73,17 +73,6 @@ impl TaskGroup for LaunchTaskGroup {
                     config.clone(),
                 )
                 .await?,
-            CtrlDBTaskGroup
-                .tasks(
-                    SubCommand::Status {
-                        cluster: config.deployment.cluster_name.clone(),
-                        user: None,
-                        password: None,
-                        wait: Some(30),
-                    },
-                    config.clone(),
-                )
-                .await?,
             MonitorCtlTaskGroup
                 .tasks(
                     SubCommand::Monitor {

@@ -1,6 +1,6 @@
 use clap::Parser;
 use cluster_mgr::cli::cmd_base::CmdExecutor;
-use cluster_mgr::cli::Command;
+use cluster_mgr::cli::{Command, HOME_DIR};
 use owo_colors::OwoColorize;
 use std::process::exit;
 use tracing::{error, info};
@@ -20,5 +20,9 @@ async fn main() {
             eprintln!("{}: {e}\nlogfile: {}", "FAIL".red(), log_path.display());
             exit(1);
         }
+    } else {
+        println!("eloqctl is the cluster management tool of eloqdata.");
+        println!("{HOME_DIR}={home:?}");
+        println!("Use `eloqctl --help` to see how to use it.");
     }
 }

@@ -92,34 +92,30 @@ macro_rules! build_monitor_task_instance {
 impl MonitorComponentCommand {
     pub fn start(&self, monitor: Monitor) -> String {
         match self {
-            MonitorComponentCommand::NodeExporter {
-                home: node_exporter_home,
-            } => {
+            MonitorComponentCommand::NodeExporter { home } => {
                 let port = monitor.node_exporter.port;
                 format!(
-                    r#"{node_exporter_home}/node_exporter --web.listen-address=:{port} > /tmp/mono_node_exporter.log 2>&1 &"#
+                    r#"{home}/node_exporter --web.listen-address=:{port} > /tmp/mono_node_exporter.log 2>&1 &"#
                 )
             }
             MonitorComponentCommand::MySqlExporter {
-                home: mysql_exporter_home,
+                home,
                 mysql_conf: my_conf,
             } => {
                 let port = monitor.mysql_exporter.as_ref().unwrap().port;
                 format!(
-                    r#"{mysql_exporter_home}/mysqld_exporter --web.listen-address=:{port} --config.my-cnf {my_conf} --log.level=info > /tmp/mono_mysql_exporter.log 2>&1 &"#
+                    r#"{home}/mysqld_exporter --web.listen-address=:{port} --config.my-cnf {my_conf} --log.level=info > /tmp/mono_mysql_exporter.log 2>&1 &"#
                 )
             }
-            MonitorComponentCommand::Grafana { home: grafana_home } => {
+            MonitorComponentCommand::Grafana { home } => {
                 format!(
-                    r#"{grafana_home}/bin/grafana-server -homepath {grafana_home} -config {grafana_home}/conf/defaults.ini > /tmp/mono_grafana_server.log 2>&1 &"#
+                    r#"{home}/bin/grafana-server -homepath {home} -config {home}/conf/defaults.ini > /tmp/mono_grafana_server.log 2>&1 &"#
                 )
             }
-            MonitorComponentCommand::Prometheus {
-                home: prometheus_home,
-            } => {
-                let prometheus_port = monitor.prometheus.port;
+            MonitorComponentCommand::Prometheus { home } => {
+                let port = monitor.prometheus.port;
                 format!(
-                    r#"{prometheus_home}/prometheus --web.listen-address="0.0.0.0:{prometheus_port}" --config.file={prometheus_home}/prometheus.yml > /tmp/mono_prometheus.log 2>&1 &"#
+                    r#"{home}/prometheus --web.listen-address="0.0.0.0:{port}" --storage.tsdb.path={home}/data --config.file={home}/prometheus.yml > /tmp/mono_prometheus.log 2>&1 &"#
                 )
             }
         }

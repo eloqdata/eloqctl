@@ -148,7 +148,7 @@ impl CtrlDBTaskGroup {
             barrier.push(probe.len());
             executable.extend(probe);
         }
-        let start_tx = MonographTxCtlTask::from_config(start_cmd, &config);
+        let start_tx = MonographTxCtlTask::from_config(start_cmd.clone(), &config);
         barrier.push(start_tx.len());
         executable.extend(start_tx);
 
@@ -161,6 +161,21 @@ impl CtrlDBTaskGroup {
                 executable.extend(codis_tasks);
             }
         }
+
+        let cluster = match start_cmd {
+            SubCommand::Start { cluster } => cluster,
+            _ => unreachable!(),
+        };
+        // wait until cluster is ready for connection after start
+        let status_cmd = SubCommand::Status {
+            cluster,
+            user: None,
+            password: None,
+            wait: Some(30),
+        };
+        let status_tasks = self.status_tasks(status_cmd, &config);
+        barrier.push(status_tasks.len());
+        executable.extend(status_tasks);
 
         (barrier, executable)
     }

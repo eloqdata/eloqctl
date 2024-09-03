@@ -13,7 +13,6 @@ sed -i "s|enable_data_store=none|enable_data_store=all|" ${ELOQCTL_HOME}/config/
 
 eloqctl demo eloq-sql --skip-deps --unlimited --ext-cass ${CASSANDRA_HOST}
 CLIENT=$(eloqctl -q connect demo-sql-cassandra)
-eloqctl status demo-sql-cassandra --wait 30
 eval "${CLIENT} --execute 'SHOW DATABASES'"
 eloqctl monitor stop demo-sql-cassandra
 eloqctl stop demo-sql-cassandra --all
@@ -21,10 +20,8 @@ eloqctl remove demo-sql-cassandra
 
 eloqctl demo eloq-kv --skip-deps --unlimited --ext-cass ${CASSANDRA_HOST}
 CLIENT=$(eloqctl -q connect demo-kv-cassandra)
-eloqctl status demo-kv-cassandra --wait 30
 eval ${CLIENT} incr mycounter
 eloqctl restart demo-kv-cassandra
-eloqctl status demo-kv-cassandra --wait 30
 eval ${CLIENT} incr mycounter
 eloqctl remove demo-kv-cassandra
 
