@@ -112,7 +112,7 @@ impl TaskExecutor for MonographInstall {
                 )
             }
             Product::EloqKV => {
-                let tx_ini = self.config.deployment.tx_srv_ini();
+                let tx_ini = self.config.deployment.find_any_ini_in_this_host();
                 let head = if let Some(Version::Debug) = self.config.deployment.version() {
                     export_asan("logs/bootstrap-asan")
                 } else {

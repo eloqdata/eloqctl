@@ -158,6 +158,8 @@ pub(crate) fn build_task_instance(
         host: host.to_string(),
     };
 
+    // println!("{:?}", task_id);
+
     let conn = &config.connection;
     let scp_cmd = scp(&upload_file, conn.clone());
     let upload_task = UploadTask::new(config.clone(), task_id.clone());

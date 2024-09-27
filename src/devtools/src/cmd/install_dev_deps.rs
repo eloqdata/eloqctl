@@ -27,7 +27,7 @@ impl InstallDevDeps {
                 return git_clone_status;
             }
             println!("git clone build and runtime dependencies success.");
-            vec![
+            [
                 &download_protobuf_status[..],
                 &extract_protobuf_status[..],
                 &git_clone_status[..],

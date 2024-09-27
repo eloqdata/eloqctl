@@ -92,6 +92,7 @@ impl CmdExecutor {
         if !log_dir.exists() {
             std::fs::create_dir(log_dir)?;
         }
+        // println!("home:{}", home.display());
         Ok(home)
     }
 
@@ -341,8 +342,14 @@ impl CmdExecutor {
                 if add.intersection(&del).count() > 0 {
                     bail!("add_tx_node is overlaped with del_tx_node")
                 }
-                let hosts: HashSet<String> =
-                    HashSet::from_iter(config.deployment.tx_service.host.clone().into_iter());
+                let hosts: HashSet<String> = HashSet::from_iter(
+                    config
+                        .deployment
+                        .tx_service
+                        .tx_host_ports
+                        .clone()
+                        .into_iter(),
+                );
                 if add.intersection(&hosts).count() > 0 {
                     bail!("can't add node already in cluster")
                 }
@@ -355,7 +362,7 @@ impl CmdExecutor {
                 }
                 // TODO(zhanghao): scale cluster
                 let mut config = config;
-                let tx_hosts = &mut config.deployment.tx_service.host;
+                let tx_hosts = &mut config.deployment.tx_service.tx_host_ports;
                 tx_hosts.retain(|h| !del_tx_node.contains(h));
                 tx_hosts.extend(add_tx_node);
                 // self.save_deployment_config(&config, true).await?;

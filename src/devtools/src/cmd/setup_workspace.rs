@@ -45,7 +45,7 @@ impl SetupWorkspace {
                 return git_clone_status;
             }
             println!("git clone third party source code success.");
-            vec![
+            [
                 &mk_workspace[..],
                 &download_status[..],
                 &extract_status[..],

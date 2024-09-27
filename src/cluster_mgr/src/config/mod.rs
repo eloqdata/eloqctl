@@ -22,7 +22,11 @@ pub mod storage_service_config;
 
 pub const ELOQSQL_INI: &str = "EloqSql.ini";
 pub const ELOQSQL_DYNAMO_INI: &str = "EloqSqlDynamo.ini";
-pub const ELOQKV_INI: &str = "EloqKv.ini";
+pub const ELOQSQL_CLIENT_PORT: u16 = 3306;
+pub const ELOQKV_TEMPLATE_INI: &str = "EloqKv";
+pub const ELOQKV_INI: &str = "EloqKv-tx";
+pub const ELOQKV_STANDBY_INI: &str = "EloqKv-standby";
+pub const ELOQKV_VOTER_INI: &str = "EloqKv-voter";
 pub const CODIS_PROXY_CNF: &str = "codis_proxy.toml";
 pub const CODIS_DASHBOARD_CNF: &str = "codis_dashboard.toml";
 
@@ -194,6 +198,10 @@ pub enum DeploymentPackage {
     MonographLog,
     #[strum(serialize = "codis")]
     Codis,
+    #[strum(serialize = "monograph_standby")]
+    MonographStandby,
+    #[strum(serialize = "monograph_voter")]
+    MonographVoter,
 }
 
 pub fn config_path_string(path: Option<String>) -> anyhow::Result<String> {
@@ -226,6 +234,7 @@ pub fn load_remote_env(path: Option<String>) -> anyhow::Result<HashMap<String, S
 pub fn config_template(file_name: &str) -> anyhow::Result<PathBuf> {
     let config_path = std::env::var(CONFIG_PATH_DIR)?;
     let path_buf = PathBuf::from(config_path.as_str()).join(file_name);
+    // println!("path_buf {}", path_buf.display());
     if path_buf.exists() {
         Ok(path_buf)
     } else {

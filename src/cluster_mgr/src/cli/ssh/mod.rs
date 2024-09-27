@@ -48,9 +48,18 @@ pub struct SSHSession {
 impl SSHSession {
     pub async fn from_task_host(host: TaskHost, key_path: String) -> anyhow::Result<Self> {
         match host {
-            TaskHost::Remote { user, port, hosts } => {
+            TaskHost::Remote {
+                user,
+                port: ssh_port,
+                hosts: host_port,
+            } => {
                 info!("ssh connect key {key_path}");
-                SSHSession::connect(key_path, user.as_str(), hosts.as_str(), port).await
+
+                // Split the host_port into host and port parts
+                let parts: Vec<&str> = host_port.split(':').collect();
+                let h = parts.first().unwrap(); // Get the host part (h)
+
+                SSHSession::connect(key_path, user.as_str(), h, ssh_port).await
             }
             _ => {
                 unreachable!()

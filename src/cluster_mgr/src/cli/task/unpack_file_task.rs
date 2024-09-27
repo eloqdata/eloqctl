@@ -110,9 +110,13 @@ impl UnpackFileTask {
         let tx_home = config.product().home().to_owned();
         let mut tasks = deploy_ref
             .tx_service
-            .host
+            .tx_host_ports
             .iter()
-            .map(|host| Self::make_task_pair(config, host, image, &tx_home, vec![]))
+            .map(|host_port| {
+                //
+                let host = host_port.split(':').next().unwrap();
+                Self::make_task_pair(config, host, image, &tx_home, vec![])
+            })
             .collect::<IndexMap<TaskId, TaskInstance>>();
         if let Some(srv) = &deploy_ref.log_service {
             let image = srv.image.as_ref().unwrap().split('/').last().unwrap();
@@ -214,6 +218,8 @@ impl TaskExecutor for UnpackFileTask {
         cmds.push(format!(
             "tar -zxvf {tarball} -C {target} --strip-components 1 --overwrite {exclude}"
         ));
+        // TODO(ZX) redis_server code has bug to fix, delete the command below later
+        cmds.push("cp /home/mono/workspace/monograph_redis_bin/Debug/bin/eloqkv /home/mono/eloqkv_standby/EloqKV/bin/eloqkv".to_string());
         cmds.push(format!("rm {tarball}"));
         let unpack_cmd = cmds.join(" && ");
         info!("UnpackFileTask cmd={unpack_cmd}");

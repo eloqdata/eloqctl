@@ -15,9 +15,12 @@ use itertools::Itertools;
 
 pub struct MonographUploadBuilder;
 
+// decide which file needs to be uploaded to which host
 impl MonographUploadBuilder {
     fn monograph_tar_upload_file(&self, config: &DeployConfig) -> Vec<UploadFile> {
         let tx_hosts = config.get_host_list(DeploymentPackage::MonographTx);
+        let standby_hosts = config.get_host_list(DeploymentPackage::MonographStandby);
+        let voter_hosts = config.get_host_list(DeploymentPackage::MonographVoter);
         let log_hosts = config.get_host_list(DeploymentPackage::MonographLog);
         let storage_hosts = config.get_host_list(DeploymentPackage::Storage);
         let codis_hosts = config.get_host_list(DeploymentPackage::Codis);
@@ -32,6 +35,8 @@ impl MonographUploadBuilder {
                     MONOGRAPH_FILE_KEY | MYSQL_EXPORTER_FILE_KEY => tx_hosts.clone(),
                     NODE_EXPORTER_FILE_KEY => [
                         &tx_hosts.clone()[..],
+                        &standby_hosts.clone()[..],
+                        &voter_hosts.clone()[..],
                         &log_hosts.clone()[..],
                         &storage_hosts.clone()[..],
                         &codis_hosts.clone()[..],
@@ -170,16 +175,20 @@ impl EloqUpload {
         let img_src = format!("{}/{}", url.cache_dir().unwrap(), url.file_name());
         let mut uploads = config
             .tx_service
-            .host
+            .tx_host_ports
             .iter()
-            .map(|host| UploadFile {
-                source: img_src.clone(),
-                dest: install_dir.clone(),
-                extension: "gz".to_string(),
-                host: host.to_string(),
-                copy_dir: false,
+            .map(|host_port| {
+                let host = host_port.split(':').next().unwrap(); // Extract the host part before the colon
+                UploadFile {
+                    source: img_src.clone(),
+                    dest: install_dir.clone(),
+                    extension: "gz".to_string(),
+                    host: host.to_string(),
+                    copy_dir: false,
+                }
             })
             .collect_vec();
+
         if let Some(srv) = &config.log_service {
             let img = srv.image.as_ref().unwrap();
             let url = DownloadUrl::from_url_str(img).unwrap();

@@ -42,7 +42,7 @@ impl InitDB {
             return copy_schema_data;
         }
         println!("copy data dir success");
-        vec![
+        [
             &set_storage_env_status[..],
             &db_instance_status[..],
             &mk_data_dir_status[..],

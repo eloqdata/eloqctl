@@ -122,6 +122,18 @@ impl DeployConfig {
                         let tx_image = DownloadUrl::from_url_str(tx_image).unwrap();
                         unpack_files.push(tx_image);
                     }
+                    DeploymentPackage::MonographStandby => {
+                        extract_monitor_link!(monitor_link, NODE_EXPORTER_FILE_KEY, unpack_files);
+                        extract_monitor_link!(monitor_link, MYSQL_EXPORTER_FILE_KEY, unpack_files);
+                        let tx_image = DownloadUrl::from_url_str(tx_image).unwrap();
+                        unpack_files.push(tx_image);
+                    }
+                    DeploymentPackage::MonographVoter => {
+                        extract_monitor_link!(monitor_link, NODE_EXPORTER_FILE_KEY, unpack_files);
+                        extract_monitor_link!(monitor_link, MYSQL_EXPORTER_FILE_KEY, unpack_files);
+                        let tx_image = DownloadUrl::from_url_str(tx_image).unwrap();
+                        unpack_files.push(tx_image);
+                    }
                     DeploymentPackage::MonographLog => {
                         if let Some(img) = log_image {
                             let log_image_link = DownloadUrl::from_url_str(img).unwrap();
@@ -176,11 +188,14 @@ impl DeployConfig {
     pub fn gen_all_monograph_configs(&self) -> anyhow::Result<Vec<PathBuf>> {
         let mut path_vec = match self.product() {
             Product::EloqSQL => vec![self.deployment.gen_eloqsql_config_by_host(None)?],
-            Product::EloqKV => vec![self.deployment.gen_eloqkv_config_by_host(None)?],
+            Product::EloqKV => vec![self.deployment.gen_eloqkv_tx_config(None, None)?],
         };
-        let db_hosts = &self.deployment.tx_service.host;
+        let tx_host_ports = &self.deployment.tx_service.tx_host_ports;
+        let standby_host_ports = &self.deployment.tx_service.standby_host_ports;
+        let voter_host_ports = &self.deployment.tx_service.voter_host_ports;
+
         let all_config_path = match self.product() {
-            Product::EloqSQL => db_hosts
+            Product::EloqSQL => tx_host_ports
                 .iter()
                 .map(|host| {
                     self.deployment
@@ -188,16 +203,105 @@ impl DeployConfig {
                         .unwrap()
                 })
                 .collect_vec(),
-            Product::EloqKV => db_hosts
+            Product::EloqKV => tx_host_ports
                 .iter()
-                .map(|host| {
-                    self.deployment
-                        .gen_eloqkv_config_by_host(Some(host.to_string()))
-                        .unwrap()
+                .flat_map(|hosts_str| {
+                    hosts_str.split(',').map(|hostport| {
+                        // Split `hostport` into host and port using ':'
+                        let parts: Vec<&str> = hostport.split(':').collect();
+
+                        // Ensure that both host and port exist
+                        let host = parts
+                            .first()
+                            .expect("Error: Host part is missing")
+                            .to_string();
+                        let port = parts
+                            .get(1)
+                            .expect("Error: Port part is missing")
+                            .to_string();
+
+                        // Panic with a comment if host or port is empty
+                        if host.is_empty() {
+                            panic!("Error: Host in tx_host_ports cannot be empty");
+                            // Comment for empty host
+                        }
+                        if port.is_empty() {
+                            panic!("Error: Port in tx_host_ports cannot be empty");
+                            // Comment for empty port
+                        }
+
+                        // Generate config using non-empty host and port
+                        self.deployment
+                            .gen_eloqkv_tx_config(Some(host), Some(port))
+                            .unwrap()
+                    })
                 })
-                .collect_vec(),
+                .collect(),
         };
         path_vec.extend(all_config_path);
+
+        if let Some(standby_host_ports) = &standby_host_ports {
+            if standby_host_ports.is_empty() {
+                panic!("standby_host_ports is empty, but it was expected to contain values.");
+            }
+
+            let all_standby_config_path = match self.product() {
+                Product::EloqSQL => vec![],
+                Product::EloqKV => standby_host_ports
+                    .iter()
+                    .flat_map(|hosts_str| {
+                        // Split `hosts_str` by '|' or ','
+                        hosts_str.split(['|', ',']).map(|hostport| {
+                            // Split `hostport` into host and port
+                            let parts: Vec<&str> = hostport.split(':').collect();
+                            let host = parts.first().unwrap_or(&"").to_string(); // Get host part
+                            let port = parts.get(1).unwrap_or(&"").to_string(); // Get port part
+
+                            println!("Standby host: {}, port: {}", host, port);
+
+                            // Use `host` and `port` as needed
+                            self.deployment
+                                .gen_eloqkv_standby_config(host, port)
+                                .unwrap()
+                        })
+                    })
+                    .collect(),
+            };
+            path_vec.extend(all_standby_config_path);
+        }
+
+        if let Some(voter_host_ports) = &voter_host_ports {
+            if voter_host_ports.is_empty() {
+                panic!("voter_host_ports is empty, but it was expected to contain values.");
+            }
+
+            let all_voter_config_path = match self.product() {
+                Product::EloqSQL => vec![],
+                Product::EloqKV => voter_host_ports
+                    .iter()
+                    .flat_map(|hosts_str| {
+                        // Split `hosts_str` by '|' or ','
+                        hosts_str.split(['|', ',']).map(|hostport| {
+                            // Split `hostport` into host and port
+                            let parts: Vec<&str> = hostport.split(':').collect();
+                            let host = parts.first().unwrap_or(&"").to_string(); // Get host part
+                            let port = parts.get(1).unwrap_or(&"").to_string(); // Get port part
+
+                            println!("Voter host: {}, port: {}", host, port);
+
+                            // Use `host` and `port` as needed
+                            self.deployment.gen_eloqkv_voter_config(host, port).unwrap()
+                        })
+                    })
+                    .collect(),
+            };
+            path_vec.extend(all_voter_config_path);
+        }
+
+        // for path in &path_vec {
+        //     println!("Path: {}", path.display());
+        // }
+
         Ok(path_vec)
     }
 
@@ -205,10 +309,12 @@ impl DeployConfig {
         let deployment_ref = &self.deployment;
         if let Some(monitor) = deployment_ref.monitor.as_ref() {
             let mysql_port = deployment_ref.client_port();
-            let db_hosts = &deployment_ref.tx_service.host;
-            let config_path = db_hosts
+            let tx_host_ports = &deployment_ref.tx_service.tx_host_ports;
+            let config_path = tx_host_ports
                 .iter()
-                .map(|host| {
+                .map(|host_port| {
+                    let parts: Vec<&str> = host_port.split(':').collect();
+                    let host = parts[0]; // Extract the host part
                     monitor
                         .gen_mysql_exporter_connect_config(host.to_string(), mysql_port)
                         .unwrap()
@@ -266,12 +372,13 @@ impl DeployConfig {
             ),
             Product::EloqKV => {
                 let (host, port) = if let Some(codis) = &self.deployment.codis {
-                    (codis.proxy.first().unwrap(), 19000)
+                    (codis.proxy.first().unwrap().as_str(), "19000")
                 } else {
-                    (
-                        self.deployment.tx_service.host.first().unwrap(),
-                        self.deployment.client_port(),
-                    )
+                    let host_port = self.deployment.tx_service.tx_host_ports.first().unwrap();
+                    let parts: Vec<&str> = host_port.split(':').collect();
+                    let host = parts[0];
+                    let port = parts[1];
+                    (host, port)
                 };
                 format!("{bin} -h {} -p {}", host, port)
             }
@@ -287,7 +394,7 @@ impl DeployConfig {
         let install_dir = self.install_dir();
         let tx_home = self.deployment.tx_srv_home();
         let malloc = if let Some(Version::Debug) = self.deployment.version() {
-            export_asan(&self.deployment.tx_srv_logs())
+            export_asan(&self.deployment.asan_logs())
         } else {
             format!("export LD_PRELOAD={tx_home}/lib/libmimalloc.so.2")
         };
@@ -393,6 +500,10 @@ impl DeployConfig {
         self.deployment.get_host_list(service)
     }
 
+    pub fn get_host_port_list(&self, service: DeploymentPackage) -> Vec<String> {
+        self.deployment.get_host_port_list(service)
+    }
+
     pub fn load_from_string(config_content: String) -> anyhow::Result<Self> {
         let deployment_config_rs = serde_yaml::from_str::<DeployConfig>(config_content.as_str());
         if let Ok(deployment_config) = deployment_config_rs {
@@ -473,14 +584,13 @@ impl DeployConfig {
         }
         paths
             .into_iter()
-            .map(|p| {
+            .flat_map(|p| {
                 walkdir::WalkDir::new(p)
                     .into_iter()
                     .filter_map(|curr_path| curr_path.ok())
                     .filter(|entry| entry.path().is_file())
                     .map(|entry| entry.path().to_str().unwrap().to_string())
             })
-            .flatten()
             .collect_vec()
     }
 

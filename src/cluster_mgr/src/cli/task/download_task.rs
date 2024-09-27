@@ -149,6 +149,7 @@ impl TaskExecutor for DownloadTask {
             return Err(anyhow!(DownloadErr(self.url.clone(), err.to_string())));
         }
         let save_path = save_dir.join(&self.name);
+        println!("save_path:{}", save_path.display());
         if save_path.exists() {
             // TODO(zhanghao): It would be better to check file SHA
             if file_len == fs::metadata(&save_path).unwrap().len() {

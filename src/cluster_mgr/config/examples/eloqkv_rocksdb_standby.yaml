@@ -1,0 +1,28 @@
+connection:
+  username: "${USER}"
+  auth_type: "keypair"
+  auth:
+    keypair: "/home/${USER}/.ssh/id_rsa"
+deployment:
+  cluster_name: "eloqkv_standby"
+  product: "EloqKV"
+  version: "nightly"
+  install_dir: "/home/${USER}"
+  tx_service:
+    # client_port: 3306
+    tx_host_ports: [127.0.0.1:9379]
+    standby_host_ports: [127.0.0.1:7379|127.0.0.1:8379]
+    # voter_host_ports: [127.0.0.1:8379]
+
+    # standby_hosts: [127.0.0.1:7379|127.0.0.1:8379]
+    # voter_hosts: [127.0.0.1:6479|127.0.0.1:6579]
+    
+  # log_service:
+  #   nodes:
+  #     - host: 127.0.0.1
+  #       port: 9000
+  #       data_dir:
+  #         - "/home/${USER}/eloqkv_standby/wal_eloqkv"
+  #   replica: 1
+  storage_service:
+    rocksdb: Local

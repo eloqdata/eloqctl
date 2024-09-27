@@ -48,7 +48,7 @@ fn install_deps_cmd(dep: String, platform: Platform, use_sudo: bool) -> CmdDef {
             let cmd = if use_sudo {
                 (
                     "/usr/bin/sudo".to_string(),
-                    vec![&vec!["apt-get".to_string()][..], &def_cmd_args[..]].concat(),
+                    [&vec!["apt-get".to_string()][..], &def_cmd_args[..]].concat(),
                 )
             } else {
                 ("apt-get".to_string(), def_cmd_args)

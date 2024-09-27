@@ -67,7 +67,7 @@ pub fn pipe_progress_bar(cmd_str: String) -> ProgressBar {
 }
 
 pub fn elapsed_progress_bar(len: Option<u64>, customer_msg: Option<String>) -> ProgressBar {
-    let total_size = if let Some(size) = len { size } else { 0_u64 };
+    let total_size = len.unwrap_or(0_u64);
     let cmd_pb = ProgressBar::new(total_size);
     let sty = if let Some(msg) = customer_msg {
         format!(
@@ -208,7 +208,7 @@ pub fn copy_data_dir_cmd(source_dir: String, dest_dir: Vec<String>) -> PipeDef {
     let mut cp_cmd = vec![];
     for dest in dest_dir {
         let absolute_dest_dir = format!("{data_dir}/{dest}");
-        let cp_cmd_vec = vec!["mysql", "sys", "test", "performance_schema"]
+        let cp_cmd_vec = ["mysql", "sys", "test", "performance_schema"]
             .iter()
             .map(|schema| {
                 let source = format!("{data_dir}/{source_dir}/{schema}");
@@ -259,7 +259,7 @@ pub fn load_deps(deps_path: Option<String>) -> HashMap<String, Vec<String>> {
             let file_reader = BufReader::new(file);
             let dep_list = file_reader
                 .lines()
-                .filter_map(Result::ok)
+                .map_while(Result::ok)
                 .collect::<Vec<_>>();
 
             (file_name_str, dep_list)

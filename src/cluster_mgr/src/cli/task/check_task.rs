@@ -24,7 +24,7 @@ impl CheckTask {
         let ssh_k = self.config.connection.ssh_auth_key().unwrap();
         let sess = ssh::SSHSession::from_task_host(host, ssh_k).await?;
         for p in sess.used_tcp_ports().await? {
-            if let Some(tx_port) = self.config.deployment.tx_service.port {
+            if let Some(tx_port) = self.config.deployment.tx_service.client_port {
                 if tx_port == p {
                     bail!("tx-service socket {}:{p} is already used", self.host);
                 }
@@ -173,6 +173,8 @@ impl TaskExecutor for CheckTask {
     ) -> Result<Option<ExecutionValue>> {
         match self.kind {
             DeploymentPackage::MonographTx => self.check_tx_sv(host).await,
+            DeploymentPackage::MonographStandby => self.check_tx_sv(host).await,
+            DeploymentPackage::MonographVoter => self.check_tx_sv(host).await,
             DeploymentPackage::Storage => self.check_kv_store(host, input).await,
             DeploymentPackage::Prometheus => self.check_prometheus(host).await,
             DeploymentPackage::Grafana => self.check_grafana(host).await,
