@@ -777,6 +777,8 @@ impl Deployment {
 
         let tx_host_ports = &self.tx_service.tx_host_ports;
         if set_ip_list {
+            // TODO(ZX) check if there are 3 processes to form a group, if not, panic here.
+
             // Set the ip_port_list
             let tx_ip_port_list = tx_host_ports
                 .iter()
@@ -789,51 +791,76 @@ impl Deployment {
                 .join(",");
             ini.set(SECTION_CLUSTER, "ip_port_list", Some(tx_ip_port_list));
 
-            if let Some(standby_host_ports) = &self.tx_service.standby_host_ports {
-                if !standby_host_ports.is_empty() {
-                    // Process each string in the standby_host_ports vector
-                    let mut delimiter = ",";
-                    let standby_ip_port_list = standby_host_ports
-                        .iter()
-                        .flat_map(|host_str| {
-                            delimiter = if host_str.contains('|') { "|" } else { "," };
-                            host_str
-                                .split([',', '|']) // Split on ',' or '|'
-                                .map(str::trim) // Trim any whitespace
-                        })
-                        .collect::<Vec<&str>>()
-                        .join(delimiter); // Join the host:port entries with ','
+            // TODO(ZX) refactor to use list(-) in yaml
 
-                    ini.set(
-                        SECTION_CLUSTER,
-                        "standby_ip_port_list",
-                        Some(standby_ip_port_list),
-                    );
+            if let Some(standby_host_ports) = &self.tx_service.standby_host_ports {
+                if standby_host_ports.is_empty() {
+                    panic!("standby_host_ports is empty, but it was expected to contain values.");
                 }
+
+                // Process each string in the standby_host_ports vector
+                let standby_ip_port_list = standby_host_ports
+                    .iter()
+                    .map(|host_str| {
+                        let mut trimmed = String::new();
+                        let mut current = String::new();
+                        for c in host_str.chars() {
+                            if c == ',' || c == '|' {
+                                // Trim the current token and append the delimiter
+                                trimmed.push_str(current.trim());
+                                trimmed.push(c);
+                                current.clear();
+                            } else {
+                                current.push(c);
+                            }
+                        }
+                        // Append the last token after the loop
+                        trimmed.push_str(current.trim());
+                        trimmed
+                    })
+                    .collect::<Vec<String>>()
+                    .join(","); // Use the appropriate delimiter to join multiple host_strs if needed
+
+                ini.set(
+                    SECTION_CLUSTER,
+                    "standby_ip_port_list",
+                    Some(standby_ip_port_list),
+                );
             }
 
             if let Some(voter_host_ports) = &self.tx_service.voter_host_ports {
-                if !voter_host_ports.is_empty() {
-                    // Process each string in the voter_host_ports vector
-                    let mut delimiter = ",";
-
-                    let voter_ip_port_list = voter_host_ports
-                        .iter()
-                        .flat_map(|host_str| {
-                            delimiter = if host_str.contains('|') { "|" } else { "," };
-                            host_str
-                                .split([',', '|']) // Split on ',' or '|'
-                                .map(str::trim) // Trim any whitespace
-                        })
-                        .collect::<Vec<&str>>()
-                        .join(delimiter); // Join the host:port entries with ','
-
-                    ini.set(
-                        SECTION_CLUSTER,
-                        "voter_ip_port_list",
-                        Some(voter_ip_port_list),
-                    );
+                if voter_host_ports.is_empty() {
+                    panic!("voter_host_ports is empty, but it was expected to contain values.");
                 }
+
+                // Process each string in the voter_host_ports vector
+                let voter_ip_port_list = voter_host_ports
+                    .iter()
+                    .map(|host_str| {
+                        let mut trimmed = String::new();
+                        let mut current = String::new();
+                        for c in host_str.chars() {
+                            if c == ',' || c == '|' {
+                                // Trim the current token and append the delimiter
+                                trimmed.push_str(current.trim());
+                                trimmed.push(c);
+                                current.clear();
+                            } else {
+                                current.push(c);
+                            }
+                        }
+                        // Append the last token after the loop
+                        trimmed.push_str(current.trim());
+                        trimmed
+                    })
+                    .collect::<Vec<String>>()
+                    .join(","); // Use the appropriate delimiter to join multiple host_strs if needed
+
+                ini.set(
+                    SECTION_CLUSTER,
+                    "voter_ip_port_list",
+                    Some(voter_ip_port_list),
+                );
             }
         } else {
             ini.set(
@@ -1367,6 +1394,7 @@ impl Deployment {
         let mut ld_lib = if let Some(Version::Debug) = self.version() {
             export_asan(&format!("{tx_logs}/asan"))
         } else {
+            // TODO(ZX) ERROR: ld.so: object '/home/mono/eloqkv_standby/EloqKV/lib/libmimalloc.so.2' from LD_PRELOAD cannot be preloaded (cannot open shared object file): ignored.
             format!("export LD_PRELOAD={tx_dir}/lib/libmimalloc.so.2")
         };
         ld_lib.push_str(&format!(

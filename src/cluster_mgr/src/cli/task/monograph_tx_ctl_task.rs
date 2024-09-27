@@ -321,6 +321,7 @@ fn generate_tasks_for_host_ports(
                         ),
                     ]),
                 ),
+                // TODO(ZX) should connect to redis (any tx or standby nodes)and run `cluster slots` , then filter standby and voter process out, stop them before stop tx process
                 "stop" => {
                     if context.is_force_stop {
                         (
