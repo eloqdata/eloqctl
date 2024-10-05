@@ -33,7 +33,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                     all: false,
                 };
                 let (mut barrier, mut executable) =
-                    self.stop_tasks(true, true, false, stop_cmd, &config).await;
+                    self.stop_tasks(true, true, false, stop_cmd, &config);
                 let start_cmd = SubCommand::Start { cluster };
                 let (b, exe) = self.start_tasks(start_cmd, &config);
                 barrier.extend(b);
@@ -55,7 +55,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                 } else {
                     (cluster, tx.unwrap_or(true), log, store, monitor)
                 };
-                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config).await;
+                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config);
                 if monitor && config.deployment.monitor.is_some() {
                     let stop_moni = SubCommand::Monitor {
                         cluster: cluster.clone(),
@@ -91,8 +91,7 @@ impl TaskGroup for CtrlDBTaskGroup {
 }
 
 impl CtrlDBTaskGroup {
-    // Q? why this has to be async?
-    async fn stop_tasks(
+    fn stop_tasks(
         &self,
         tx: bool,
         log: bool,
