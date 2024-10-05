@@ -6,6 +6,7 @@ use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, Value};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use tokio::sync::watch;
 use tracing::{error, info};
 
 #[derive(Clone, Debug)]
@@ -13,22 +14,29 @@ pub struct RedisOpTask {
     task_id: TaskId,
     redis_host: String,
     redis_cmd: String,
+    sender: watch::Sender<ClusterNodes>,
 }
 
 impl RedisOpTask {
-    pub fn new(task_id: TaskId, redis_host: String, redis_cmd: String) -> Self {
+    pub fn new(
+        task_id: TaskId,
+        redis_host: String,
+        redis_cmd: String,
+        sender: watch::Sender<ClusterNodes>,
+    ) -> Self {
         Self {
             task_id,
             redis_host,
             redis_cmd,
+            sender,
         }
     }
 }
 
 #[derive(Debug, Serialize, Clone)]
-struct NodeInfo {
-    ip: String,
-    port: u16,
+pub struct NodeInfo {
+    pub ip: String,
+    pub port: u16,
 }
 
 // Implement Eq and Hash for NodeInfo
@@ -47,7 +55,13 @@ impl Hash for NodeInfo {
     }
 }
 
-fn parse_cluster_slots(value: Value) -> RedisResult<Vec<ClusterSlot>> {
+#[derive(Debug, Serialize, Clone)]
+pub struct ClusterNodes {
+    pub masters: Vec<NodeInfo>,
+    pub replicas: Vec<NodeInfo>,
+}
+
+fn parse_cluster_slots(value: Value) -> RedisResult<Vec<ClusterNodes>> {
     // Ensure the top-level value is an array
     let slots_array = match value {
         Value::Bulk(slots) => slots,
@@ -81,40 +95,24 @@ fn parse_cluster_slots(value: Value) -> RedisResult<Vec<ClusterSlot>> {
             )));
         }
 
-        // Start slot
-        let start_slot = u16::from_redis_value(&slot_info[0])?;
-        // End slot
-        let end_slot = u16::from_redis_value(&slot_info[1])?;
-
         // Master node info
+        let mut masters = Vec::new();
         let master_node_info = parse_node_info(&slot_info[2])?;
+        masters.push(master_node_info);
 
-        // Replicas
+        // Replicas node info
         let mut replicas = Vec::new();
         for replica_value in &slot_info[3..] {
             let replica_node_info = parse_node_info(replica_value)?;
             replicas.push(replica_node_info);
         }
 
-        let cluster_slot = ClusterSlot {
-            start_slot,
-            end_slot,
-            master: master_node_info,
-            replicas,
-        };
+        let cluster_slot = ClusterNodes { masters, replicas };
 
         cluster_slots.push(cluster_slot);
     }
 
     Ok(cluster_slots)
-}
-
-#[derive(Debug, Serialize)]
-struct ClusterSlot {
-    start_slot: u16,
-    end_slot: u16,
-    master: NodeInfo,
-    replicas: Vec<NodeInfo>,
 }
 
 fn parse_node_info(value: &Value) -> RedisResult<NodeInfo> {
@@ -142,8 +140,6 @@ fn parse_node_info(value: &Value) -> RedisResult<NodeInfo> {
 
     Ok(node_info)
 }
-
-// TODO(ZX) use tokio::mpsc to channel cluster-slots-result from RedisOpTask to MonographTxCtlTask
 
 #[async_trait]
 impl TaskExecutor for RedisOpTask {
@@ -177,7 +173,7 @@ impl TaskExecutor for RedisOpTask {
                     .query_async::<_, Value>(&mut con)
                     .await
 
-                // TODO(ZX) this operation should store the fetched info into the internal database,
+                // TODO(ZX) later, this operation should store the fetched info into the internal database,
                 // and let the further stop or scale tasks to use the cluster info from internal database,
                 // rather than from deployment config
             }
@@ -195,7 +191,7 @@ impl TaskExecutor for RedisOpTask {
         match result {
             Ok(value) => {
                 // Parse the cluster slots
-                let cluster_slots = parse_cluster_slots(value)?;
+                let cluster_nodes = parse_cluster_slots(value)?;
 
                 // Use HashSet to collect unique masters and replicas
                 use std::collections::HashSet;
@@ -203,8 +199,10 @@ impl TaskExecutor for RedisOpTask {
                 let mut masters = HashSet::new();
                 let mut replicas = HashSet::new();
 
-                for slot in &cluster_slots {
-                    masters.insert(slot.master.clone());
+                for slot in &cluster_nodes {
+                    for master in &slot.masters {
+                        masters.insert(master.clone());
+                    }
                     for replica in &slot.replicas {
                         replicas.insert(replica.clone());
                     }
@@ -225,13 +223,6 @@ impl TaskExecutor for RedisOpTask {
                     println!("  {}:{}", replica.ip, replica.port);
                 }
 
-                // Optionally serialize to JSON
-                #[derive(Debug, Serialize)]
-                struct ClusterNodes {
-                    masters: Vec<NodeInfo>,
-                    replicas: Vec<NodeInfo>,
-                }
-
                 let cluster_nodes = ClusterNodes {
                     masters: unique_masters,
                     replicas: unique_replicas,
@@ -241,6 +232,11 @@ impl TaskExecutor for RedisOpTask {
                 info!("Redis response: {}", response_str);
                 task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
                 task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(response_str));
+
+                // Send the cluster_nodes to the receiver
+                if let Err(err) = self.sender.send(cluster_nodes) {
+                    error!("Failed to send cluster nodes: {}", err);
+                }
             }
             Err(err) => {
                 error!("Error executing Redis command: {}", err);

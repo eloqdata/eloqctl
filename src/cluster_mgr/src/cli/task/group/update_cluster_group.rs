@@ -4,6 +4,7 @@ use crate::cli::task::group::{TaskGroup, UpdateClusterTaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::MonographTxCtlTask;
+use crate::cli::task::monograph_tx_ctl_task::ServerType;
 use crate::cli::task::task_base::TaskExecutionContext;
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
@@ -53,6 +54,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
         executable.extend(download_task);
         executable.extend(upload_img);
 
+        // TODO(ZX) also restart standby and voter
         // stop order: tx-server -> log-server -> cassandra
         let stop_cmd = SubCommand::Stop {
             cluster: cluster.clone(),
@@ -63,7 +65,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
             force: false,
             all: false,
         };
-        let stop_tx = MonographTxCtlTask::from_config(stop_cmd.clone(), &config);
+        let stop_tx = MonographTxCtlTask::from_config(stop_cmd.clone(), &config, ServerType::Tx);
         barrier.push(stop_tx.len());
         executable.extend(stop_tx);
         if deployment.log_service.is_some() {
@@ -96,7 +98,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
             barrier.push(probe.len());
             executable.extend(probe);
         }
-        let start_tx = MonographTxCtlTask::from_config(start_cmd, &config);
+        let start_tx = MonographTxCtlTask::from_config(start_cmd, &config, ServerType::Tx);
         barrier.push(start_tx.len());
         executable.extend(start_tx);
         Ok(TaskExecutionContext {

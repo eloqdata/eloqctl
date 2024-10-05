@@ -17,6 +17,8 @@ use tracing::{debug, error, info};
 #[macro_export]
 macro_rules! wait_command_complete {
     ($cmd:expr,$process_cmd:expr,$ssh_session:expr, $check_fn:ident) => {{
+        println! {"wait_command_complete .await"};
+
         ctl_action_wait_complete(
             $cmd,
             $process_cmd,
@@ -64,7 +66,7 @@ pub fn parse_process_pid(process_info: String) -> Option<i32> {
         None
     } else {
         let output_normal = process_info.trim();
-        // println!("output_normal: {output_normal}");
+        println!("output_normal: {output_normal}");
         let pid_vec = ps_cmd_output_extract(output_normal.to_string());
         // println!("pid_vec: {:#?}", pid_vec);
         pid_vec.first().cloned()
@@ -141,10 +143,12 @@ where
     F2: Fn(String, SSHSession) -> Fut2,
     Fut2: Future<Output = anyhow::Result<ExecutionValue>> + 'static,
 {
-    // println!("ctl_cmd: {ctl_cmd}");
+    println!("ctl_cmd: {ctl_cmd}");
+    println!("check_cmd: {check_cmd}");
     let mut ctl_action_rs = ctl_fn(ctl_cmd.clone(), ssh_conn.clone()).await?;
     let process_ready =
         wait_process_complete(check_cmd, ssh_conn, Duration::from_secs(5 * 60), check_fn).await?;
+    println!("finish await");
     if let Some(output) = ctl_action_rs.get(CMD_OUTPUT) {
         let final_output = format!(
             r#"output={},check control func return={}"#,
@@ -183,7 +187,7 @@ where
         let rs = ssh_conn
             .command(check_status_cmd.as_str(), CollectOutput)
             .await;
-        // println!("check_status_cmd = {rs:#?}");
+        println!("check_status_cmd = {rs:#?}");
         debug!("check_status_cmd = {rs:#?}");
         if rs.as_ref().is_err() {
             let err_msg = rs.err().unwrap().to_string();

@@ -5,7 +5,8 @@ use super::MonitorCtlTaskGroup;
 use crate::cli::task::group::{CtrlDBTaskGroup, TaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
-use crate::cli::task::monograph_tx_ctl_task::MonographTxCtlTask;
+use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
+use crate::cli::task::redis_op_task::ClusterNodes;
 use crate::cli::task::redis_op_task::RedisOpTask;
 use crate::cli::task::task_base::TaskHost;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskId, TaskInstance};
@@ -14,6 +15,7 @@ use crate::config::config_base::DeployConfig;
 use anyhow::Result;
 use indexmap::IndexMap;
 use std::collections::HashMap;
+use tokio::sync::watch;
 
 #[async_trait::async_trait]
 impl TaskGroup for CtrlDBTaskGroup {
@@ -31,7 +33,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                     all: false,
                 };
                 let (mut barrier, mut executable) =
-                    self.stop_tasks(true, true, false, stop_cmd, &config);
+                    self.stop_tasks(true, true, false, stop_cmd, &config).await;
                 let start_cmd = SubCommand::Start { cluster };
                 let (b, exe) = self.start_tasks(start_cmd, &config);
                 barrier.extend(b);
@@ -53,7 +55,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                 } else {
                     (cluster, tx.unwrap_or(true), log, store, monitor)
                 };
-                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config);
+                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config).await;
                 if monitor && config.deployment.monitor.is_some() {
                     let stop_moni = SubCommand::Monitor {
                         cluster: cluster.clone(),
@@ -89,7 +91,8 @@ impl TaskGroup for CtrlDBTaskGroup {
 }
 
 impl CtrlDBTaskGroup {
-    fn stop_tasks(
+    // Q? why this has to be async?
+    async fn stop_tasks(
         &self,
         tx: bool,
         log: bool,
@@ -109,10 +112,7 @@ impl CtrlDBTaskGroup {
             }
         }
 
-        let standby_host_ports: Vec<String> = vec![];
-        let voter_host_ports: Vec<String> = vec![];
-        let tx_host_ports: Vec<String> = vec![];
-
+        // TODO(ZX) get host and port from deployment config, any tx/standby will suffice
         let host = "127.0.0.1";
         let task_id = TaskId {
             cmd: "topology".to_string(),
@@ -120,41 +120,59 @@ impl CtrlDBTaskGroup {
             host: "_local".to_string(),
         };
         let redis_cmd = format!("cluster info");
-        let topology_task = RedisOpTask::new(task_id.clone(), host.to_string(), redis_cmd);
-        let inst = TaskInstance {
+
+        // Use a sender to pass the result of redis_op_task and to MonographTxCtlTask
+        let (tx_channel, rx_standby) = watch::channel::<ClusterNodes>(ClusterNodes {
+            masters: Vec::new(),
+            replicas: Vec::new(),
+        });
+        let rx_tx = tx_channel.subscribe();
+
+        let topology_task =
+            RedisOpTask::new(task_id.clone(), host.to_string(), redis_cmd, tx_channel);
+        let task_instance = TaskInstance {
             task_input: HashMap::default(),
             task: Box::new(topology_task),
             task_host: TaskHost::Local,
         };
         barrier.push(1);
-        executable.insert(task_id, inst);
-
-        // Q? how to pass the result of redis_op_task and to MonographTxCtlTask?
+        executable.insert(task_id, task_instance);
 
         // stop order: standby-server -> voter-server -> tx-server -> log-server -> cassandra
         if tx {
-            let has_standby = config.deployment.tx_service.standby_host_ports.is_some();
-            if has_standby {
-                let stop_standby =
-                    MonographTxCtlTask::from_fetched_data(cmd.clone(), config, &standby_host_ports);
+            let using_hot_standby = config.deployment.tx_service.standby_host_ports.is_some();
+            if using_hot_standby {
+                let stop_standby = MonographTxCtlTask::from_config_with_channel(
+                    cmd.clone(),
+                    config,
+                    ServerType::Standby,
+                    Some(rx_standby),
+                )
+                .expect("stop standby error");
                 barrier.push(stop_standby.len());
                 executable.extend(stop_standby);
 
-                let stop_voter =
-                    MonographTxCtlTask::from_fetched_data(cmd.clone(), config, &voter_host_ports);
-                barrier.push(stop_voter.len());
-                executable.extend(stop_voter);
-            }
-            let stop_tx =
-                MonographTxCtlTask::from_fetched_data(cmd.clone(), config, &tx_host_ports);
-            barrier.push(stop_tx.len());
-            executable.extend(stop_tx);
-        }
+                if config.deployment.tx_service.voter_host_ports.is_some() {
+                    let stop_voter =
+                        MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
+                    barrier.push(stop_voter.len());
+                    executable.extend(stop_voter);
+                }
 
-        if tx {
-            let stop_tx = MonographTxCtlTask::from_config(cmd.clone(), config);
-            barrier.push(stop_tx.len());
-            executable.extend(stop_tx);
+                let stop_tx = MonographTxCtlTask::from_config_with_channel(
+                    cmd.clone(),
+                    config,
+                    ServerType::Tx,
+                    Some(rx_tx),
+                )
+                .expect("stop tx error");
+                barrier.push(stop_tx.len());
+                executable.extend(stop_tx);
+            } else {
+                let stop_tx = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Tx);
+                barrier.push(stop_tx.len());
+                executable.extend(stop_tx);
+            }
         }
         if log && deployment.log_service.is_some() {
             let stop_log = MonographLogCtlTask::from_config(cmd.clone(), config);
@@ -192,7 +210,20 @@ impl CtrlDBTaskGroup {
             barrier.push(probe.len());
             executable.extend(probe);
         }
-        let start_tx = MonographTxCtlTask::from_config(start_cmd.clone(), config);
+
+        if config.deployment.tx_service.standby_host_ports.is_some() {
+            let start_standby =
+                MonographTxCtlTask::from_config(start_cmd.clone(), config, ServerType::Standby);
+            barrier.push(start_standby.len());
+            executable.extend(start_standby);
+        }
+        if config.deployment.tx_service.voter_host_ports.is_some() {
+            let start_voter =
+                MonographTxCtlTask::from_config(start_cmd.clone(), config, ServerType::Voter);
+            barrier.push(start_voter.len());
+            executable.extend(start_voter);
+        }
+        let start_tx = MonographTxCtlTask::from_config(start_cmd.clone(), config, ServerType::Tx);
         barrier.push(start_tx.len());
         executable.extend(start_tx);
 
@@ -235,8 +266,18 @@ impl CtrlDBTaskGroup {
             let tasks = MonographLogCtlTask::from_config(cmd.clone(), config);
             executable.extend(tasks);
         }
-        let start_tx = MonographTxCtlTask::from_config(cmd, config);
-        executable.extend(start_tx);
+        if config.deployment.tx_service.standby_host_ports.is_some() {
+            let status_standby =
+                MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Standby);
+            executable.extend(status_standby);
+        }
+        if config.deployment.tx_service.voter_host_ports.is_some() {
+            let status_voter =
+                MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
+            executable.extend(status_voter);
+        }
+        let status_tx = MonographTxCtlTask::from_config(cmd, config, ServerType::Tx);
+        executable.extend(status_tx);
         if deployment.codis.is_some() {
             //TODO
         }
