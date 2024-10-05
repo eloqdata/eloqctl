@@ -12,6 +12,7 @@ use crate::cli::task::task_base::TaskHost;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskId, TaskInstance};
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
+use crate::config::DeploymentPackage;
 use anyhow::Result;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -111,8 +112,17 @@ impl CtrlDBTaskGroup {
             }
         }
 
-        // TODO(ZX) get host and port from deployment config, any tx/standby will suffice
-        let host = "127.0.0.1";
+        let tx_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
+        let (host, port) = tx_host_ports
+            .get(0)
+            .expect("error: no host:port in tx_host_ports config file")
+            .split_once(':')
+            .unwrap_or_else(|| {
+                panic!(
+                    "Error: Invalid host_port format '{:?}'. Expected 'host:port'.",
+                    tx_host_ports.get(0)
+                )
+            });
         let task_id = TaskId {
             cmd: "topology".to_string(),
             task: "check-topology".to_string(),
@@ -127,8 +137,13 @@ impl CtrlDBTaskGroup {
         });
         let rx_tx = tx_channel.subscribe();
 
-        let topology_task =
-            RedisOpTask::new(task_id.clone(), host.to_string(), redis_cmd, tx_channel);
+        let topology_task = RedisOpTask::new(
+            task_id.clone(),
+            host.to_string(),
+            port.to_string(),
+            redis_cmd,
+            tx_channel,
+        );
         let task_instance = TaskInstance {
             task_input: HashMap::default(),
             task: Box::new(topology_task),

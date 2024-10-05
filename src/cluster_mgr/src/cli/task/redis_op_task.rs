@@ -21,12 +21,14 @@ impl RedisOpTask {
     pub fn new(
         task_id: TaskId,
         redis_host: String,
+        redis_port: String,
         redis_cmd: String,
         sender: watch::Sender<ClusterNodes>,
     ) -> Self {
         Self {
             task_id,
             redis_host,
+            redis_port,
             redis_cmd,
             sender,
         }
@@ -153,7 +155,7 @@ impl TaskExecutor for RedisOpTask {
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         // Use a vector of node addresses to create a ClusterClient
-        let nodes = vec![format!("redis://{}:{}", self.redis_host, 6379)];
+        let nodes = vec![format!("redis://{}:{}", self.redis_host, self.redis_port)];
         let client = ClusterClient::new(nodes)?;
 
         // Use asynchronous multiplexed connection

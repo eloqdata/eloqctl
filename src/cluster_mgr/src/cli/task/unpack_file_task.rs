@@ -218,7 +218,7 @@ impl TaskExecutor for UnpackFileTask {
         cmds.push(format!(
             "tar -zxvf {tarball} -C {target} --strip-components 1 --overwrite {exclude}"
         ));
-        // TODO(ZX) later, redis_server code has bug to fix, delete the command below later
+        // TODO(ZX) temp, redis_server code has bug to fix, delete the command below later
         cmds.push("cp /home/mono/workspace/monograph_redis_bin/Debug/bin/eloqkv /home/mono/eloqkv_standby/EloqKV/bin/eloqkv".to_string());
         cmds.push(format!("rm {tarball}"));
         let unpack_cmd = cmds.join(" && ");

@@ -791,7 +791,7 @@ impl Deployment {
                 .join(",");
             ini.set(SECTION_CLUSTER, "ip_port_list", Some(tx_ip_port_list));
 
-            // TODO(ZX) refactor to use list(-) in yaml
+            // TODO(ZX) later, refactor to use list(-) in yaml
 
             if let Some(standby_host_ports) = &self.tx_service.standby_host_ports {
                 if standby_host_ports.is_empty() {
