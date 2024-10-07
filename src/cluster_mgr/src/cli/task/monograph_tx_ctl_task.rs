@@ -571,13 +571,6 @@ impl MonographTxCtlTask {
             }
         }
 
-        for (task_id, _task_instance) in &tasks {
-            println!(
-                "cmd: {}, task: {}, host: {}",
-                task_id.cmd, task_id.task, task_id.host
-            );
-        }
-
         Ok(tasks)
     }
 
@@ -639,19 +632,11 @@ impl TaskExecutor for MonographTxCtlTask {
         let mut standby_host_ports = Vec::new();
         // Receive the cluster nodes in execute
         if let Some(receiver) = &self.receiver {
-            // Clone the Receiver inside the Arc to get an owned Receiver
-
-            println!(
-                "lock awaits, Current thread ID: {:?}",
-                thread::current().id()
-            );
-            // let mut receiver = receiver_arc.lock().await;
             loop {
-                println!("looping, Current thread ID: {:?}", thread::current().id());
                 if receiver.has_changed().unwrap() {
                     //
                     let cluster_nodes = receiver.borrow();
-                    println!(
+                    debug!(
                         "Received cluster nodes: {:?}, Current thread ID: {:?}",
                         cluster_nodes,
                         thread::current().id()
@@ -667,22 +652,11 @@ impl TaskExecutor for MonographTxCtlTask {
                         standby_host_ports.push(host_port);
                     }
                     break; // Exit the loop after successful processing
-                } else {
-                    println!("Empty");
                 }
             }
-            println!(
-                "finish loop, Current thread ID: {:?}",
-                thread::current().id()
-            );
-        } else {
-            println!(
-                "no receiver, Current thread ID: {:?}",
-                thread::current().id()
-            );
         }
 
-        println!(
+        debug!(
             "task host: {:?}, Current thread ID: {:?}, master_host_ports: {:?}, standby_host_ports: {:?}",
             task_host,
             thread::current().id(),
@@ -700,12 +674,10 @@ impl TaskExecutor for MonographTxCtlTask {
         let check_status_cmd =
             monograph_cmd_with_port!(TxCtlCmd::Status, tx_bin, user, port).cmd_value();
 
-        // TODO(ZX) this should be the current master tx process, or?
         let tx_bin = self.config.deployment.tx_srv_bin();
         let check_status =
             monograph_cmd_with_port!(TxCtlCmd::Status, tx_bin, user.to_string(), port);
         let cmd_val = check_status.cmd_value();
-        println!("cmd_val: {cmd_val}");
         let check_process_status = check_pid(cmd_val, ssh_session.clone(), parse_process_pid).await;
 
         let ctl_cmd_ref = self.ctl_cmd.as_ref();
@@ -784,11 +756,11 @@ impl TaskExecutor for MonographTxCtlTask {
                     let re = Regex::new(r"grep \d+").unwrap();
                     let modified_stop_cmd =
                         re.replace(&stop_cmd, &format!("grep -E '{}'", port_pattern));
-                    println!("Modified stop_cmd: {}", modified_stop_cmd.to_string());
+                    debug!("Modified stop_cmd: {}", modified_stop_cmd.to_string());
 
                     let modified_check_status_cmd =
                         re.replace(&check_status_cmd, &format!("grep -E '{}'", port_pattern));
-                    println!(
+                    debug!(
                         "Modified check_status_cmd: {}",
                         modified_check_status_cmd.to_string()
                     );
@@ -801,7 +773,7 @@ impl TaskExecutor for MonographTxCtlTask {
                         is_none
                     )
                 } else {
-                    println!("No matching ports found for the given host.");
+                    debug!("No matching ports found for the given host.");
                     tx_ctl!(self, check_process_status, {!=, "NONE"}, async || -> anyhow::Result<ExecutionValue> {
                         wait_command_complete!(stop_cmd, check_status_cmd, ssh_session.clone(), is_none)
                     })
@@ -811,7 +783,6 @@ impl TaskExecutor for MonographTxCtlTask {
                 let start_cmd = self.ctl_cmd.cmd_value();
                 println!("start_cmd: {start_cmd}");
                 println!("check_status_cmd: {check_status_cmd}");
-                // Q? why use check_process_status and check_status_cmd?
                 tx_ctl!(self, check_process_status, {==, "NONE"}, async || -> anyhow::Result<ExecutionValue> {
                     wait_command_complete!(start_cmd, check_status_cmd, ssh_session.clone(), is_some)
                 })

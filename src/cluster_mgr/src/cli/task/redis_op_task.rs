@@ -13,6 +13,7 @@ use tracing::{error, info};
 pub struct RedisOpTask {
     task_id: TaskId,
     redis_host: String,
+    redis_port: String,
     redis_cmd: String,
     sender: watch::Sender<ClusterNodes>,
 }

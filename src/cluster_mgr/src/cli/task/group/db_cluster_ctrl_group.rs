@@ -6,17 +6,12 @@ use crate::cli::task::group::{CtrlDBTaskGroup, TaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
-use crate::cli::task::redis_op_task::ClusterNodes;
-use crate::cli::task::redis_op_task::RedisOpTask;
-use crate::cli::task::task_base::TaskHost;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskId, TaskInstance};
+use crate::cli::task::task_utils::stop_with_hot_standby;
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
-use crate::config::DeploymentPackage;
 use anyhow::Result;
 use indexmap::IndexMap;
-use std::collections::HashMap;
-use tokio::sync::watch;
 
 #[async_trait::async_trait]
 impl TaskGroup for CtrlDBTaskGroup {
@@ -112,76 +107,10 @@ impl CtrlDBTaskGroup {
             }
         }
 
-        let tx_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
-        let (host, port) = tx_host_ports
-            .get(0)
-            .expect("error: no host:port in tx_host_ports config file")
-            .split_once(':')
-            .unwrap_or_else(|| {
-                panic!(
-                    "Error: Invalid host_port format '{:?}'. Expected 'host:port'.",
-                    tx_host_ports.get(0)
-                )
-            });
-        let task_id = TaskId {
-            cmd: "topology".to_string(),
-            task: "check-topology".to_string(),
-            host: "_local".to_string(),
-        };
-        let redis_cmd = format!("cluster info");
-
-        // Use a sender to pass the result of redis_op_task and to MonographTxCtlTask
-        let (tx_channel, rx_standby) = watch::channel::<ClusterNodes>(ClusterNodes {
-            masters: Vec::new(),
-            replicas: Vec::new(),
-        });
-        let rx_tx = tx_channel.subscribe();
-
-        let topology_task = RedisOpTask::new(
-            task_id.clone(),
-            host.to_string(),
-            port.to_string(),
-            redis_cmd,
-            tx_channel,
-        );
-        let task_instance = TaskInstance {
-            task_input: HashMap::default(),
-            task: Box::new(topology_task),
-            task_host: TaskHost::Local,
-        };
-        barrier.push(1);
-        executable.insert(task_id, task_instance);
-
-        // stop order: standby-server -> voter-server -> tx-server -> log-server -> cassandra
+        // stop order: (standby-server -> voter-server ->) tx-server -> log-server -> kv-store
         if tx {
-            let using_hot_standby = config.deployment.tx_service.standby_host_ports.is_some();
-            if using_hot_standby {
-                let stop_standby = MonographTxCtlTask::from_config_with_channel(
-                    cmd.clone(),
-                    config,
-                    ServerType::Standby,
-                    Some(rx_standby),
-                )
-                .expect("stop standby error");
-                barrier.push(stop_standby.len());
-                executable.extend(stop_standby);
-
-                if config.deployment.tx_service.voter_host_ports.is_some() {
-                    let stop_voter =
-                        MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
-                    barrier.push(stop_voter.len());
-                    executable.extend(stop_voter);
-                }
-
-                let stop_tx = MonographTxCtlTask::from_config_with_channel(
-                    cmd.clone(),
-                    config,
-                    ServerType::Tx,
-                    Some(rx_tx),
-                )
-                .expect("stop tx error");
-                barrier.push(stop_tx.len());
-                executable.extend(stop_tx);
+            if config.deployment.tx_service.standby_host_ports.is_some() {
+                stop_with_hot_standby(cmd.clone(), config, &mut barrier, &mut executable);
             } else {
                 let stop_tx = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Tx);
                 barrier.push(stop_tx.len());

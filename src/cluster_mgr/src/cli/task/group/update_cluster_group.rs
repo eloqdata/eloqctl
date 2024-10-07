@@ -6,6 +6,7 @@ use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::MonographTxCtlTask;
 use crate::cli::task::monograph_tx_ctl_task::ServerType;
 use crate::cli::task::task_base::TaskExecutionContext;
+use crate::cli::task::task_utils::stop_with_hot_standby;
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
@@ -54,8 +55,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
         executable.extend(download_task);
         executable.extend(upload_img);
 
-        // TODO(ZX) also restart standby and voter
-        // stop order: tx-server -> log-server -> cassandra
+        // stop order: (standby-server -> voter-server ->) tx-server -> log-server -> kv-store
         let stop_cmd = SubCommand::Stop {
             cluster: cluster.clone(),
             tx: Some(true),
@@ -65,9 +65,16 @@ impl TaskGroup for UpdateClusterTaskGroup {
             force: false,
             all: false,
         };
-        let stop_tx = MonographTxCtlTask::from_config(stop_cmd.clone(), &config, ServerType::Tx);
-        barrier.push(stop_tx.len());
-        executable.extend(stop_tx);
+
+        if config.deployment.tx_service.standby_host_ports.is_some() {
+            stop_with_hot_standby(stop_cmd.clone(), &config, &mut barrier, &mut executable);
+        } else {
+            let stop_tx =
+                MonographTxCtlTask::from_config(stop_cmd.clone(), &config, ServerType::Tx);
+            barrier.push(stop_tx.len());
+            executable.extend(stop_tx);
+        }
+
         if deployment.log_service.is_some() {
             let stop_log = MonographLogCtlTask::from_config(stop_cmd.clone(), &config);
             barrier.push(stop_log.len());
