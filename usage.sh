@@ -8,3 +8,6 @@ eloqctl launch /home/mono/workspace/monograph_waiter/src/cluster_mgr/config/exam
 
 # fix bug
 cp /home/mono/workspace/monograph_redis_bin/Debug/bin/eloqkv /home/mono/eloqkv_standby/EloqKV/bin/eloqkv
+
+# format
+cargo clippy --all-targets --all-features -- -D warnings

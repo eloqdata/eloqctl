@@ -27,26 +27,15 @@ impl TaskGroup for RemoveTaskGroup {
         let mut barrier = vec![];
         let mut executable;
         // terminate all process
-        let stop = CtrlDBTaskGroup
-            .tasks(
-                SubCommand::Stop {
-                    cluster: cluster.clone(),
-                    tx: Some(true),
-                    log: true,
-                    store: true,
-                    monitor: true,
-                    force: true,
-                    all: true,
-                },
-                config.clone(),
-            )
+        let remove_stop = CtrlDBTaskGroup
+            .tasks(SubCommand::Remove { cluster }, config.clone())
             .await?;
-        if let Some(ba) = stop.barrier {
+        if let Some(ba) = remove_stop.barrier {
             barrier.extend(ba);
         } else {
-            barrier.push(stop.executable.len());
+            barrier.push(remove_stop.executable.len());
         }
-        executable = stop.executable;
+        executable = remove_stop.executable;
 
         if let Some(logsv) = &config.deployment.log_service {
             // clean log service data

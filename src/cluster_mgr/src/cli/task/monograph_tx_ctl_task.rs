@@ -295,7 +295,6 @@ fn generate_tasks_for_host_ports(
                 host: host.to_string(),
             };
 
-            // println!("cmd_str_ref:{cmd_str_ref}; host_type:{host_type}");
             let cmd_task_input_tuple = match cmd_str_ref {
                 "start" => (
                     match server_type {
@@ -334,7 +333,7 @@ fn generate_tasks_for_host_ports(
                         ),
                     ]),
                 ),
-                "stop" => {
+                "stop" | "remove" => {
                     if context.is_force_stop {
                         (
                             monograph_cmd_with_port!(
@@ -589,6 +588,9 @@ fn extract_server_type_and_port(input: &str) -> (&str, &str) {
         return (server_type, port);
     }
     if let Some((server_type, port)) = input.split_once("-status-") {
+        return (server_type, port);
+    }
+    if let Some((server_type, port)) = input.split_once("-remove-") {
         return (server_type, port);
     }
 

@@ -67,7 +67,7 @@ impl TaskGroup for InstallDBTaskGroup {
                 let install_db_host = TaskHost::Remote {
                     user: conn_user.clone(),
                     port: ssh_port as usize,
-                    host: host,
+                    host,
                 };
                 MonographInstall::from_config(&config, install_db_host)
             })

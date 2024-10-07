@@ -18,6 +18,28 @@ impl TaskGroup for CtrlDBTaskGroup {
     async fn tasks(&self, cmd: SubCommand, config: DeployConfig) -> Result<TaskExecutionContext> {
         let cmd_str = cmd.as_ref().to_owned();
         let (barrier, executable) = match cmd.clone() {
+            SubCommand::Remove { cluster } => {
+                let (cluster, tx, log, store, monitor) = (cluster, true, true, true, true);
+                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config, true);
+                if monitor && config.deployment.monitor.is_some() {
+                    let stop_moni = SubCommand::Monitor {
+                        cluster: cluster.clone(),
+                        command: "stop".to_string(),
+                    };
+                    let TaskExecutionContext {
+                        task_group: _,
+                        barrier: ba,
+                        executable,
+                    } = MonitorCtlTaskGroup.tasks(stop_moni, config.clone()).await?;
+                    if let Some(ba) = ba {
+                        barrier.extend(ba);
+                    } else {
+                        barrier.push(executable.len());
+                    }
+                    tasks.extend(executable);
+                }
+                (barrier, tasks)
+            }
             SubCommand::Restart { cluster } => {
                 let stop_cmd = SubCommand::Stop {
                     cluster: cluster.clone(),
@@ -29,7 +51,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                     all: false,
                 };
                 let (mut barrier, mut executable) =
-                    self.stop_tasks(true, true, false, stop_cmd, &config);
+                    self.stop_tasks(true, true, false, stop_cmd, &config, false);
                 let start_cmd = SubCommand::Start { cluster };
                 let (b, exe) = self.start_tasks(start_cmd, &config);
                 barrier.extend(b);
@@ -51,7 +73,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                 } else {
                     (cluster, tx.unwrap_or(true), log, store, monitor)
                 };
-                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config);
+                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config, false);
                 if monitor && config.deployment.monitor.is_some() {
                     let stop_moni = SubCommand::Monitor {
                         cluster: cluster.clone(),
@@ -94,6 +116,7 @@ impl CtrlDBTaskGroup {
         store: bool,
         cmd: SubCommand,
         config: &DeployConfig,
+        is_from_remove: bool,
     ) -> (Vec<usize>, IndexMap<TaskId, TaskInstance>) {
         let deployment = &config.deployment;
         let mut barrier = vec![];
@@ -109,14 +132,36 @@ impl CtrlDBTaskGroup {
 
         // stop order: (standby-server -> voter-server ->) tx-server -> log-server -> kv-store
         if tx {
-            if config.deployment.tx_service.standby_host_ports.is_some() {
+            if config.deployment.tx_service.standby_host_ports.is_some() && !is_from_remove {
+                // need to check cluster info first, if the cluster is stopped already, cluster info cannot be returned.
                 stop_with_hot_standby(cmd.clone(), config, &mut barrier, &mut executable);
+                println!("reach here");
             } else {
+                // branch for not checking cluster info because the cluster is already stopped
+                if config.deployment.tx_service.standby_host_ports.is_some() {
+                    let stop_standby =
+                        MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Standby);
+                    barrier.push(stop_standby.len());
+                    println!("barrier len: {}", stop_standby.len());
+                    executable.extend(stop_standby);
+                    println!("executable len: {}", executable.len());
+                }
+                if config.deployment.tx_service.voter_host_ports.is_some() {
+                    let stop_voter =
+                        MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
+                    barrier.push(stop_voter.len());
+                    println!("barrier len: {}", stop_voter.len());
+                    executable.extend(stop_voter);
+                    println!("executable len: {}", executable.len());
+                }
                 let stop_tx = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Tx);
                 barrier.push(stop_tx.len());
+                println!("barrier len: {}", stop_tx.len());
                 executable.extend(stop_tx);
+                println!("executable len: {}", executable.len());
             }
         }
+        println!("executable len: {}", executable.len());
         if log && deployment.log_service.is_some() {
             let stop_log = MonographLogCtlTask::from_config(cmd.clone(), config);
             barrier.push(stop_log.len());

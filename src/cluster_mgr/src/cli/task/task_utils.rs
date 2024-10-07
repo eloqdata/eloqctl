@@ -237,13 +237,13 @@ pub fn stop_with_hot_standby(
     // Check topology
     let tx_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
     let (host, port) = tx_host_ports
-        .get(0)
+        .first()
         .expect("error: no host:port in tx_host_ports config file")
         .split_once(':')
         .unwrap_or_else(|| {
             panic!(
                 "Error: Invalid host_port format '{:?}'. Expected 'host:port'.",
-                tx_host_ports.get(0)
+                tx_host_ports.first()
             )
         });
 
