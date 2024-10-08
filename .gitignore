@@ -36,4 +36,3 @@ src/log/
 log/
 .monograph_waiter/
 .bin/
-usage.sh
