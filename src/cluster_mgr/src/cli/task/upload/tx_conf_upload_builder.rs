@@ -53,7 +53,7 @@ impl UploadTaskBuilder for TxConfUpload {
                     upload_file.clone(),
                     config,
                     "config-update",
-                    &format!("upload-ini-{host}-{file_stem_str}"),
+                    format!("upload-ini-{host}-{file_stem_str}").as_str(),
                 )
             })
             .collect::<IndexMap<TaskId, TaskInstance>>()

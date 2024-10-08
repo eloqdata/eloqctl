@@ -223,11 +223,9 @@ impl DeployConfig {
                         // Panic with a comment if host or port is empty
                         if host.is_empty() {
                             panic!("Error: Host in tx_host_ports cannot be empty");
-                            // Comment for empty host
                         }
                         if port.is_empty() {
                             panic!("Error: Port in tx_host_ports cannot be empty");
-                            // Comment for empty port
                         }
 
                         // Generate config using non-empty host and port
@@ -254,8 +252,8 @@ impl DeployConfig {
                         hosts_str.split(['|', ',']).map(|hostport| {
                             // Split `hostport` into host and port
                             let parts: Vec<&str> = hostport.split(':').collect();
-                            let host = parts.first().unwrap_or(&"").to_string(); // Get host part
-                            let port = parts.get(1).unwrap_or(&"").to_string(); // Get port part
+                            let host = parts.first().unwrap_or(&"").to_string();
+                            let port = parts.get(1).unwrap_or(&"").to_string();
                             self.deployment
                                 .gen_eloqkv_standby_config(host, port)
                                 .unwrap()
@@ -280,8 +278,8 @@ impl DeployConfig {
                         hosts_str.split(['|', ',']).map(|hostport| {
                             // Split `hostport` into host and port
                             let parts: Vec<&str> = hostport.split(':').collect();
-                            let host = parts.first().unwrap_or(&"").to_string(); // Get host part
-                            let port = parts.get(1).unwrap_or(&"").to_string(); // Get port part
+                            let host = parts.first().unwrap_or(&"").to_string();
+                            let port = parts.get(1).unwrap_or(&"").to_string();
                             self.deployment.gen_eloqkv_voter_config(host, port).unwrap()
                         })
                     })
@@ -302,7 +300,7 @@ impl DeployConfig {
                 .iter()
                 .map(|host_port| {
                     let parts: Vec<&str> = host_port.split(':').collect();
-                    let host = parts[0]; // Extract the host part
+                    let host = parts[0];
                     monitor
                         .gen_mysql_exporter_connect_config(host.to_string(), mysql_port)
                         .unwrap()

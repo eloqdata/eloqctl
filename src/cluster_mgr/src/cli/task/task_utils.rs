@@ -1,25 +1,20 @@
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::ssh::SSHSession;
-use std::any::{Any, TypeId};
-use std::fmt::Debug;
-use std::future::Future;
-
-use crate::cli::task::{
-    monograph_tx_ctl_task::{MonographTxCtlTask, ServerType},
-    redis_op_task::{ClusterNodes, RedisOpTask},
-    task_base::{ExecutionValue, TaskArgValue, TaskHost, TaskId, TaskInstance},
-};
+use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
+use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
+use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskHost, TaskId, TaskInstance};
 use crate::cli::{SubCommand, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::{config_base::DeployConfig, DeploymentPackage};
-use crate::state::{
-    state_base::StateOperation,
-    state_mgr::{STATE_MGR, TASK_STATUS_STATE},
-    task_status_operation::{TaskStatusEntity, TaskStatusOperation},
-};
+use crate::state::state_base::StateOperation;
+use crate::state::state_mgr::{STATE_MGR, TASK_STATUS_STATE};
+use crate::state::task_status_operation::{TaskStatusEntity, TaskStatusOperation};
 use anyhow::anyhow;
 use indexmap::IndexMap;
 use itertools::Itertools;
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::future::Future;
 use std::time::Duration;
 use tokio::sync::watch;
 use tracing::{debug, error, info};

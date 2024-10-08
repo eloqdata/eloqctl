@@ -1,6 +1,5 @@
 use crate::cli::task::group::{TaskGroup, UpdateConfigTaskGroup};
-use crate::cli::task::monograph_tx_ctl_task::MonographTxCtlTask;
-use crate::cli::task::monograph_tx_ctl_task::ServerType;
+use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
 use crate::cli::task::task_base::TaskExecutionContext;
 use crate::cli::task::task_utils::stop_with_hot_standby;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};

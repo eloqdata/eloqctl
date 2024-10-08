@@ -3,9 +3,7 @@ use crate::cli::task::copy_task::CopyTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{InstallDBTaskGroup, TaskGroup};
 use crate::cli::task::monograph_bootstrap_task::MonographInstall;
-use crate::cli::task::task_base::TaskId;
-use crate::cli::task::task_base::TaskInstance;
-use crate::cli::task::task_base::{TaskExecutionContext, TaskHost};
+use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
@@ -71,9 +69,7 @@ impl TaskGroup for InstallDBTaskGroup {
                 };
                 MonographInstall::from_config(&config, install_db_host)
             })
-            // Flatten all individual IndexMaps into a single iterator of key-value pairs
             .flat_map(|map| map.into_iter())
-            // Collect all key-value pairs into one IndexMap
             .collect();
 
         barrier.push(bootstrap_tasks.len());

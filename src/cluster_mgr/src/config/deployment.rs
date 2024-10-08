@@ -7,13 +7,12 @@ use crate::config::log_service::LogService;
 use crate::config::monitor::Monitor;
 use crate::config::storage_service_config::{Cassandra, RocksDB, StorageService};
 use crate::config::ConfigErr::GenCassandraConfigErr;
-use crate::config::ELOQSQL_CLIENT_PORT;
 use crate::config::{
     config_template, load_yaml_config_template, DeploymentPackage, DownloadUrl, StorageProvider,
     CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CDN,
     CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF, ELOQKV_INI, ELOQKV_STANDBY_INI, ELOQKV_TEMPLATE_INI,
-    ELOQKV_VOTER_INI, ELOQSQL_DYNAMO_INI, ELOQSQL_INI, JVM_SETTING_HOLDER, SECTION_CLUSTER,
-    SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC, SECTION_STORE,
+    ELOQKV_VOTER_INI, ELOQSQL_CLIENT_PORT, ELOQSQL_DYNAMO_INI, ELOQSQL_INI, JVM_SETTING_HOLDER,
+    SECTION_CLUSTER, SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC, SECTION_STORE,
 };
 use anyhow::{anyhow, Result};
 use configparser::ini::Ini;
@@ -120,7 +119,7 @@ pub struct MonographService {
     pub tx_host_ports: Vec<String>,
     pub standby_host_ports: Option<Vec<String>>,
     pub voter_host_ports: Option<Vec<String>>,
-    pub client_port: Option<u16>, // only used in mysql only
+    pub client_port: Option<u16>, // only used in mysql
 }
 
 impl MonographService {
@@ -168,7 +167,7 @@ impl MonographService {
         let hosts_set: HashSet<String> = hosts.into_iter().collect();
         let mut hosts: Vec<String> = hosts_set.into_iter().collect();
 
-        // Optional: Sort the hosts for consistent ordering
+        // Sort the hosts for consistent ordering
         hosts.sort();
 
         hosts
@@ -911,7 +910,6 @@ impl Deployment {
             ini.write(cnf_path.as_path())?;
             return Ok(cnf_path);
         };
-        // println!("host: {}; cnf_path: {}", host_get, cnf_path.display());
         if self.log_service.is_some() {
             self.build_log_config()
                 .into_iter()
@@ -1019,7 +1017,6 @@ impl Deployment {
             assert!(limit > 0);
             ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
         }
-        // println!("standby cnf_path: {}", cnf_path.display());
 
         ini.write(cnf_path.as_path())?;
         Ok(cnf_path)
@@ -1079,8 +1076,6 @@ impl Deployment {
             assert!(limit > 0);
             ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
         }
-
-        // println!("voter cnf_path: {}", cnf_path.display());
 
         ini.write(cnf_path.as_path())?;
         Ok(cnf_path)
@@ -1433,9 +1428,6 @@ impl Deployment {
         ld_lib.push_str(&format!(
             "; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH"
         ));
-        println!(
-            "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={standby_ini} --graceful_quit_on_sigterm=true > logs/std-out 2>&1 &"
-        );
         match self.product() {
             Product::EloqSQL => {
                 let mut logout = "/dev/null".to_owned();
@@ -1470,9 +1462,6 @@ impl Deployment {
         ld_lib.push_str(&format!(
             "; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH"
         ));
-        println!(
-            "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={voter_ini} --graceful_quit_on_sigterm=true > logs/std-out 2>&1 &"
-        );
         match self.product() {
             Product::EloqSQL => {
                 let mut logout = "/dev/null".to_owned();

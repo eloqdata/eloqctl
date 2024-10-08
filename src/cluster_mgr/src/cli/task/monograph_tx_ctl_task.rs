@@ -76,13 +76,11 @@ macro_rules! tx_ctl {
     ($self:ident, $mono_process_status:expr, {$op:tt, $pid_check_expr:expr}, $ctl_func:expr) => {{
         if let Ok(ref process_info) = $mono_process_status {
             debug!("tx_ctl process_info={process_info:#?}");
-            debug!("tx_ctl process_info={process_info:#?}");
             let pid = TaskArgValue::into_inner_value::<String>(
                 process_info.get(PROCESS_PID).unwrap().clone(),
             );
             let ctl_f = $ctl_func;
             if pid $op $pid_check_expr {
-                println!{"ctl_f().await"};
                 ctl_f().await
             } else {
                Ok($mono_process_status?)
@@ -566,18 +564,6 @@ impl MonographTxCtlTask {
             receiver,
         }
     }
-
-    // async fn monograph_pid(
-    //     &self,
-    //     ssh_conn: SSHSession,
-    //     user: &str,
-    // ) -> anyhow::Result<ExecutionValue> {
-    //     let tx_bin = self.config.deployment.tx_srv_bin();
-    //     let check_status = monograph_cmd!(TxCtlCmd::Status, tx_bin, user.to_string());
-    //     let cmd_val = check_status.cmd_value();
-    //     check_pid(cmd_val, ssh_conn, parse_process_pid).await
-    //     // check_process_pid(cmd_val, ssh_conn, parse_process_pid).await
-    // }
 }
 
 fn extract_server_type_and_port(input: &str) -> (&str, &str) {
@@ -608,7 +594,7 @@ impl TaskExecutor for MonographTxCtlTask {
         task_host: TaskHost,
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        println!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.pretty_string());
 
         let mut master_host_ports = Vec::new();
         let mut standby_host_ports = Vec::new();
@@ -623,6 +609,7 @@ impl TaskExecutor for MonographTxCtlTask {
                         cluster_nodes,
                         thread::current().id()
                     );
+
                     // Process the cluster_nodes
                     for node in cluster_nodes.masters.iter() {
                         // if task_host.

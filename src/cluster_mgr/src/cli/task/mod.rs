@@ -13,7 +13,6 @@ mod monograph_bootstrap_task;
 mod monograph_log_ctl_task;
 mod monograph_log_probe_task;
 mod monograph_tx_ctl_task;
-// mod redis_ctl_task;
 mod redis_op_task;
 pub mod task_base;
 mod task_controller;

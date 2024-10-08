@@ -191,8 +191,6 @@ pub enum CmdErr {
     MonitorCtlCmdErr(String, String),
     #[error("Error interacting with redis. error causes {0}")]
     RedisOpErr(String),
-    // #[error("Error executing redis control command {0} failed, error causes {1}")]
-    // RedisCtlErr(String, String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]

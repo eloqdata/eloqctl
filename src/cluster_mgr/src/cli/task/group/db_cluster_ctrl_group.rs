@@ -1,7 +1,6 @@
+use super::MonitorCtlTaskGroup;
 use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
 use crate::cli::task::codis_task::{self, CodisTask};
-// use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
-use super::MonitorCtlTaskGroup;
 use crate::cli::task::group::{CtrlDBTaskGroup, TaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
@@ -132,36 +131,34 @@ impl CtrlDBTaskGroup {
 
         // stop order: (standby-server -> voter-server ->) tx-server -> log-server -> kv-store
         if tx {
-            if config.deployment.tx_service.standby_host_ports.is_some() && !is_from_remove {
-                // need to check cluster info first, if the cluster is stopped already, cluster info cannot be returned.
-                stop_with_hot_standby(cmd.clone(), config, &mut barrier, &mut executable);
-                println!("reach here");
-            } else {
-                // branch for not checking cluster info because the cluster is already stopped
+            if is_from_remove {
+                // remove command (if the cluster is stopped already, cluster info cannot be returned)
                 if config.deployment.tx_service.standby_host_ports.is_some() {
                     let stop_standby =
                         MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Standby);
                     barrier.push(stop_standby.len());
-                    println!("barrier len: {}", stop_standby.len());
                     executable.extend(stop_standby);
-                    println!("executable len: {}", executable.len());
                 }
                 if config.deployment.tx_service.voter_host_ports.is_some() {
                     let stop_voter =
                         MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
                     barrier.push(stop_voter.len());
-                    println!("barrier len: {}", stop_voter.len());
                     executable.extend(stop_voter);
-                    println!("executable len: {}", executable.len());
                 }
                 let stop_tx = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Tx);
                 barrier.push(stop_tx.len());
-                println!("barrier len: {}", stop_tx.len());
                 executable.extend(stop_tx);
-                println!("executable len: {}", executable.len());
+            } else if config.deployment.tx_service.standby_host_ports.is_some() {
+                // stop command with hot standby
+                stop_with_hot_standby(cmd.clone(), config, &mut barrier, &mut executable);
+            } else {
+                // stop command without hot standby
+                let stop_tx = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Tx);
+                barrier.push(stop_tx.len());
+                executable.extend(stop_tx);
             }
         }
-        println!("executable len: {}", executable.len());
+
         if log && deployment.log_service.is_some() {
             let stop_log = MonographLogCtlTask::from_config(cmd.clone(), config);
             barrier.push(stop_log.len());
