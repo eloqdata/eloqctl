@@ -606,7 +606,7 @@ impl Deployment {
             my_ini.set(
                 SECTION_MARIADB,
                 "monograph_local_ip",
-                Some(format!("127.0.0.1:8000")),
+                Some("127.0.0.1:8000".to_string()),
             );
             my_ini.set(SECTION_MARIADB, "thread_pool_size", Some("1".to_owned()));
             my_ini.set(SECTION_MARIADB, "monograph_core_num", Some("1".to_owned()));
