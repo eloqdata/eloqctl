@@ -187,7 +187,7 @@ impl DeployConfig {
 
     pub fn gen_all_monograph_configs(&self) -> anyhow::Result<Vec<PathBuf>> {
         let mut path_vec = match self.product() {
-            Product::EloqSQL => vec![self.deployment.gen_eloqsql_config_by_host(None)?],
+            Product::EloqSQL => vec![self.deployment.gen_eloqsql_config(None, None)?],
             Product::EloqKV => vec![self.deployment.gen_eloqkv_tx_config(None, None)?],
         };
         let tx_host_ports = &self.deployment.tx_service.tx_host_ports;
@@ -197,16 +197,41 @@ impl DeployConfig {
         let all_config_path = match self.product() {
             Product::EloqSQL => tx_host_ports
                 .iter()
-                .map(|host| {
-                    self.deployment
-                        .gen_eloqsql_config_by_host(Some(host.to_string()))
-                        .unwrap()
+                .flat_map(|hostports| {
+                    hostports.split(',').map(|hostport| {
+                        // Split `hostport` into host and port using ':'
+                        let parts: Vec<&str> = hostport.split(':').collect();
+
+                        // Ensure that both host and port exist
+                        let host = parts
+                            .first()
+                            .expect("Error: Host part is missing")
+                            .to_string();
+                        let port = parts
+                            .get(1)
+                            .expect("Error: Port part is missing")
+                            .to_string();
+
+                        // Panic with a comment if host or port is empty
+                        if host.is_empty() {
+                            panic!("Error: Host in tx_host_ports cannot be empty");
+                        }
+                        if port.is_empty() {
+                            panic!("Error: Port in tx_host_ports cannot be empty");
+                        }
+
+                        // Generate config using non-empty host and port
+                        self.deployment
+                            .gen_eloqsql_config(Some(host), Some(port))
+                            .unwrap()
+                    })
                 })
                 .collect_vec(),
+
             Product::EloqKV => tx_host_ports
                 .iter()
-                .flat_map(|hosts_str| {
-                    hosts_str.split(',').map(|hostport| {
+                .flat_map(|hostports| {
+                    hostports.split(',').map(|hostport| {
                         // Split `hostport` into host and port using ':'
                         let parts: Vec<&str> = hostport.split(':').collect();
 
