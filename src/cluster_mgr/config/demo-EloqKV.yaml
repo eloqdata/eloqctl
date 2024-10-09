@@ -17,25 +17,25 @@ deployment:
         data_dir: ["/tmp/disk_wal_eloqkv"]
     replica: 1
   storage_service:
-  # monitor:
-  #   data_dir: ""
-  #   monograph_metrics:
-  #     path: "/mono_metrics"
-  #     port: 18081
-  #   prometheus:
-  #     download_url: "https://github.com/prometheus/prometheus/releases/download/v2.42.0/prometheus-2.42.0.linux-amd64.tar.gz"
-  #     port: 9500
-  #     host: 127.0.0.1
-  #   grafana:
-  #     download_url: "https://dl.grafana.com/oss/release/grafana-9.3.6.linux-amd64.tar.gz"
-  #     port: 3301
-  #     host: 127.0.0.1
-  #   node_exporter:
-  #     url: "https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz"
-  #     port: 9200
-  #   cassandra_collector:
-  #     mcac_agent: "https://github.com/datastax/metric-collector-for-apache-cassandra/releases/download/v0.3.4/datastax-mcac-agent-0.3.4-4.1-beta1.tar.gz"
-  #     mcac_port: 9103
+  monitor:
+    data_dir: ""
+    monograph_metrics:
+      path: "/mono_metrics"
+      port: 18081
+    prometheus:
+      download_url: "https://github.com/prometheus/prometheus/releases/download/v2.42.0/prometheus-2.42.0.linux-amd64.tar.gz"
+      port: 9500
+      host: 127.0.0.1
+    grafana:
+      download_url: "https://dl.grafana.com/oss/release/grafana-9.3.6.linux-amd64.tar.gz"
+      port: 3301
+      host: 127.0.0.1
+    node_exporter:
+      url: "https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz"
+      port: 9200
+    cassandra_collector:
+      mcac_agent: "https://github.com/datastax/metric-collector-for-apache-cassandra/releases/download/v0.3.4/datastax-mcac-agent-0.3.4-4.1-beta1.tar.gz"
+      mcac_port: 9103
   hardware:
     127.0.0.1:
       cpu: 2
