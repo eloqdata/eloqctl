@@ -49,7 +49,7 @@ pub(crate) fn get_mysql_prepare_cmd(
             connect_mysqld_from_cli(user, pwd, mysql_conf.first().unwrap().to_string());
         CmdDef {
             name: "/usr/bin/sudo".to_string(),
-            args: Some(vec![&conn_mysql[..], &cmd_args[..]].concat()),
+            args: Some([&conn_mysql[..], &cmd_args[..]].concat()),
             show_progress_type: None,
             payload: None,
         }

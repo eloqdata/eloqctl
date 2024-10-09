@@ -32,7 +32,7 @@ impl ExecCustomCommand {
                 let task_host = TaskHost::Remote {
                     user: conn_user.clone(),
                     port: ssh_port as usize,
-                    hosts: host.clone(),
+                    host: host.clone(),
                 };
                 let task = if let Some(input_task_name) = &task_name {
                     input_task_name.to_string()
@@ -76,7 +76,7 @@ impl ExecCustomCommand {
                 let task_host = TaskHost::Remote {
                     user: conn_user.clone(),
                     port: ssh_port as usize,
-                    hosts: host_val.clone(),
+                    host: host_val.clone(),
                 };
                 let task_id = TaskId {
                     cmd: cmd.as_ref().to_string(),

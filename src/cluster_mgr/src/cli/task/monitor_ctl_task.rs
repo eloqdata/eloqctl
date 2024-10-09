@@ -45,10 +45,10 @@ macro_rules! basic_component_ctl_task {
         let component_obj = &monitor.unwrap().$monitor_component;
         let conn_user = &$config.connection.username;
         let ssh_port = $config.connection.ssh_port();
-        let host = TaskHost::Remote {
+        let task_host = TaskHost::Remote {
             user: conn_user.clone(),
             port: ssh_port as usize,
-            hosts: component_obj.host.clone(),
+            host: component_obj.host.clone(),
         };
         let home = format!("{}/{}", $config.install_dir(), $component_home);
         let cmd = MonitorComponentCommand::$cmd_component { home };
@@ -56,7 +56,7 @@ macro_rules! basic_component_ctl_task {
             $config.clone(),
             cmd,
             task_name,
-            host,
+            task_host,
             $component_home,
             $cmd_args.clone()
         )])
@@ -207,7 +207,7 @@ impl MonitorCtlTask {
                         let task_remote_host = TaskHost::Remote {
                             user: conn_user.clone(),
                             port: ssh_port as usize,
-                            hosts: host.clone(),
+                            host: host.clone(),
                         };
                         let node_exporter_cmd = MonitorComponentCommand::NodeExporter {
                             home: format!("{install_dir}/{NODE_EXPORTER_FILE_KEY}"),

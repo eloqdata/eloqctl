@@ -10,9 +10,9 @@ use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
     config_template, load_yaml_config_template, DeploymentPackage, DownloadUrl, StorageProvider,
     CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CDN,
-    CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF, ELOQKV_INI, ELOQSQL_DYNAMO_INI, ELOQSQL_INI,
-    JVM_SETTING_HOLDER, SECTION_CLUSTER, SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC,
-    SECTION_STORE,
+    CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF, ELOQKV_INI, ELOQKV_STANDBY_INI, ELOQKV_TEMPLATE_INI,
+    ELOQKV_VOTER_INI, ELOQSQL_CLIENT_PORT, ELOQSQL_DYNAMO_INI, ELOQSQL_INI, JVM_SETTING_HOLDER,
+    SECTION_CLUSTER, SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC, SECTION_STORE,
 };
 use anyhow::{anyhow, Result};
 use configparser::ini::Ini;
@@ -22,6 +22,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
@@ -115,9 +116,62 @@ pub struct MonographPort {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct MonographService {
     pub image: Option<String>,
-    pub host: Vec<String>,
-    pub port: Option<u16>,
-    pub client_port: u16,
+    pub tx_host_ports: Vec<String>,
+    pub standby_host_ports: Option<Vec<String>>,
+    pub voter_host_ports: Option<Vec<String>>,
+    pub client_port: Option<u16>, // only used in mysql
+}
+
+impl MonographService {
+    fn parse_standby_voter_hosts(&self, hosts_vec: Vec<String>) -> Vec<String> {
+        hosts_vec
+            .iter()
+            .flat_map(|hosts_str| {
+                hosts_str
+                    .split(['|', ','])
+                    .filter_map(|s| s.split(':').next())
+                    .map(|s| s.to_string())
+            })
+            .collect()
+    }
+
+    fn parse_tx_hosts(&self, hosts_vec: Vec<String>) -> Vec<String> {
+        hosts_vec
+            .iter()
+            .flat_map(|hosts_str| {
+                hosts_str
+                    .split([','])
+                    .filter_map(|s| s.split(':').next())
+                    .map(|s| s.to_string())
+            })
+            .collect()
+    }
+
+    pub fn merge_hosts(&self) -> Vec<String> {
+        // Collect hosts from tx_service.tx_host_ports
+        let mut hosts: Vec<String> = self.parse_tx_hosts(self.tx_host_ports.clone());
+
+        // Parse standby_host_ports and add to the hosts list
+        if let Some(standby_hosts_str) = &self.standby_host_ports {
+            let standby_hosts_list = self.parse_standby_voter_hosts(standby_hosts_str.clone());
+            hosts.extend(standby_hosts_list);
+        }
+
+        // Parse voter_host_ports and add to the hosts list
+        if let Some(voter_hosts_str) = &self.voter_host_ports {
+            let voter_hosts_list = self.parse_standby_voter_hosts(voter_hosts_str.clone());
+            hosts.extend(voter_hosts_list);
+        }
+
+        // Remove duplicates by converting to a HashSet and back to a Vec
+        let hosts_set: HashSet<String> = hosts.into_iter().collect();
+        let mut hosts: Vec<String> = hosts_set.into_iter().collect();
+
+        // Sort the hosts for consistent ordering
+        hosts.sort();
+
+        hosts
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, clap::ValueEnum, Display)]
@@ -236,7 +290,11 @@ impl Deployment {
     }
 
     pub fn client_port(&self) -> u16 {
-        self.tx_service.client_port
+        if self.tx_service.client_port.is_some() {
+            self.tx_service.client_port.unwrap()
+        } else {
+            ELOQSQL_CLIENT_PORT
+        }
     }
 
     pub fn install_dir(&self) -> String {
@@ -255,16 +313,84 @@ impl Deployment {
         format!("{}/cassandra", &self.install_dir())
     }
 
-    pub fn tx_srv_ini(&self) -> String {
+    // Finds the first matching .ini file for the current product
+    pub fn find_any_ini_in_this_host(&self) -> String {
         let home = self.tx_srv_home();
         match self.product() {
-            Product::EloqSQL => format!("{home}/{ELOQSQL_INI}"),
-            Product::EloqKV => format!("{home}/{ELOQKV_INI}"),
+            Product::EloqSQL => panic!("not supported yet"),
+            Product::EloqKV => {
+                // Define the list of valid prefixes
+                let prefixes = [ELOQKV_INI, ELOQKV_STANDBY_INI, ELOQKV_VOTER_INI];
+
+                // Read the home directory entries
+                let ini_path = fs::read_dir(&home)
+                    .unwrap_or_else(|_| panic!("Failed to read home directory: {}", home))
+                    .filter_map(|entry| entry.ok().map(|e| e.path())) // Ignore entries that resulted in an error and map to PathBuf
+                    .find(|path| {
+                        // Check if it's a file and matches one of the prefixes ending with ".ini"
+                        path.is_file()
+                            && path
+                                .file_name()
+                                .and_then(|name| name.to_str())
+                                .map(|name_str| {
+                                    prefixes.iter().any(|prefix| {
+                                        name_str.starts_with(prefix) && name_str.ends_with(".ini")
+                                    })
+                                })
+                                .unwrap_or(false)
+                    })
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "No matching EloqKV .ini file found in home directory: {}",
+                            home
+                        )
+                    })
+                    .to_string_lossy()
+                    .into_owned(); // Convert PathBuf to String
+
+                ini_path
+            }
         }
     }
 
-    pub fn tx_srv_logs(&self) -> String {
+    pub fn tx_srv_ini(&self, port: &str) -> String {
+        let home = self.tx_srv_home();
+        match self.product() {
+            Product::EloqSQL => format!("{home}/{ELOQSQL_INI}"),
+            Product::EloqKV => format!("{}/{}-{}.ini", home, ELOQKV_INI, port),
+        }
+    }
+
+    pub fn standby_srv_ini(&self, port: &str) -> String {
+        let home = self.tx_srv_home();
+        match self.product() {
+            Product::EloqSQL => panic!("not supported yet"),
+            Product::EloqKV => format!("{}/{}-{}.ini", home, ELOQKV_STANDBY_INI, port),
+        }
+    }
+
+    pub fn voter_srv_ini(&self, port: &str) -> String {
+        let home = self.tx_srv_home();
+        match self.product() {
+            Product::EloqSQL => panic!("not supported yet"),
+            Product::EloqKV => format!("{}/{}-{}.ini", home, ELOQKV_VOTER_INI, port),
+        }
+    }
+
+    pub fn asan_logs(&self) -> String {
         format!("{}/logs", &self.tx_srv_home())
+    }
+
+    pub fn tx_srv_logs(&self, port: &str) -> String {
+        format!("{}/logs/tx-{}", &self.tx_srv_home(), port)
+    }
+
+    pub fn standby_srv_logs(&self, port: &str) -> String {
+        format!("{}/logs/standby-{}", &self.tx_srv_home(), port)
+    }
+
+    pub fn voter_srv_logs(&self, port: &str) -> String {
+        format!("{}/logs/voter-{}", &self.tx_srv_home(), port)
     }
 
     pub fn tx_srv_bin(&self) -> String {
@@ -299,7 +425,7 @@ impl Deployment {
     pub fn get_redis_keyspace(&self) -> anyhow::Result<String> {
         let my_local = upload_dir().join("redis_local.ini");
         if !my_local.exists() {
-            self.gen_eloqkv_config_by_host(None)?;
+            self.gen_eloqkv_tx_config(None, None)?;
         }
         let mut my_ini_local = Ini::new();
         let _config_map_rs = my_ini_local.load(my_local).unwrap();
@@ -347,7 +473,7 @@ impl Deployment {
     }
 
     pub fn bootstrap_host(&self) -> String {
-        let mut all_hosts = self.tx_service.host.clone();
+        let mut all_hosts = self.tx_service.tx_host_ports.clone();
         assert!(!all_hosts.is_empty());
         all_hosts.sort();
         all_hosts.first().unwrap().to_string()
@@ -435,19 +561,18 @@ impl Deployment {
             Some(format!("/tmp/eloqsql{}.sock", self.client_port())),
         );
 
-        let use_port = self.tx_service.port.unwrap();
-        let monograph_hosts = &self.tx_service.host;
+        let tx_host_ports = &self.tx_service.tx_host_ports;
         if set_ip_list {
-            let ip_list = monograph_hosts
+            let ip_list = tx_host_ports
                 .iter()
-                .map(|host| format!("{}:{}", host.clone(), use_port))
+                .map(|host_port| host_port.clone().to_string())
                 .join(",");
             my_ini.set(SECTION_MARIADB, "monograph_ip_list", Some(ip_list));
         } else {
             my_ini.set(
                 SECTION_MARIADB,
                 "monograph_ip_list",
-                Some(format!("{}:{}", "127.0.0.1", use_port)),
+                Some(format!("{}:{}", "127.0.0.1", self.client_port())),
             );
         }
 
@@ -465,7 +590,7 @@ impl Deployment {
     }
 
     pub fn gen_eloqsql_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
-        let port = self.tx_service.port.unwrap();
+        let port = self.client_port();
         let is_host = tx_host.is_some();
         let mut my_ini = self.build_eloqsql_config(is_host)?;
         let (host, cnf_path) = if let Some(host) = tx_host {
@@ -513,7 +638,7 @@ impl Deployment {
 
         let mut core = 1;
         if let Some(hw) = opt_hw {
-            if self.tx_service.host.len() == 1 {
+            if self.tx_service.tx_host_ports.len() == 1 {
                 core = core.max((hw.cpu * 3) / 4);
             } else {
                 core = core.max((hw.cpu * 2) / 5);
@@ -532,7 +657,7 @@ impl Deployment {
         if val.is_none() {
             my_ini.set(SECTION_MARIADB, key, Some(core.to_string()));
         }
-        if self.tx_service.host.len() > 1 {
+        if self.tx_service.tx_host_ports.len() > 1 {
             let key = "monograph_bthread_worker_num";
             let val = set_by_user!(my_ini.get(SECTION_MARIADB, key), u16);
             if val.is_none() {
@@ -557,10 +682,12 @@ impl Deployment {
 
     pub fn build_eloqkv_config(&self, set_ip_list: bool) -> anyhow::Result<Ini> {
         let mut ini = Ini::new();
-        ini.load(config_template(ELOQKV_INI)?).unwrap();
+        // config template does not have port suffix
+        let filename = format!("{}.ini", ELOQKV_TEMPLATE_INI);
+        ini.load(config_template(&filename)?).unwrap();
         ini.set(
             SECTION_LOCAL,
-            "path",
+            "eloq_data_path",
             Some(format!("{}/data", self.tx_srv_home())),
         );
 
@@ -646,19 +773,99 @@ impl Deployment {
                 }
             },
         }
-        let use_port = self.client_port();
-        let monograph_hosts = &self.tx_service.host;
+
+        let tx_host_ports = &self.tx_service.tx_host_ports;
         if set_ip_list {
-            let ip_list = monograph_hosts
+            // TODO(ZX) check if there are 3 processes to form a group, if not, panic here.
+
+            // Set the ip_port_list
+            let tx_ip_port_list = tx_host_ports
                 .iter()
-                .map(|host| format!("{}:{}", host.clone(), use_port))
+                .flat_map(|host_str| {
+                    host_str
+                        .split(',') // Split on ','
+                        .map(str::trim) // Trim any whitespace
+                })
+                .collect::<Vec<&str>>()
                 .join(",");
-            ini.set(SECTION_CLUSTER, "ip_port_list", Some(ip_list));
+            ini.set(SECTION_CLUSTER, "ip_port_list", Some(tx_ip_port_list));
+
+            // TODO(ZX) later, refactor to use list(-) in yaml
+
+            if let Some(standby_host_ports) = &self.tx_service.standby_host_ports {
+                if standby_host_ports.is_empty() {
+                    panic!("standby_host_ports is empty, but it was expected to contain values.");
+                }
+
+                // Process each string in the standby_host_ports vector
+                let standby_ip_port_list = standby_host_ports
+                    .iter()
+                    .map(|host_str| {
+                        let mut trimmed = String::new();
+                        let mut current = String::new();
+                        for c in host_str.chars() {
+                            if c == ',' || c == '|' {
+                                // Trim the current token and append the delimiter
+                                trimmed.push_str(current.trim());
+                                trimmed.push(c);
+                                current.clear();
+                            } else {
+                                current.push(c);
+                            }
+                        }
+                        // Append the last token after the loop
+                        trimmed.push_str(current.trim());
+                        trimmed
+                    })
+                    .collect::<Vec<String>>()
+                    .join(","); // Use the appropriate delimiter to join multiple host_strs if needed
+
+                ini.set(
+                    SECTION_CLUSTER,
+                    "standby_ip_port_list",
+                    Some(standby_ip_port_list),
+                );
+            }
+
+            if let Some(voter_host_ports) = &self.tx_service.voter_host_ports {
+                if voter_host_ports.is_empty() {
+                    panic!("voter_host_ports is empty, but it was expected to contain values.");
+                }
+
+                // Process each string in the voter_host_ports vector
+                let voter_ip_port_list = voter_host_ports
+                    .iter()
+                    .map(|host_str| {
+                        let mut trimmed = String::new();
+                        let mut current = String::new();
+                        for c in host_str.chars() {
+                            if c == ',' || c == '|' {
+                                // Trim the current token and append the delimiter
+                                trimmed.push_str(current.trim());
+                                trimmed.push(c);
+                                current.clear();
+                            } else {
+                                current.push(c);
+                            }
+                        }
+                        // Append the last token after the loop
+                        trimmed.push_str(current.trim());
+                        trimmed
+                    })
+                    .collect::<Vec<String>>()
+                    .join(","); // Use the appropriate delimiter to join multiple host_strs if needed
+
+                ini.set(
+                    SECTION_CLUSTER,
+                    "voter_ip_port_list",
+                    Some(voter_ip_port_list),
+                );
+            }
         } else {
             ini.set(
                 SECTION_CLUSTER,
                 "ip_port_list",
-                Some(format!("{}:{}", "127.0.0.1", use_port)),
+                Some(format!("{}:{}", "127.0.0.1", "6379")),
             );
         }
 
@@ -675,14 +882,24 @@ impl Deployment {
         Ok(ini.clone())
     }
 
-    pub fn gen_eloqkv_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
-        let is_host = tx_host.is_some();
+    pub fn gen_eloqkv_tx_config(
+        &self,
+        host: Option<String>,
+        port: Option<String>,
+    ) -> anyhow::Result<PathBuf> {
+        let is_host = host.is_some();
         let mut ini = self.build_eloqkv_config(is_host)?;
-        let (host, cnf_path) = if let Some(host) = tx_host {
-            (host.clone(), upload_host_dir(&host).join(ELOQKV_INI))
+        let mut cnf_path = upload_dir().join("redis_local.ini");
+
+        // Use pattern matching to handle the presence of both host and port
+        let (host_get, port_get) = if let (Some(host_some), Some(port_some)) = (host, port) {
+            // Construct the configuration path for the host
+            cnf_path =
+                upload_host_dir(&host_some).join(format!("{}-{}.{}", ELOQKV_INI, port_some, "ini"));
+            (host_some.clone(), port_some.clone())
         } else {
             ini.set(SECTION_LOCAL, "ip", Some("127.0.0.1".to_owned()));
-            ini.set(SECTION_LOCAL, "port", Some(self.client_port().to_string()));
+            ini.set(SECTION_LOCAL, "port", Some("6379".to_owned()));
             ini.set(SECTION_LOCAL, "core_number", Some("1".to_owned()));
             ini.set(SECTION_LOCAL, "event_dispatcher_num", Some("1".to_owned()));
             ini.set(
@@ -690,7 +907,6 @@ impl Deployment {
                 "node_memory_limit_mb",
                 Some("512".to_owned()),
             );
-            let cnf_path = upload_dir().join("redis_local.ini");
             ini.write(cnf_path.as_path())?;
             return Ok(cnf_path);
         };
@@ -701,8 +917,126 @@ impl Deployment {
                     ini.set(SECTION_CLUSTER, &key, Some(conf_val));
                 });
         }
+        ini.set(SECTION_LOCAL, "ip", Some(host_get.clone()));
+        ini.set(SECTION_LOCAL, "port", Some(port_get.clone()));
+
+        let opt_hw = self.get_hardware(&host_get);
+        if opt_hw.is_none() {
+            warn!("hardware information for {host_get} is missing");
+        }
+        let key = "core_number";
+        let mut core_tx = 1; // minimal value
+        if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
+            core_tx = val;
+        } else {
+            if let Some(hw) = opt_hw {
+                assert!(hw.cpu > 0);
+                core_tx = core_tx.max((hw.cpu * 4) / 5);
+            }
+            ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
+        }
+
+        let key = "event_dispatcher_num";
+        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
+        if val.is_none() {
+            let core_io = (core_tx + 7) / 8;
+            ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
+        }
+
+        let union_cass = self
+            .topology()
+            .get(&host_get)
+            .unwrap()
+            .contains(&DeploymentPackage::Storage);
+        let key = "node_memory_limit_mb";
+        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
+        if val.is_none() {
+            let mut limit = opt_hw.map(|hw| (hw.memory * 4) / 5).unwrap_or(GB);
+            if union_cass {
+                limit /= 2;
+            }
+            assert!(limit > 0);
+            ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+        }
+
+        ini.write(cnf_path.as_path())?;
+        Ok(cnf_path)
+    }
+
+    pub fn gen_eloqkv_standby_config(&self, host: String, port: String) -> anyhow::Result<PathBuf> {
+        let mut ini = self.build_eloqkv_config(true)?;
+        let cnf_path =
+            upload_host_dir(&host).join(format!("{}-{}.{}", ELOQKV_STANDBY_INI, port, "ini"));
+
+        if self.log_service.is_some() {
+            self.build_log_config()
+                .into_iter()
+                .for_each(|(key, conf_val)| {
+                    ini.set(SECTION_CLUSTER, &key, Some(conf_val));
+                });
+        }
+
         ini.set(SECTION_LOCAL, "ip", Some(host.clone()));
-        ini.set(SECTION_LOCAL, "port", Some(self.client_port().to_string()));
+        ini.set(SECTION_LOCAL, "port", Some(port.clone()));
+
+        let opt_hw = self.get_hardware(&host);
+        if opt_hw.is_none() {
+            warn!("hardware information for {host} is missing");
+        }
+        let key = "core_number";
+        let mut core_tx = 1; // minimal value
+        if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
+            core_tx = val;
+        } else {
+            if let Some(hw) = opt_hw {
+                assert!(hw.cpu > 0);
+                core_tx = core_tx.max((hw.cpu * 4) / 5);
+            }
+            ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
+        }
+
+        let key = "event_dispatcher_num";
+        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
+        if val.is_none() {
+            let core_io = (core_tx + 7) / 8;
+            ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
+        }
+
+        let union_cass = self
+            .topology()
+            .get(&host)
+            .unwrap()
+            .contains(&DeploymentPackage::Storage);
+        let key = "node_memory_limit_mb";
+        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
+        if val.is_none() {
+            let mut limit = opt_hw.map(|hw| (hw.memory * 4) / 5).unwrap_or(GB);
+            if union_cass {
+                limit /= 2;
+            }
+            assert!(limit > 0);
+            ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+        }
+
+        ini.write(cnf_path.as_path())?;
+        Ok(cnf_path)
+    }
+
+    pub fn gen_eloqkv_voter_config(&self, host: String, port: String) -> anyhow::Result<PathBuf> {
+        let mut ini = self.build_eloqkv_config(true)?;
+        let cnf_path =
+            upload_host_dir(&host).join(format!("{}-{}.{}", ELOQKV_VOTER_INI, port, "ini"));
+
+        if self.log_service.is_some() {
+            self.build_log_config()
+                .into_iter()
+                .for_each(|(key, conf_val)| {
+                    ini.set(SECTION_CLUSTER, &key, Some(conf_val));
+                });
+        }
+
+        ini.set(SECTION_LOCAL, "ip", Some(host.clone()));
+        ini.set(SECTION_LOCAL, "port", Some(port.clone()));
 
         let opt_hw = self.get_hardware(&host);
         if opt_hw.is_none() {
@@ -758,7 +1092,7 @@ impl Deployment {
         // calculate backend_primary_parallel
         let ncpu = &self
             .tx_service
-            .host
+            .tx_host_ports
             .iter()
             .map(|host| {
                 if let Some(hw) = self.get_hardware(host) {
@@ -833,6 +1167,21 @@ impl Deployment {
         Ok(db_image_download_links)
     }
 
+    fn get_host_list_internal(&self, host_port_entries: &Option<Vec<String>>) -> Vec<String> {
+        host_port_entries
+            .as_ref()
+            .map(|hostports| {
+                hostports
+                    .iter()
+                    .flat_map(|hostport| hostport.split(['|', ',']))
+                    .map(|host| host.split(':').next().unwrap_or("")) // Take the part before ':' (i.e., the IP part)
+                    .filter(|host| !host.is_empty())
+                    .map(|host| host.to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn get_host_list(&self, service: DeploymentPackage) -> Vec<String> {
         match service {
             DeploymentPackage::Storage => {
@@ -850,7 +1199,15 @@ impl Deployment {
                     vec![]
                 }
             }
-            DeploymentPackage::MonographTx => self.tx_service.host.to_vec(),
+            DeploymentPackage::MonographTx => {
+                self.get_host_list_internal(&Some(self.tx_service.tx_host_ports.clone()))
+            }
+            DeploymentPackage::MonographStandby => {
+                self.get_host_list_internal(&self.tx_service.standby_host_ports)
+            }
+            DeploymentPackage::MonographVoter => {
+                self.get_host_list_internal(&self.tx_service.voter_host_ports)
+            }
             DeploymentPackage::Prometheus => {
                 extract_monitor_host!(self, prometheus)
             }
@@ -866,6 +1223,37 @@ impl Deployment {
                     vec![]
                 }
             }
+        }
+    }
+
+    fn get_host_port_list_internal(&self, host_port_entries: &Option<Vec<String>>) -> Vec<String> {
+        host_port_entries
+            .as_ref()
+            .map(|hostports| {
+                hostports
+                    .iter()
+                    .flat_map(|hostport| hostport.split(['|', ',']))
+                    .filter(|hostport| !hostport.is_empty())
+                    .map(|hostport| hostport.to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn get_host_port_list(&self, service: DeploymentPackage) -> Vec<String> {
+        match service {
+            DeploymentPackage::Storage => vec![],
+            DeploymentPackage::MonographLog => vec![],
+            DeploymentPackage::MonographTx => self.tx_service.tx_host_ports.clone(),
+            DeploymentPackage::MonographStandby => {
+                self.get_host_port_list_internal(&self.tx_service.standby_host_ports)
+            }
+            DeploymentPackage::MonographVoter => {
+                self.get_host_port_list_internal(&self.tx_service.voter_host_ports)
+            }
+            DeploymentPackage::Prometheus => vec![],
+            DeploymentPackage::Grafana => vec![],
+            DeploymentPackage::Codis => vec![],
         }
     }
 
@@ -990,11 +1378,11 @@ impl Deployment {
         Ok(cass_config_vec)
     }
 
-    pub fn tx_srv_start_cmd(&self) -> String {
-        let tx_ini = self.tx_srv_ini();
+    pub fn tx_srv_start_cmd(&self, port: &str) -> String {
+        let tx_ini = self.tx_srv_ini(port);
         let tx_dir = self.tx_srv_home();
         let tx_bin = self.tx_srv_bin();
-        let tx_logs = self.tx_srv_logs();
+        let tx_logs = self.tx_srv_logs(port);
         let glog = format!(
             "mkdir -p {tx_logs} ; export GLOG_log_dir={tx_logs} ; export GLOG_max_log_size=1024"
         );
@@ -1019,6 +1407,74 @@ impl Deployment {
             Product::EloqKV => {
                 format!(
                     "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={tx_ini} --graceful_quit_on_sigterm=true > logs/std-out 2>&1 &"
+                )
+            }
+        }
+    }
+
+    pub fn standby_srv_start_cmd(&self, port: &str) -> String {
+        let standby_ini = self.standby_srv_ini(port);
+        let tx_dir = self.tx_srv_home();
+        let tx_bin = self.tx_srv_bin();
+        let standby_logs = self.standby_srv_logs(port);
+        let glog = format!(
+            "mkdir -p {standby_logs} ; export GLOG_log_dir={standby_logs} ; export GLOG_max_log_size=1024"
+        );
+        let mut ld_lib = if let Some(Version::Debug) = self.version() {
+            export_asan(&format!("{standby_logs}/asan"))
+        } else {
+            format!("export LD_PRELOAD={tx_dir}/lib/libmimalloc.so.2")
+        };
+        ld_lib.push_str(&format!(
+            "; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH"
+        ));
+        match self.product() {
+            Product::EloqSQL => {
+                let mut logout = "/dev/null".to_owned();
+                if let Some(Version::Tag(nums)) = self.version() {
+                    if nums <= version_digits("0.4.2").unwrap() {
+                        logout = format!("{tx_dir}/logs/eloqsql.log")
+                    }
+                }
+                format!("cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --defaults-file={standby_ini} > {logout} 2>&1 &")
+            }
+            Product::EloqKV => {
+                format!(
+                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={standby_ini} --graceful_quit_on_sigterm=true > logs/std-out 2>&1 &"
+                )
+            }
+        }
+    }
+
+    pub fn voter_srv_start_cmd(&self, port: &str) -> String {
+        let voter_ini = self.voter_srv_ini(port);
+        let tx_dir = self.tx_srv_home();
+        let tx_bin = self.tx_srv_bin();
+        let voter_logs = self.voter_srv_logs(port);
+        let glog = format!(
+            "mkdir -p {voter_logs} ; export GLOG_log_dir={voter_logs} ; export GLOG_max_log_size=1024"
+        );
+        let mut ld_lib = if let Some(Version::Debug) = self.version() {
+            export_asan(&format!("{voter_logs}/asan"))
+        } else {
+            format!("export LD_PRELOAD={tx_dir}/lib/libmimalloc.so.2")
+        };
+        ld_lib.push_str(&format!(
+            "; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH"
+        ));
+        match self.product() {
+            Product::EloqSQL => {
+                let mut logout = "/dev/null".to_owned();
+                if let Some(Version::Tag(nums)) = self.version() {
+                    if nums <= version_digits("0.4.2").unwrap() {
+                        logout = format!("{tx_dir}/logs/eloqsql.log")
+                    }
+                }
+                format!("cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --defaults-file={voter_ini} > {logout} 2>&1 &")
+            }
+            Product::EloqKV => {
+                format!(
+                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={voter_ini} --graceful_quit_on_sigterm=true > logs/std-out 2>&1 &"
                 )
             }
         }

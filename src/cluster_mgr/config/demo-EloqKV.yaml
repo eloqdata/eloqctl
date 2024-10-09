@@ -9,8 +9,7 @@ deployment:
   version: "latest"
   install_dir: "${ELOQCTL_HOME}"
   tx_service:
-    host: [127.0.0.1]
-    client_port: 6389
+    tx_host_ports: [127.0.0.1:6389]
   log_service:
     nodes:
       - host: 127.0.0.1

@@ -91,7 +91,7 @@ impl CodisTask {
         let host = TaskHost::Remote {
             user: config.connection.username.clone(),
             port: config.connection.ssh_port() as usize,
-            hosts: self.host.clone(),
+            host: self.host.clone(),
         };
         let inst = TaskInstance {
             task_input: HashMap::default(),

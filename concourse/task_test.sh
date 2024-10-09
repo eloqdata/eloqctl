@@ -15,9 +15,12 @@ export PATH="$PATH:$ELOQCTL_HOME/bin"
 cd $ELOQCTL_HOME
 cat version
 bash tests/launch.sh
+bash tests/launch_with_hot_standby.sh
+bash tests/launch_with_hot_standby_and_voter.sh
 bash tests/demo.sh
 bash tests/update.sh
 bash tests/control.sh
+
 if [[ ! "$(python3 --version)" =~ "Python 3.12" ]]; then
   wget https://downloads.datastax.com/enterprise/cqlsh-astra.tar.gz
   tar -xzvf cqlsh-astra.tar.gz

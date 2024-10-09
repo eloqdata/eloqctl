@@ -5,6 +5,8 @@ inputs:
   - name: monograph_waiter
 outputs:
   - name: the-output
+params:
+  TAGGED: ""
 run:
   path: /bin/bash
   args:

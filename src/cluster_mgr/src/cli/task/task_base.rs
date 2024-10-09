@@ -189,6 +189,8 @@ pub enum CmdErr {
     CopyTaskErr(String),
     #[error("Error executing MonographDB monitor component task {0}, error causes {1}")]
     MonitorCtlCmdErr(String, String),
+    #[error("Error interacting with redis. error causes {0}")]
+    RedisOpErr(String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
@@ -220,7 +222,7 @@ pub enum TaskHost {
     Remote {
         user: String,
         port: usize,
-        hosts: String,
+        host: String,
     },
 }
 
@@ -228,7 +230,7 @@ impl TaskHost {
     pub fn ssh_conn_tuple(&self) -> (String, usize, String) {
         match self {
             TaskHost::Local => ("_local".to_string(), 22, "localhost".to_string()),
-            TaskHost::Remote { user, port, hosts } => (user.clone(), *port, hosts.clone()),
+            TaskHost::Remote { user, port, host } => (user.clone(), *port, host.clone()),
         }
     }
 }

@@ -25,7 +25,8 @@ bin_dir=${ELOQCTL_HOME}/bin
 mkdir -p "$bin_dir"
 
 install_binary() {
-    curl "$repo/eloqctl/eloqctl-${OS_ID}-${ARCH}.tar.gz?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqctl.tar.gz" || return 1
+    # always test against the newly merged main (the public tagged version should be selected from the already tested main branch)
+    curl "$repo/eloqctl/eloqctl-main-${OS_ID}-${ARCH}.tar.gz?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqctl.tar.gz" || return 1
     tar -zxf "/tmp/eloqctl.tar.gz" -C $ELOQCTL_HOME --strip-components 1 --overwrite || return 1
     return 0
 }

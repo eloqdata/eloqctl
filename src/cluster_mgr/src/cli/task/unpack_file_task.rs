@@ -77,7 +77,7 @@ impl UnpackFileTask {
                 let task_host = TaskHost::Remote {
                     user: conn_usr.clone(),
                     port: ssh_port as usize,
-                    hosts: remote_host.clone(),
+                    host: remote_host.clone(),
                 };
                 let task_id = TaskId {
                     cmd: "deploy".to_string(),
@@ -110,9 +110,13 @@ impl UnpackFileTask {
         let tx_home = config.product().home().to_owned();
         let mut tasks = deploy_ref
             .tx_service
-            .host
+            .tx_host_ports
             .iter()
-            .map(|host| Self::make_task_pair(config, host, image, &tx_home, vec![]))
+            .map(|host_port| {
+                //
+                let host = host_port.split(':').next().unwrap();
+                Self::make_task_pair(config, host, image, &tx_home, vec![])
+            })
             .collect::<IndexMap<TaskId, TaskInstance>>();
         if let Some(srv) = &deploy_ref.log_service {
             let image = srv.image.as_ref().unwrap().split('/').last().unwrap();
@@ -162,7 +166,7 @@ impl UnpackFileTask {
         let task_host = TaskHost::Remote {
             user: config.connection.username.clone(),
             port: config.connection.ssh_port() as usize,
-            hosts: host.to_owned(),
+            host: host.to_owned(),
         };
         let task_id = TaskId {
             cmd: "update".to_string(),
@@ -214,6 +218,8 @@ impl TaskExecutor for UnpackFileTask {
         cmds.push(format!(
             "tar -zxvf {tarball} -C {target} --strip-components 1 --overwrite {exclude}"
         ));
+        // TODO(ZX) temp, redis_server code has bug to fix, delete the command below later
+        // cmds.push("cp /home/mono/workspace/monograph_redis_bin/Debug/bin/eloqkv /home/mono/eloqkv_with_hot_standby/EloqKV/bin/eloqkv".to_string());
         cmds.push(format!("rm {tarball}"));
         let unpack_cmd = cmds.join(" && ");
         info!("UnpackFileTask cmd={unpack_cmd}");

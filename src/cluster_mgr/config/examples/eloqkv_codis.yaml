@@ -9,8 +9,8 @@ deployment:
   version: "latest"
   install_dir: "/home/${USER}"
   tx_service:
-    host: [127.0.0.1]
-    client_port: 6379
+    tx_host_ports: [127.0.0.1:6379]
+    # client_port: 6379
   codis:
     dashboard: 127.0.0.1
     proxy: [127.0.0.1]

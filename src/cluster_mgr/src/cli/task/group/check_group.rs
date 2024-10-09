@@ -23,7 +23,7 @@ macro_rules! make_check_tasks {
                     task_host: TaskHost::Remote {
                         user: $config.connection.username.clone(),
                         port: $config.connection.ssh_port() as usize,
-                        hosts: host,
+                        host,
                     },
                 };
                 (instance.task.identifier(), instance)

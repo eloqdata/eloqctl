@@ -1,17 +1,22 @@
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::ssh::SSHSession;
-use std::any::{Any, TypeId};
-use std::fmt::Debug;
-use std::future::Future;
-
-use crate::cli::task::task_base::{ExecutionValue, TaskArgValue};
-use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
+use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
+use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskHost, TaskId, TaskInstance};
+use crate::cli::{SubCommand, CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::config::{config_base::DeployConfig, DeploymentPackage};
 use crate::state::state_base::StateOperation;
 use crate::state::state_mgr::{STATE_MGR, TASK_STATUS_STATE};
 use crate::state::task_status_operation::{TaskStatusEntity, TaskStatusOperation};
 use anyhow::anyhow;
+use indexmap::IndexMap;
 use itertools::Itertools;
+use std::any::{Any, TypeId};
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::future::Future;
 use std::time::Duration;
+use tokio::sync::watch;
 use tracing::{debug, error, info};
 
 #[macro_export]
@@ -216,4 +221,73 @@ pub(crate) async fn save_task_status(
     } else {
         Ok(execution_result)
     }
+}
+
+pub fn stop_with_hot_standby(
+    cmd: SubCommand,
+    config: &DeployConfig,
+    barrier: &mut Vec<usize>,
+    executable: &mut IndexMap<TaskId, TaskInstance>,
+) {
+    // Check topology
+    let mut redis_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
+    let standby_host_ports = config.get_host_port_list(DeploymentPackage::MonographStandby);
+    redis_host_ports.extend(standby_host_ports);
+
+    let task_id = TaskId {
+        cmd: "topology".to_string(),
+        task: "check-topology".to_string(),
+        host: "_local".to_string(),
+    };
+
+    let redis_cmd = "cluster info".to_string();
+
+    // Use a channel to pass the result of RedisOpTask to MonographTxCtlTask
+    let (tx_channel, rx_standby) = watch::channel::<ClusterNodes>(ClusterNodes {
+        masters: Vec::new(),
+        replicas: Vec::new(),
+    });
+    let rx_tx = tx_channel.subscribe();
+
+    let topology_task = RedisOpTask::new(task_id.clone(), redis_host_ports, redis_cmd, tx_channel);
+
+    let task_instance = TaskInstance {
+        task_input: HashMap::default(),
+        task: Box::new(topology_task),
+        task_host: TaskHost::Local,
+    };
+
+    barrier.push(1);
+    executable.insert(task_id, task_instance);
+
+    // Set up standby tasks
+    let stop_standby = MonographTxCtlTask::from_config_with_channel(
+        cmd.clone(),
+        config,
+        ServerType::Standby,
+        Some(rx_standby),
+    )
+    .expect("stop standby error");
+
+    barrier.push(stop_standby.len());
+    executable.extend(stop_standby);
+
+    // Set up voter tasks if applicable
+    if config.deployment.tx_service.voter_host_ports.is_some() {
+        let stop_voter = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
+        barrier.push(stop_voter.len());
+        executable.extend(stop_voter);
+    }
+
+    // Set up transaction tasks
+    let stop_tx = MonographTxCtlTask::from_config_with_channel(
+        cmd.clone(),
+        config,
+        ServerType::Tx,
+        Some(rx_tx),
+    )
+    .expect("stop tx error");
+
+    barrier.push(stop_tx.len());
+    executable.extend(stop_tx);
 }

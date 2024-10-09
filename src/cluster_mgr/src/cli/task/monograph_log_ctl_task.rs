@@ -103,6 +103,11 @@ impl LogCtlCmd {
                         };
                         LogCtlCmd::Stop(stop_cmd_string)
                     }
+                    SubCommand::Remove { cluster: _ } => {
+                        let ps_log_info = ps_cmd_part;
+                        let stop_cmd_string = format!("{ps_log_info} | xargs kill -9");
+                        LogCtlCmd::Stop(stop_cmd_string)
+                    }
                     SubCommand::LogService {
                         cluster: _,
                         command: log_cmd,
@@ -153,7 +158,7 @@ impl MonographLogCtlTask {
     fn cluster_cmd_string(cmd_arg: SubCommand) -> String {
         let cmd_ref = cmd_arg.as_ref();
         match cmd_ref {
-            "start" | "stop" | "status" => cmd_ref.to_string(),
+            "start" | "stop" | "status" | "remove" => cmd_ref.to_string(),
             "log-srv" => match cmd_arg {
                 SubCommand::LogService {
                     cluster: _,
@@ -187,7 +192,7 @@ impl MonographLogCtlTask {
                 let task_host = TaskHost::Remote {
                     user: user.to_string(),
                     port,
-                    hosts: host.to_string(),
+                    host: host.to_string(),
                 };
                 let task_id = TaskId {
                     cmd: format!("monograph_log_{cluster_arg_ref}"),
@@ -342,7 +347,7 @@ impl TaskExecutor for MonographLogCtlTask {
                         execution_value.get(PROCESS_PID).unwrap().clone(),
                     );
                     debug!("MonographLogCtlTask found pid={pid}, command={cmd_string} {key:#?}");
-                    if cmd_string.eq("stop") {
+                    if cmd_string.eq("stop") || cmd_string.eq("remove") {
                         //stop and There are still log process alive
                         !pid.eq("NONE")
                     } else if cmd_string.eq("start") {

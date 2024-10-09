@@ -165,7 +165,7 @@ impl CassandraCtlTask {
                     host: "_NONE".to_string(),
                 },
             ),
-            SubCommand::Stop { .. } => (
+            SubCommand::Stop { .. } | SubCommand::Remove { cluster: _ } => (
                 "stop",
                 TaskId {
                     cmd: "stop".to_string(),
@@ -198,7 +198,7 @@ impl CassandraCtlTask {
                         task_host: TaskHost::Remote {
                             user: conn_user.clone(),
                             port: ssh_port as usize,
-                            hosts: host.clone(),
+                            host: host.clone(),
                         },
                     },
                 )

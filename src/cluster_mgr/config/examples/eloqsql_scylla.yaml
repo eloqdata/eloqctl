@@ -9,8 +9,7 @@ deployment:
   version: "latest"
   install_dir: "/home/${USER}"
   tx_service:
-    host: [127.0.0.1]
-    port: 8000
+    tx_host_ports: [127.0.0.1:8000]
     client_port: 3316
   log_service:
     nodes:

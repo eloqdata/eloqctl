@@ -105,7 +105,7 @@ impl DepPkgTask {
                 let task_host = TaskHost::Remote {
                     user: conn_user.clone(),
                     port: ssh_port as usize,
-                    hosts: host_name.to_string(),
+                    host: host_name.to_string(),
                 };
                 (
                     task_id,

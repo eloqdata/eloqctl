@@ -47,7 +47,7 @@ impl TaskExecutor for UploadTask {
         let source_task_host = TaskHost::Remote {
             user: user.to_string(),
             port,
-            hosts: source_host,
+            host: source_host,
         };
         let ssh_session = SSHSession::from_task_host(
             source_task_host,

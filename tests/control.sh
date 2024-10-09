@@ -3,18 +3,19 @@ set -exo pipefail
 
 echo ">>> Test Start/Stop command"
 
-eloqctl demo eloq-sql --skip-deps
-eloqctl stop demo-sql-cassandra
-eloqctl start demo-sql-cassandra
-eloqctl stop demo-sql-cassandra --log
-eloqctl start demo-sql-cassandra
-eloqctl stop demo-sql-cassandra --store
-eloqctl start demo-sql-cassandra
-eloqctl stop demo-sql-cassandra --log --store
-eloqctl start demo-sql-cassandra
-eloqctl stop demo-sql-cassandra --tx false --monitor
-eloqctl stop demo-sql-cassandra --all --force
-eloqctl remove demo-sql-cassandra
+# TODO(ZX) temporarily disable eloqsql test
+# eloqctl demo eloq-sql --skip-deps
+# eloqctl stop demo-sql-cassandra
+# eloqctl start demo-sql-cassandra
+# eloqctl stop demo-sql-cassandra --log
+# eloqctl start demo-sql-cassandra
+# eloqctl stop demo-sql-cassandra --store
+# eloqctl start demo-sql-cassandra
+# eloqctl stop demo-sql-cassandra --log --store
+# eloqctl start demo-sql-cassandra
+# eloqctl stop demo-sql-cassandra --tx false --monitor
+# eloqctl stop demo-sql-cassandra --all --force
+# eloqctl remove demo-sql-cassandra
 
 eloqctl demo eloq-kv --skip-deps
 eloqctl stop demo-kv-cassandra

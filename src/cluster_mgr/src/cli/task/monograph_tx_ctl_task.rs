@@ -1,5 +1,6 @@
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
 use crate::cli::ssh::SSHSession;
+use crate::cli::task::redis_op_task::ClusterNodes;
 use crate::cli::task::task_base::{
     CmdErr, CmdErr::MonographCtlErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId,
     TaskInstance,
@@ -15,11 +16,14 @@ use crate::{get_ctl_cmd_string, task_return_value, wait_command_complete};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use indexmap::IndexMap;
+use regex::Regex;
 use sqlx::{Connection, Executor, Row};
 use std::collections::HashMap;
 use std::io;
+use std::thread;
 use std::time::Duration;
 use strum_macros::AsRefStr;
+use tokio::sync::watch;
 use tracing::{debug, error, info};
 
 #[derive(Clone, Debug, Eq, PartialEq, AsRefStr)]
@@ -34,21 +38,29 @@ pub enum TxCtlCmd {
     Status(String),
 }
 
+pub enum ServerType {
+    Tx,
+    Standby,
+    Voter,
+}
+
 get_ctl_cmd_string!(TxCtlCmd, Start, Stop, ForceStop, Status);
 
-macro_rules! monograph_cmd {
-    ($ctl_cmd:ty,$tx_srv_bin:expr, $user:expr) => {{
+macro_rules! monograph_cmd_with_port {
+    ($ctl_cmd:ty, $tx_srv_bin:expr, $user:expr, $port:expr) => {{
         let ctl_cmd = stringify!($ctl_cmd);
         let pid_cmd = format!(
-            "ps uxwe -u {} | grep {} | grep -v grep | ",
-            $user, $tx_srv_bin
+            "ps uxwe -u {} | grep {} | grep {} | grep -v grep | ",
+            $user, $tx_srv_bin, $port
         );
         let output_pid = r#"awk '{print $2}'"#;
         match ctl_cmd {
             "TxCtlCmd::ForceStop" => {
-                TxCtlCmd::ForceStop(format!("{} {} | xargs kill -9", pid_cmd, output_pid))
+                TxCtlCmd::ForceStop(format!("{} {} | xargs -r kill -9", pid_cmd, output_pid))
             }
-            "TxCtlCmd::Stop" => TxCtlCmd::Stop(format!("{} {} | xargs kill", pid_cmd, output_pid)),
+            "TxCtlCmd::Stop" => {
+                TxCtlCmd::Stop(format!("{} {} | xargs -r kill", pid_cmd, output_pid))
+            }
             "TxCtlCmd::Status" => {
                 let ps_cmd = format!(r#"{} {} "#, pid_cmd, output_pid);
                 TxCtlCmd::Status(ps_cmd)
@@ -241,22 +253,162 @@ pub struct MonographTxCtlTask {
     config: DeployConfig,
     task_id: TaskId,
     ctl_cmd: TxCtlCmd,
+    receiver: Option<watch::Receiver<ClusterNodes>>,
+}
+
+// Define the context struct
+struct TaskGenerationContext<'a> {
+    cmd_arg: &'a SubCommand,
+    config: &'a DeployConfig,
+    conn_user: &'a str,
+    ssh_port: usize,
+    tx_bin: &'a str,
+    wait_secs: i32,
+    db_user: &'a str,
+    db_pwd: &'a str,
+    is_force_stop: bool,
+    receiver: Option<watch::Receiver<ClusterNodes>>,
+}
+
+// Refactored function with reduced arguments
+fn generate_tasks_for_host_ports(
+    context: &TaskGenerationContext,
+    host_ports: &[String],
+    server_type: &str,
+) -> IndexMap<TaskId, TaskInstance> {
+    let cmd_str_ref = context.cmd_arg.as_ref();
+    host_ports
+        .iter()
+        .map(|host_port| {
+            let (host, port) = host_port.split_once(':').unwrap_or_else(|| {
+                panic!(
+                    "Error: Invalid host_port format '{}'. Expected 'host:port'.",
+                    host_port
+                )
+            });
+
+            let task_id = TaskId {
+                cmd: cmd_str_ref.to_string(),
+                task: format!("{}-{}-{}", server_type, cmd_str_ref, port),
+                host: host.to_string(),
+            };
+
+            let cmd_task_input_tuple = match cmd_str_ref {
+                "start" => (
+                    match server_type {
+                        "txservice" => {
+                            TxCtlCmd::Start(context.config.deployment.tx_srv_start_cmd(port))
+                        }
+                        "standby" => {
+                            TxCtlCmd::Start(context.config.deployment.standby_srv_start_cmd(port))
+                        }
+                        "voter" => {
+                            TxCtlCmd::Start(context.config.deployment.voter_srv_start_cmd(port))
+                        }
+                        _ => unreachable!(),
+                    },
+                    HashMap::default(),
+                ),
+                "status" => (
+                    monograph_cmd_with_port!(
+                        TxCtlCmd::Status,
+                        context.tx_bin,
+                        context.conn_user.to_string(),
+                        port.to_string()
+                    ),
+                    HashMap::from([
+                        (
+                            WAIT_SECS.to_string(),
+                            TaskArgValue::Number(context.wait_secs),
+                        ),
+                        (
+                            MONO_DB_USER.to_string(),
+                            TaskArgValue::Str(context.db_user.to_string()),
+                        ),
+                        (
+                            MONO_DB_PWD.to_string(),
+                            TaskArgValue::Str(context.db_pwd.to_string()),
+                        ),
+                    ]),
+                ),
+                "stop" | "remove" => {
+                    if context.is_force_stop {
+                        (
+                            monograph_cmd_with_port!(
+                                TxCtlCmd::ForceStop,
+                                context.tx_bin,
+                                context.conn_user.to_string(),
+                                port.to_string()
+                            ),
+                            HashMap::default(),
+                        )
+                    } else {
+                        (
+                            monograph_cmd_with_port!(
+                                TxCtlCmd::Stop,
+                                context.tx_bin,
+                                context.conn_user.to_string(),
+                                port.to_string()
+                            ),
+                            HashMap::default(),
+                        )
+                    }
+                }
+                _ => unreachable!(),
+            };
+
+            let ctl_cmd = cmd_task_input_tuple.0;
+            let task_input = cmd_task_input_tuple.1;
+            let task = if context.receiver.is_some() {
+                Box::new(MonographTxCtlTask::new(
+                    context.config.clone(),
+                    task_id.clone(),
+                    ctl_cmd,
+                    context.receiver.clone(),
+                ))
+            } else {
+                Box::new(MonographTxCtlTask::new(
+                    context.config.clone(),
+                    task_id.clone(),
+                    ctl_cmd,
+                    None,
+                ))
+            };
+
+            (
+                task_id.clone(),
+                TaskInstance {
+                    task_input,
+                    task,
+                    task_host: TaskHost::Remote {
+                        user: context.conn_user.to_string(),
+                        port: context.ssh_port,
+                        host: host.to_string(),
+                    },
+                },
+            )
+        })
+        .collect::<IndexMap<TaskId, TaskInstance>>()
 }
 
 impl MonographTxCtlTask {
     pub fn from_config(
         cmd_arg: SubCommand,
         config: &DeployConfig,
+        server_type: ServerType,
     ) -> IndexMap<TaskId, TaskInstance> {
         let conn_user = &config.connection.username;
-        let ssh_port = config.connection.ssh_port();
+        let ssh_port = config.connection.ssh_port() as usize;
         let tx_bin = config.deployment.tx_srv_bin();
-        let mono_hosts = config.get_host_list(DeploymentPackage::MonographTx);
+        let tx_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
+        let standby_host_ports = config.get_host_port_list(DeploymentPackage::MonographStandby);
+        let voter_host_ports = config.get_host_port_list(DeploymentPackage::MonographVoter);
 
         let mut wait_secs = -1;
         let mut db_user = "_NONE".to_string();
         let mut db_pwd = "_NONE".to_string();
         let mut is_force_stop = false;
+
         match cmd_arg.clone() {
             SubCommand::Stop { force, .. } => is_force_stop = force,
             SubCommand::Status {
@@ -277,82 +429,158 @@ impl MonographTxCtlTask {
             }
             _ => {}
         };
-        let cmd_str_ref = cmd_arg.as_ref();
-        mono_hosts
-            .iter()
-            .map(|host| {
-                let task_id = TaskId {
-                    cmd: cmd_str_ref.to_string(),
-                    task: format!("txservice-{cmd_str_ref}"),
-                    host: host.to_string(),
-                };
-                let cmd_task_input_tuple = match cmd_str_ref {
-                    "start" => (
-                        TxCtlCmd::Start(config.deployment.tx_srv_start_cmd()),
-                        HashMap::default(),
-                    ),
-                    "status" => (
-                        monograph_cmd!(TxCtlCmd::Status, tx_bin, conn_user.clone()),
-                        HashMap::from([
-                            (WAIT_SECS.to_string(), TaskArgValue::Number(wait_secs)),
-                            (MONO_DB_USER.to_string(), TaskArgValue::Str(db_user.clone())),
-                            (MONO_DB_PWD.to_string(), TaskArgValue::Str(db_pwd.clone())),
-                        ]),
-                    ),
-                    "stop" => {
-                        if is_force_stop {
-                            (
-                                monograph_cmd!(TxCtlCmd::ForceStop, tx_bin, conn_user.clone()),
-                                HashMap::default(),
-                            )
-                        } else {
-                            (
-                                monograph_cmd!(TxCtlCmd::Stop, tx_bin, conn_user.clone()),
-                                HashMap::default(),
-                            )
-                        }
-                    }
-                    _ => {
-                        unreachable!()
-                    }
-                };
-                let ctl_cmd = cmd_task_input_tuple.0;
-                let task_input = cmd_task_input_tuple.1;
-                (
-                    task_id.clone(),
-                    TaskInstance {
-                        task_input,
-                        task: Box::new(MonographTxCtlTask::new(config.clone(), task_id, ctl_cmd)),
-                        task_host: TaskHost::Remote {
-                            user: conn_user.clone(),
-                            port: ssh_port as usize,
-                            hosts: host.to_string(),
-                        },
-                    },
-                )
-            })
-            .collect::<IndexMap<TaskId, TaskInstance>>()
+
+        let context = TaskGenerationContext {
+            cmd_arg: &cmd_arg,
+            config,
+            conn_user,
+            ssh_port,
+            tx_bin: &tx_bin,
+            wait_secs,
+            db_user: &db_user,
+            db_pwd: &db_pwd,
+            is_force_stop,
+            receiver: None,
+        };
+
+        let mut tasks = IndexMap::new();
+        match server_type {
+            ServerType::Tx => {
+                tasks.extend(generate_tasks_for_host_ports(
+                    &context,
+                    &tx_host_ports,
+                    "txservice",
+                ));
+            }
+            ServerType::Standby => {
+                tasks.extend(generate_tasks_for_host_ports(
+                    &context,
+                    &standby_host_ports,
+                    "standby",
+                ));
+            }
+            ServerType::Voter => {
+                tasks.extend(generate_tasks_for_host_ports(
+                    &context,
+                    &voter_host_ports,
+                    "voter",
+                ));
+            }
+        }
+
+        tasks
     }
 
-    pub fn new(config: DeployConfig, task_id: TaskId, ctl_cmd: TxCtlCmd) -> Self {
+    pub fn from_config_with_channel(
+        cmd_arg: SubCommand,
+        config: &DeployConfig,
+        server_type: ServerType,
+        receiver: Option<watch::Receiver<ClusterNodes>>,
+    ) -> anyhow::Result<IndexMap<TaskId, TaskInstance>> {
+        let conn_user = &config.connection.username;
+        let ssh_port = config.connection.ssh_port() as usize;
+        let tx_bin = config.deployment.tx_srv_bin();
+        let tx_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
+        let standby_host_ports = config.get_host_port_list(DeploymentPackage::MonographStandby);
+        let voter_host_ports = config.get_host_port_list(DeploymentPackage::MonographVoter);
+
+        let mut wait_secs = -1;
+        let mut db_user = "_NONE".to_string();
+        let mut db_pwd = "_NONE".to_string();
+        let mut is_force_stop = false;
+
+        match cmd_arg.clone() {
+            SubCommand::Stop { force, .. } => is_force_stop = force,
+            SubCommand::Status {
+                cluster: _,
+                user,
+                password,
+                wait,
+            } => {
+                if let Some(user_val) = user {
+                    db_user = user_val;
+                }
+                if let Some(password_val) = password {
+                    db_pwd = password_val;
+                }
+                if let Some(w) = wait {
+                    wait_secs = w as i32;
+                }
+            }
+            _ => {}
+        };
+
+        let context = TaskGenerationContext {
+            cmd_arg: &cmd_arg,
+            config,
+            conn_user,
+            ssh_port,
+            tx_bin: &tx_bin,
+            wait_secs,
+            db_user: &db_user,
+            db_pwd: &db_pwd,
+            is_force_stop,
+            receiver,
+        };
+
+        let mut tasks = IndexMap::new();
+        match server_type {
+            ServerType::Tx => {
+                tasks.extend(generate_tasks_for_host_ports(
+                    &context,
+                    &tx_host_ports,
+                    "txservice",
+                ));
+            }
+            ServerType::Standby => {
+                tasks.extend(generate_tasks_for_host_ports(
+                    &context,
+                    &standby_host_ports,
+                    "standby",
+                ));
+            }
+            ServerType::Voter => {
+                tasks.extend(generate_tasks_for_host_ports(
+                    &context,
+                    &voter_host_ports,
+                    "voter",
+                ));
+            }
+        }
+
+        Ok(tasks)
+    }
+
+    pub fn new(
+        config: DeployConfig,
+        task_id: TaskId,
+        ctl_cmd: TxCtlCmd,
+        receiver: Option<watch::Receiver<ClusterNodes>>,
+    ) -> Self {
         Self {
             config,
             task_id,
             ctl_cmd,
+            receiver,
         }
     }
+}
 
-    async fn monograph_pid(
-        &self,
-        ssh_conn: SSHSession,
-        user: &str,
-    ) -> anyhow::Result<ExecutionValue> {
-        let tx_bin = self.config.deployment.tx_srv_bin();
-        let check_status = monograph_cmd!(TxCtlCmd::Status, tx_bin, user.to_string());
-        let cmd_val = check_status.cmd_value();
-        check_pid(cmd_val, ssh_conn, parse_process_pid).await
-        // check_process_pid(cmd_val, ssh_conn, parse_process_pid).await
+fn extract_server_type_and_port(input: &str) -> (&str, &str) {
+    if let Some((server_type, port)) = input.split_once("-start-") {
+        return (server_type, port);
     }
+    if let Some((server_type, port)) = input.split_once("-stop-") {
+        return (server_type, port);
+    }
+    if let Some((server_type, port)) = input.split_once("-status-") {
+        return (server_type, port);
+    }
+    if let Some((server_type, port)) = input.split_once("-remove-") {
+        return (server_type, port);
+    }
+
+    panic!("format error!!!");
 }
 
 #[async_trait]
@@ -367,13 +595,76 @@ impl TaskExecutor for MonographTxCtlTask {
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         info!("execute {}", self.task_id.pretty_string());
+
+        let mut master_host_ports = Vec::new();
+        let mut standby_host_ports = Vec::new();
+        // Receive the cluster nodes in execute
+        if let Some(receiver) = &self.receiver {
+            let timeout = Duration::from_secs(5);
+            let start_time = tokio::time::Instant::now();
+
+            loop {
+                if receiver.has_changed().unwrap_or(false) {
+                    // The receiver has changed; get the data
+                    let cluster_nodes = receiver.borrow();
+                    debug!(
+                        "Received cluster nodes: {:?}, Current thread ID: {:?}",
+                        cluster_nodes,
+                        thread::current().id()
+                    );
+
+                    // Process the cluster_nodes
+                    for node in &cluster_nodes.masters {
+                        master_host_ports.push(format!("{}:{}", node.ip, node.port));
+                    }
+                    for node in &cluster_nodes.replicas {
+                        standby_host_ports.push(format!("{}:{}", node.ip, node.port));
+                    }
+                    break;
+                }
+
+                if start_time.elapsed() >= timeout {
+                    // If the 5-second timeout is reached, panic and terminate the execution.
+                    panic!("Receiver did not receive any result for 5 seconds, fail to execute stop command");
+                    // TODO(ZX) return timeout error
+                    // task_return_value!(
+                    //     redis_cmd_result,
+                    //     |status_code: i32| -> CmdErr {
+                    //         CmdErr::MonographCtlErr(exec_cmd, status_code.to_string())
+                    //     },
+                    //     "MonographCtlTask"
+                    // )
+                }
+
+                // Avoid busy looping
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+
+        debug!(
+            "task host: {:?}, Current thread ID: {:?}, master_host_ports: {:?}, standby_host_ports: {:?}",
+            task_host,
+            thread::current().id(),
+            master_host_ports,
+            standby_host_ports
+        );
+        let task_str = self.task_id.task.as_str();
+        let (server_type, port) = extract_server_type_and_port(task_str);
+
         let ssh_session =
             SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
                 .await?;
         let tx_bin = self.config.deployment.tx_srv_bin();
         let (host_value, user) = ssh_session.ssh_conn_info();
-        let check_status_cmd = monograph_cmd!(TxCtlCmd::Status, tx_bin, user).cmd_value();
-        let check_process_status = self.monograph_pid(ssh_session.clone(), user.as_str()).await;
+        let check_status_cmd =
+            monograph_cmd_with_port!(TxCtlCmd::Status, tx_bin, user, port).cmd_value();
+
+        let tx_bin = self.config.deployment.tx_srv_bin();
+        let check_status =
+            monograph_cmd_with_port!(TxCtlCmd::Status, tx_bin, user.to_string(), port);
+        let cmd_val = check_status.cmd_value();
+        let check_process_status = check_pid(cmd_val, ssh_session.clone(), parse_process_pid).await;
+
         let ctl_cmd_ref = self.ctl_cmd.as_ref();
         let mono_ctl_rs = match ctl_cmd_ref {
             "status" => {
@@ -400,7 +691,7 @@ impl TaskExecutor for MonographTxCtlTask {
                     }
                     Product::EloqKV => {
                         if wait_secs >= 0 {
-                            let cs_port = self.config.deployment.client_port();
+                            let cs_port: u16 = port.parse().unwrap();
                             RedisProbe::new(host_value, cs_port).probe(wait_secs).await
                         } else {
                             check_process_status
@@ -410,9 +701,66 @@ impl TaskExecutor for MonographTxCtlTask {
             }
             "stop" | "force_stop" => {
                 let stop_cmd = self.ctl_cmd.cmd_value();
-                tx_ctl!(self, check_process_status, {!=, "NONE"}, async || -> anyhow::Result<ExecutionValue> {
-                     wait_command_complete!(stop_cmd, check_status_cmd, ssh_session.clone(), is_none)
-                })
+                let mut matching_ports: Vec<String> = Vec::new();
+                match server_type {
+                    "txservice" => {
+                        matching_ports = master_host_ports
+                            .iter()
+                            .filter_map(|host_port| {
+                                let parts: Vec<&str> = host_port.split(':').collect();
+                                if parts.len() == 2 && parts[0] == self.task_id.host {
+                                    Some(parts[1].to_string())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                    }
+                    "standby" => {
+                        matching_ports = standby_host_ports
+                            .iter()
+                            .filter_map(|host_port| {
+                                let parts: Vec<&str> = host_port.split(':').collect();
+                                if parts.len() == 2 && parts[0] == self.task_id.host {
+                                    Some(parts[1].to_string())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                    }
+                    "voter" => (),
+                    _ => unreachable!(),
+                }
+
+                // Modify stop_cmd to use grep with the matched ports
+                if !matching_ports.is_empty() {
+                    let port_pattern = matching_ports.join("|");
+                    let re = Regex::new(r"grep \d+").unwrap();
+                    let modified_stop_cmd =
+                        re.replace(&stop_cmd, &format!("grep -E '{}'", port_pattern));
+                    debug!("Modified stop_cmd: {}", modified_stop_cmd.to_string());
+
+                    let modified_check_status_cmd =
+                        re.replace(&check_status_cmd, &format!("grep -E '{}'", port_pattern));
+                    debug!(
+                        "Modified check_status_cmd: {}",
+                        modified_check_status_cmd.to_string()
+                    );
+
+                    // should not check using port from config
+                    wait_command_complete!(
+                        modified_stop_cmd.to_string(),
+                        modified_check_status_cmd.to_string(),
+                        ssh_session.clone(),
+                        is_none
+                    )
+                } else {
+                    debug!("No matching ports found for the given host.");
+                    tx_ctl!(self, check_process_status, {!=, "NONE"}, async || -> anyhow::Result<ExecutionValue> {
+                        wait_command_complete!(stop_cmd, check_status_cmd, ssh_session.clone(), is_none)
+                    })
+                }
             }
             "start" => {
                 let start_cmd = self.ctl_cmd.cmd_value();

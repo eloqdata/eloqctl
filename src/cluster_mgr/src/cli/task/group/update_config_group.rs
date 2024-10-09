@@ -1,6 +1,7 @@
 use crate::cli::task::group::{TaskGroup, UpdateConfigTaskGroup};
-use crate::cli::task::monograph_tx_ctl_task::MonographTxCtlTask;
+use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
 use crate::cli::task::task_base::TaskExecutionContext;
+use crate::cli::task::task_utils::stop_with_hot_standby;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
@@ -27,28 +28,36 @@ impl TaskGroup for UpdateConfigTaskGroup {
 
         if need_restart {
             barrier.push(executable.len());
-            let stop_tx_task = MonographTxCtlTask::from_config(
-                SubCommand::Stop {
-                    cluster: cluster_name.clone(),
-                    tx: Some(true),
-                    log: true,
-                    store: false,
-                    monitor: false,
-                    force: false,
-                    all: false,
-                },
-                &config,
-            );
+
+            // stop order: (standby-server -> voter-server ->) tx-server -> log-server -> kv-store
+            if config.deployment.tx_service.standby_host_ports.is_some() {
+                stop_with_hot_standby(cmd_arg.clone(), &config, &mut barrier, &mut executable);
+            } else {
+                let stop_tx_task = MonographTxCtlTask::from_config(
+                    SubCommand::Stop {
+                        cluster: cluster_name.clone(),
+                        tx: Some(true),
+                        log: true,
+                        store: false,
+                        monitor: false,
+                        force: false,
+                        all: false,
+                    },
+                    &config,
+                    ServerType::Tx,
+                );
+                barrier.push(stop_tx_task.len());
+                executable.extend(stop_tx_task);
+            }
 
             let start_tx_task = MonographTxCtlTask::from_config(
                 SubCommand::Start {
                     cluster: cluster_name.to_string(),
                 },
                 &config,
+                ServerType::Tx,
             );
-            barrier.push(stop_tx_task.len());
             barrier.push(start_tx_task.len());
-            executable.extend(stop_tx_task);
             executable.extend(start_tx_task);
         }
 
