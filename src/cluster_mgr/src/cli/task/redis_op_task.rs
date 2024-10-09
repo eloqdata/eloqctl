@@ -178,10 +178,6 @@ impl TaskExecutor for RedisOpTask {
                     .query_async::<_, Value>(&mut con)
                     .await;
 
-                // TODO(ZX) later, this operation should store the fetched info into the internal database,
-                // and let the further stop or scale tasks to use the cluster info from internal database,
-                // rather than from deployment config
-
                 // Closing connection explicitly if successful or failed
                 drop(con); // Manually close connection
                 query_result

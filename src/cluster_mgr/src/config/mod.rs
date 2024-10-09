@@ -22,7 +22,7 @@ pub mod storage_service_config;
 
 pub const ELOQSQL_INI: &str = "EloqSql.ini";
 pub const ELOQSQL_DYNAMO_INI: &str = "EloqSqlDynamo.ini";
-pub const ELOQSQL_CLIENT_PORT: u16 = 3306;
+pub const ELOQSQL_CLIENT_PORT: u16 = 3316;
 pub const ELOQKV_TEMPLATE_INI: &str = "EloqKv";
 pub const ELOQKV_INI: &str = "EloqKv-tx";
 pub const ELOQKV_STANDBY_INI: &str = "EloqKv-standby";

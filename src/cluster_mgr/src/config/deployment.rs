@@ -411,7 +411,7 @@ impl Deployment {
     pub fn get_monograph_keyspace(&self) -> anyhow::Result<String> {
         let my_local = upload_dir().join("my_local.cnf");
         if !my_local.exists() {
-            self.gen_eloqsql_config_by_host(None)?;
+            self.gen_eloqsql_config(None, None)?;
         }
         let mut my_ini_local = Ini::new();
         let _config_map_rs = my_ini_local.load(my_local).unwrap();
@@ -572,7 +572,7 @@ impl Deployment {
             my_ini.set(
                 SECTION_MARIADB,
                 "monograph_ip_list",
-                Some(format!("{}:{}", "127.0.0.1", self.client_port())),
+                Some(format!("{}:{}", "127.0.0.1", "8000")),
             );
         }
 
@@ -589,17 +589,24 @@ impl Deployment {
         Ok(my_ini.clone())
     }
 
-    pub fn gen_eloqsql_config_by_host(&self, tx_host: Option<String>) -> anyhow::Result<PathBuf> {
-        let port = self.client_port();
-        let is_host = tx_host.is_some();
+    pub fn gen_eloqsql_config(
+        &self,
+        host: Option<String>,
+        port: Option<String>,
+    ) -> anyhow::Result<PathBuf> {
+        let is_host = host.is_some();
         let mut my_ini = self.build_eloqsql_config(is_host)?;
-        let (host, cnf_path) = if let Some(host) = tx_host {
-            (host.clone(), upload_host_dir(&host).join(ELOQSQL_INI))
+        let (host, port, cnf_path) = if let (Some(host), Some(port)) = (host, port) {
+            (
+                host.clone(),
+                port.clone(),
+                upload_host_dir(&host).join(ELOQSQL_INI),
+            )
         } else {
             my_ini.set(
                 SECTION_MARIADB,
                 "monograph_local_ip",
-                Some(format!("127.0.0.1:{port}")),
+                Some("127.0.0.1:8000".to_string()),
             );
             my_ini.set(SECTION_MARIADB, "thread_pool_size", Some("1".to_owned()));
             my_ini.set(SECTION_MARIADB, "monograph_core_num", Some("1".to_owned()));
@@ -776,7 +783,7 @@ impl Deployment {
 
         let tx_host_ports = &self.tx_service.tx_host_ports;
         if set_ip_list {
-            // TODO(ZX) check if there are 3 processes to form a group, if not, panic here.
+            // TODO(ZX) check if there are 3 processes to form a group, if not, panic here. Also refactor to use list(-) in yaml
 
             // Set the ip_port_list
             let tx_ip_port_list = tx_host_ports
@@ -789,8 +796,6 @@ impl Deployment {
                 .collect::<Vec<&str>>()
                 .join(",");
             ini.set(SECTION_CLUSTER, "ip_port_list", Some(tx_ip_port_list));
-
-            // TODO(ZX) later, refactor to use list(-) in yaml
 
             if let Some(standby_host_ports) = &self.tx_service.standby_host_ports {
                 if standby_host_ports.is_empty() {
