@@ -37,4 +37,9 @@ cargo make --no-workspace --makefile Makefile.toml rest_api_pkg
 tar -czvf ../output/"${TX_TARBALL}" eloqctl
 
 # Upload to S3 using concourse put
-# aws s3 cp eloqctl.tar.gz s3://eloq-release/eloqctl/${TX_TARBALL}
+if [[ "$ARCH" == "arm64" ]]; then
+    echo "concourse-arm does not support put-to-s3 task in pipeline"
+    aws s3 cp ../output/"${TX_TARBALL}" s3://eloq-release/eloqctl/${TX_TARBALL}
+else
+    echo "Upload to S3 using concourse put"
+fi
