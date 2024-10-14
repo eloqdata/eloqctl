@@ -32,7 +32,12 @@ fi
 TX_TARBALL="eloqctl-${TAG}-${OS_ID}-${ARCH}.tar.gz"
 
 # Build
-git checkout "${TAG}"
+if [[ "$TAG" != "main" ]]; then
+    echo "Checking out to $TAG..."
+    git checkout "${TAG}"
+else
+    echo "TAG is 'main', no checkout performed."
+fi
 cargo make --no-workspace --makefile Makefile.toml rest_api_pkg
 tar -czvf ../output/"${TX_TARBALL}" eloqctl
 
