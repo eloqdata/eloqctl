@@ -1,11 +1,12 @@
 #!/bin/sh
 
 if [ -z "$1" ]; then
-    echo "Usage: $0 <TAG>"
-    exit 1
+    # echo "Usage: $0 <TAG>"
+    # exit 1
+    TAG="main"
+else
+    TAG="$1"
 fi
-
-TAG="$1"
 
 . /etc/os-release
 
