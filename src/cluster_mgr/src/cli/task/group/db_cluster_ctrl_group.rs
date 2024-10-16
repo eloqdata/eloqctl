@@ -131,8 +131,13 @@ impl CtrlDBTaskGroup {
 
         // stop order: (standby-server -> voter-server ->) tx-server -> log-server -> kv-store
         if tx {
-            if is_from_remove {
-                // remove command (if the cluster is stopped already, cluster info cannot be returned)
+            let mut is_force_stop = false;
+            if let SubCommand::Stop { force, .. } = cmd.clone() {
+                is_force_stop = force
+            };
+
+            if is_from_remove || is_force_stop {
+                // remove or force-stop command (the cluster is stopped already, or the majority of nodes crashed, cluster info cannot be returned)
                 if config.deployment.tx_service.standby_host_ports.is_some() {
                     let stop_standby =
                         MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Standby);
@@ -149,10 +154,10 @@ impl CtrlDBTaskGroup {
                 barrier.push(stop_tx.len());
                 executable.extend(stop_tx);
             } else if config.deployment.tx_service.standby_host_ports.is_some() {
-                // stop command with hot standby
+                // stop command with hot standby (the cluster works fine)
                 stop_with_hot_standby(cmd.clone(), config, &mut barrier, &mut executable);
             } else {
-                // stop command without hot standby
+                // stop command without hot standby (the cluster works fine)
                 let stop_tx = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Tx);
                 barrier.push(stop_tx.len());
                 executable.extend(stop_tx);

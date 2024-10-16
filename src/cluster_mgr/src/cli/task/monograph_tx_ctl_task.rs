@@ -624,16 +624,20 @@ impl TaskExecutor for MonographTxCtlTask {
                 }
 
                 if start_time.elapsed() >= timeout {
-                    // If the 5-second timeout is reached, panic and terminate the execution.
-                    panic!("Receiver did not receive any result for 5 seconds, fail to execute stop command");
-                    // TODO(ZX) return timeout error
-                    // task_return_value!(
-                    //     redis_cmd_result,
-                    //     |status_code: i32| -> CmdErr {
-                    //         CmdErr::MonographCtlErr(exec_cmd, status_code.to_string())
-                    //     },
-                    //     "MonographCtlTask"
-                    // )
+                    let redis_cmd_result = HashMap::from([(
+                        "cluster slots".to_string(),
+                        TaskArgValue::Str("timeout".to_string()),
+                    )]);
+                    task_return_value!(
+                        redis_cmd_result,
+                        |status_code: i32| -> CmdErr {
+                            CmdErr::MonographCtlErr(
+                                self.task_id.format_string(),
+                                status_code.to_string(),
+                            )
+                        },
+                        "MonographCtlTask"
+                    )
                 }
 
                 // Avoid busy looping
