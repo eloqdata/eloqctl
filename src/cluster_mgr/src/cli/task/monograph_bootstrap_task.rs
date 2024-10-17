@@ -112,16 +112,29 @@ impl TaskExecutor for MonographInstall {
                 )
             }
             Product::EloqKV => {
-                let tx_ini = self.config.deployment.find_any_ini_in_this_host();
-                let head = if let Some(Version::Debug) = self.config.deployment.version() {
-                    export_asan("logs/bootstrap-asan")
-                } else {
-                    format!("export LD_PRELOAD={txsv_dir}/lib/libmimalloc.so.2")
-                };
-                format!(
-                    r#"cd {txsv_dir}; mkdir logs; export LD_LIBRARY_PATH={txsv_dir}/lib:$LD_LIBRARY_PATH; \
-                    {head}; bin/eloqkv --config={tx_ini} --bootstrap > logs/bootstrap.log 2>&1 "#
-                )
+                match self
+                    .config
+                    .deployment
+                    .find_any_ini_in_this_host(&ssh_session)
+                    .await
+                {
+                    Ok(tx_ini) => {
+                        // Use `tx_ini` here
+                        let head = if let Some(Version::Debug) = self.config.deployment.version() {
+                            export_asan("logs/bootstrap-asan")
+                        } else {
+                            format!("export LD_PRELOAD={txsv_dir}/lib/libmimalloc.so.2")
+                        };
+                        format!(
+                            r#"cd {txsv_dir}; mkdir logs; export LD_LIBRARY_PATH={txsv_dir}/lib:$LD_LIBRARY_PATH; \
+                            {head}; bin/eloqkv --config={tx_ini} --bootstrap > logs/bootstrap.log 2>&1 "#
+                        )
+                    }
+                    Err(err) => {
+                        // Handle the error, e.g., log it, return a default value, or propagate it
+                        panic!("Error finding ini file: {}", err);
+                    }
+                }
             }
         };
         let install_rs = ssh_session.command(&bootstarp_sh, CollectOutput).await?;

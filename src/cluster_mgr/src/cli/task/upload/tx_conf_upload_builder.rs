@@ -19,8 +19,11 @@ impl UploadTaskBuilder for TxConfUpload {
             .map(|path_buf| path_buf.to_str().unwrap().to_string())
             .collect_vec();
         let remote_dest = config.deployment.tx_srv_home();
-        let upload_cnf_files = config
-            .get_host_list(DeploymentPackage::MonographTx)
+        let mut all_hosts = config.get_host_list(DeploymentPackage::MonographTx);
+        all_hosts.extend(config.get_host_list(DeploymentPackage::MonographStandby));
+        all_hosts.extend(config.get_host_list(DeploymentPackage::MonographVoter));
+
+        let upload_cnf_files = all_hosts
             .iter()
             .flat_map(|host| {
                 all_conf_path

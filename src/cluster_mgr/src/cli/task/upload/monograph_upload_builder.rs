@@ -32,7 +32,12 @@ impl MonographUploadBuilder {
             .iter()
             .map(|(file_key, download_url)| {
                 let dest_hosts = match file_key.as_str() {
-                    MONOGRAPH_FILE_KEY | MYSQL_EXPORTER_FILE_KEY => tx_hosts.clone(),
+                    MONOGRAPH_FILE_KEY | MYSQL_EXPORTER_FILE_KEY => [
+                        &tx_hosts.clone()[..],
+                        &standby_hosts.clone()[..],
+                        &voter_hosts.clone()[..],
+                    ]
+                    .concat(),
                     NODE_EXPORTER_FILE_KEY => [
                         &tx_hosts.clone()[..],
                         &standby_hosts.clone()[..],
@@ -93,13 +98,23 @@ impl MonographUploadBuilder {
 
         let all_db_host = config.get_host_as_map();
         let tx_hosts = all_db_host.get(&DeploymentPackage::MonographTx).unwrap();
+        let standby_hosts = all_db_host
+            .get(&DeploymentPackage::MonographStandby)
+            .unwrap();
+        let voter_hosts = all_db_host.get(&DeploymentPackage::MonographVoter).unwrap();
 
-        let mut tx_hosts_cloned = tx_hosts.clone();
+        let mut all_hosts_cloned: Vec<String> = tx_hosts
+            .iter()
+            .chain(standby_hosts.iter())
+            .chain(voter_hosts.iter())
+            .cloned()
+            .collect();
+
         if let Some(log_host) = all_db_host.get(&DeploymentPackage::MonographLog) {
-            tx_hosts_cloned.extend(log_host.clone());
+            all_hosts_cloned.extend(log_host.clone());
         }
         let dest_file = config.install_dir();
-        tx_hosts_cloned
+        all_hosts_cloned
             .into_iter()
             .map(|host| {
                 let source_files = list_files_by_host(&host, &config.deployment).join(" ");

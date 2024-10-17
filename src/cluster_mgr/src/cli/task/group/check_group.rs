@@ -43,6 +43,13 @@ impl TaskGroup for CheckTaskGroup {
         let mut executable = IndexMap::new();
         let input = HashMap::new();
         make_check_tasks!(DeploymentPackage::MonographTx, config, input, executable);
+        make_check_tasks!(
+            DeploymentPackage::MonographStandby,
+            config,
+            input,
+            executable
+        );
+        make_check_tasks!(DeploymentPackage::MonographVoter, config, input, executable);
         make_check_tasks!(DeploymentPackage::MonographLog, config, input, executable);
         if let Some(cass) = &config.deployment.storage_service.cassandra {
             if cass.internal().is_some() {

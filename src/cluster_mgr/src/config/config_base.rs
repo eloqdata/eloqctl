@@ -473,6 +473,14 @@ impl DeployConfig {
                 self.get_host_list(DeploymentPackage::MonographTx),
             ),
             (
+                DeploymentPackage::MonographStandby,
+                self.get_host_list(DeploymentPackage::MonographStandby),
+            ),
+            (
+                DeploymentPackage::MonographVoter,
+                self.get_host_list(DeploymentPackage::MonographVoter),
+            ),
+            (
                 DeploymentPackage::MonographLog,
                 self.get_host_list(DeploymentPackage::MonographLog),
             ),
@@ -499,6 +507,8 @@ impl DeployConfig {
         let all_hosts = all_hosts_merge!(
             self,
             MonographTx,
+            MonographStandby,
+            MonographVoter,
             MonographLog,
             Storage,
             Grafana,

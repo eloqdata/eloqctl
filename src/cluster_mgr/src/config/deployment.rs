@@ -1,3 +1,4 @@
+use crate::cli::ssh::SSHSession;
 use crate::cli::{upload_dir, upload_host_dir};
 use crate::config::config_base::CASSANDRA_FILE_KEY;
 use crate::config::config_base::{
@@ -23,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::error::Error;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
@@ -313,8 +315,10 @@ impl Deployment {
         format!("{}/cassandra", &self.install_dir())
     }
 
-    // Finds the first matching .ini file for the current product
-    pub fn find_any_ini_in_this_host(&self) -> String {
+    pub async fn find_any_ini_in_this_host(
+        &self,
+        ssh_session: &SSHSession,
+    ) -> Result<String, Box<dyn Error>> {
         let home = self.tx_srv_home();
         match self.product() {
             Product::EloqSQL => panic!("not supported yet"),
@@ -322,33 +326,31 @@ impl Deployment {
                 // Define the list of valid prefixes
                 let prefixes = [ELOQKV_INI, ELOQKV_STANDBY_INI, ELOQKV_VOTER_INI];
 
-                // Read the home directory entries
-                let ini_path = fs::read_dir(&home)
-                    .unwrap_or_else(|_| panic!("Failed to read home directory: {}", home))
-                    .filter_map(|entry| entry.ok().map(|e| e.path())) // Ignore entries that resulted in an error and map to PathBuf
-                    .find(|path| {
-                        // Check if it's a file and matches one of the prefixes ending with ".ini"
-                        path.is_file()
-                            && path
-                                .file_name()
-                                .and_then(|name| name.to_str())
-                                .map(|name_str| {
-                                    prefixes.iter().any(|prefix| {
-                                        name_str.starts_with(prefix) && name_str.ends_with(".ini")
-                                    })
-                                })
-                                .unwrap_or(false)
+                // Execute 'ls' command to list directory contents via SSH
+                let command = format!("ls -1 {}", home);
+                let (_, output) = ssh_session.execute(&command).await?;
+
+                // Split the output into lines (filenames)
+                let filenames: Vec<&str> = output.lines().collect();
+
+                // Find the matching .ini file
+                let ini_filename = filenames
+                    .iter()
+                    .find(|&&filename| {
+                        prefixes.iter().any(|prefix| {
+                            filename.starts_with(prefix) && filename.ends_with(".ini")
+                        })
                     })
-                    .unwrap_or_else(|| {
-                        panic!(
+                    .ok_or_else(|| {
+                        format!(
                             "No matching EloqKV .ini file found in home directory: {}",
                             home
                         )
-                    })
-                    .to_string_lossy()
-                    .into_owned(); // Convert PathBuf to String
+                    })?; // Use ? to unwrap or return the error
 
-                ini_path
+                // Return the full path
+                let ini_path = format!("{}/{}", home, ini_filename);
+                Ok(ini_path)
             }
         }
     }
@@ -1281,6 +1283,8 @@ impl Deployment {
     pub fn topology(&self) -> HashMap<String, Vec<DeploymentPackage>> {
         let mut topo: HashMap<String, Vec<DeploymentPackage>> = HashMap::new();
         self.populate_topo(&mut topo, DeploymentPackage::MonographTx);
+        self.populate_topo(&mut topo, DeploymentPackage::MonographStandby);
+        self.populate_topo(&mut topo, DeploymentPackage::MonographVoter);
         self.populate_topo(&mut topo, DeploymentPackage::Storage);
         self.populate_topo(&mut topo, DeploymentPackage::Prometheus);
         self.populate_topo(&mut topo, DeploymentPackage::Grafana);

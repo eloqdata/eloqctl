@@ -663,7 +663,6 @@ impl TaskExecutor for MonographTxCtlTask {
         let check_status_cmd =
             monograph_cmd_with_port!(TxCtlCmd::Status, tx_bin, user, port).cmd_value();
 
-        let tx_bin = self.config.deployment.tx_srv_bin();
         let check_status =
             monograph_cmd_with_port!(TxCtlCmd::Status, tx_bin, user.to_string(), port);
         let cmd_val = check_status.cmd_value();
