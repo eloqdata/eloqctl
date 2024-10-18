@@ -20,7 +20,7 @@ bash tests/launch.sh
 bash tests/demo.sh
 bash tests/update.sh
 bash tests/control.sh
-# TODO(ZX) 
+# TODO(ZX) leader change if deploy in one onde, need to fix this bug, then reopen the test in ci
 # bash tests/launch_with_hot_standby.sh
 # bash tests/launch_with_hot_standby_and_voter.sh
 
