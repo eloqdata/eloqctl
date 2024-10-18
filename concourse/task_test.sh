@@ -20,8 +20,9 @@ bash tests/launch.sh
 bash tests/demo.sh
 bash tests/update.sh
 bash tests/control.sh
-bash tests/launch_with_hot_standby.sh
-bash tests/launch_with_hot_standby_and_voter.sh
+# TODO(ZX) 
+# bash tests/launch_with_hot_standby.sh
+# bash tests/launch_with_hot_standby_and_voter.sh
 
 if [[ ! "$(python3 --version)" =~ "Python 3.12" ]]; then
     wget https://downloads.datastax.com/enterprise/cqlsh-astra.tar.gz

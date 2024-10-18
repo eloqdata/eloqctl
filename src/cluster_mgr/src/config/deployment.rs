@@ -315,7 +315,7 @@ impl Deployment {
         format!("{}/cassandra", &self.install_dir())
     }
 
-    pub async fn find_any_ini_in_this_host(
+    pub async fn find_tx_ini_in_this_host(
         &self,
         ssh_session: &SSHSession,
     ) -> Result<String, Box<dyn Error>> {
@@ -324,7 +324,7 @@ impl Deployment {
             Product::EloqSQL => panic!("not supported yet"),
             Product::EloqKV => {
                 // Define the list of valid prefixes
-                let prefixes = [ELOQKV_INI, ELOQKV_STANDBY_INI, ELOQKV_VOTER_INI];
+                let prefixes = [ELOQKV_INI];
 
                 // Execute 'ls' command to list directory contents via SSH
                 let command = format!("ls -1 {}", home);
@@ -721,6 +721,7 @@ impl Deployment {
             StorageProvider::Dynamodb => panic!("not supported"),
             StorageProvider::Rocksdb => match self.storage_service.rocksdb.clone().unwrap() {
                 RocksDB::Local => {
+                    // TODO(ZX) later, deploy in the same node inccur conflict?
                     let rocks_path = format!("{}/rocksdb", self.tx_srv_home());
                     ini.set(SECTION_STORE, "rocksdb_storage_path", Some(rocks_path));
                 }

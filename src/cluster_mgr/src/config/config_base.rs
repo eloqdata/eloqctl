@@ -385,7 +385,6 @@ impl DeployConfig {
                 let (host, port) = if let Some(codis) = &self.deployment.codis {
                     (codis.proxy.first().unwrap().as_str(), "19000")
                 } else {
-                    // TODO(ZX) should connect to the current leader
                     let host_port = self.deployment.tx_service.tx_host_ports.first().unwrap();
                     let parts: Vec<&str> = host_port.split(':').collect();
                     let host = parts[0];

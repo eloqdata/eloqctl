@@ -10,6 +10,7 @@ use crate::config::config_base::DeployConfig;
 use crate::config::deployment::Product;
 use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
+use std::collections::HashSet;
 use tracing::info;
 
 #[async_trait::async_trait]
@@ -56,10 +57,17 @@ impl TaskGroup for InstallDBTaskGroup {
         let conn_user = &config.connection.username;
         let ssh_port = config.connection.ssh_port();
 
-        let hosts = config.deployment.tx_service.merge_hosts();
-        info!("InstallDBTaskGroup The bootstrap node is ={:?}", hosts);
+        let hosts = config
+            .deployment
+            .get_host_list(DeploymentPackage::MonographTx);
+        let set: HashSet<_> = hosts.into_iter().collect();
+        let deduped_hosts: Vec<String> = set.into_iter().collect();
+        info!(
+            "InstallDBTaskGroup The bootstrap node is ={:?}",
+            deduped_hosts
+        );
 
-        let bootstrap_tasks: IndexMap<TaskId, TaskInstance> = hosts
+        let bootstrap_tasks: IndexMap<TaskId, TaskInstance> = deduped_hosts
             .into_iter()
             .map(|host| {
                 let install_db_host = TaskHost::Remote {

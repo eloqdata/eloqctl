@@ -115,7 +115,7 @@ impl TaskExecutor for MonographInstall {
                 match self
                     .config
                     .deployment
-                    .find_any_ini_in_this_host(&ssh_session)
+                    .find_tx_ini_in_this_host(&ssh_session)
                     .await
                 {
                     Ok(tx_ini) => {

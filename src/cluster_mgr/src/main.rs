@@ -12,7 +12,11 @@ async fn main() {
     if let Some(sub) = cmd.subcmd {
         let log_path = home.join("logs").join(format!("last-{}.log", sub.as_ref()));
         let log_file = std::fs::File::create(&log_path).expect("can't create log");
-        tracing_subscriber::fmt().with_writer(log_file).init();
+        tracing_subscriber::fmt()
+            .with_writer(log_file)
+            .with_ansi(false)
+            .init();
+
         let executor = Box::leak(Box::new(CmdExecutor::new(home)));
         info!("command: {:#?}", sub);
         if let Err(e) = executor.run(sub, None, cmd.quiet).await {

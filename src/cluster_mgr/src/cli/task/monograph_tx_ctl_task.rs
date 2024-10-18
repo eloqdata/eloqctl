@@ -86,7 +86,7 @@ macro_rules! tx_ctl {
                Ok($mono_process_status?)
             }
         } else {
-            error!(
+                        error!(
                 "MonographCtlTask process status failed. check_status_cmd={:?}",
                 $mono_process_status
             );
@@ -411,6 +411,7 @@ impl MonographTxCtlTask {
 
         match cmd_arg.clone() {
             SubCommand::Stop { force, .. } => is_force_stop = force,
+            SubCommand::Remove { cluster: _ } => is_force_stop = true,
             SubCommand::Status {
                 cluster: _,
                 user,
