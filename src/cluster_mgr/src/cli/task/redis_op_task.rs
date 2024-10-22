@@ -171,6 +171,7 @@ impl TaskExecutor for RedisOpTask {
         let cmd_lower = self.task_id.cmd.to_lowercase();
 
         // Execute the Redis command asynchronously
+        // TODO(ZX) add error info when unable to connect to server to show `cluster slots`
         let result = match cmd_lower.as_str() {
             "topology" => {
                 let query_result = redis::cmd("CLUSTER")

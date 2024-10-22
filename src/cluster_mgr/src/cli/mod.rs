@@ -62,7 +62,6 @@ pub enum SubCommand {
         #[arg(short, long, default_value_t = false)]
         skip_deps: bool,
     },
-    // TODO(ZX) add tests on start --nodes
     #[strum(serialize = "start")]
     #[command(long_about = "Start cluster(TxService/LogService/Storage)")]
     Start {
@@ -70,6 +69,7 @@ pub enum SubCommand {
         #[arg(long)]
         nodes: Vec<String>,
     },
+    // TODO(ZX) add stop --password feature, and store the password in internal storage in eloqctl
     #[command(long_about = "Stop cluster components")]
     #[strum(serialize = "stop")]
     Stop {

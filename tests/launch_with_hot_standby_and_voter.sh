@@ -19,7 +19,6 @@ run_command() {
     echo "$OUTPUT"
     local OUTPUT_LOWER=${OUTPUT,,}
 
-    # if [[ $STATUS -ne 0 ]] || [[ $OUTPUT_LOWER == *"error"* ]] || [[ $OUTPUT_LOWER == *"fail"* ]] || [[ $OUTPUT_LOWER == *"moved"* ]]; then
     if [[ $STATUS -ne 0 ]] || ! [[ $OUTPUT_LOWER =~ ^[0-9]+$ ]]; then
         echo "Error executing command: $*"
         echo "Output: $OUTPUT"

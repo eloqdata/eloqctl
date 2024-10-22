@@ -731,7 +731,7 @@ impl Deployment {
         Ok(cnf_path)
     }
 
-    pub fn build_eloqkv_config(&self, set_ip_list: bool) -> anyhow::Result<Ini> {
+    pub fn build_eloqkv_config(&self, set_ip_list: bool, port: String) -> anyhow::Result<Ini> {
         let mut ini = Ini::new();
         // config template does not have port suffix
         let filename = format!("{}.ini", ELOQKV_TEMPLATE_INI);
@@ -763,8 +763,12 @@ impl Deployment {
             StorageProvider::Dynamodb => panic!("not supported"),
             StorageProvider::Rocksdb => match self.storage_service.rocksdb.clone().unwrap() {
                 RocksDB::Local => {
-                    // TODO(ZX) later, deploy in the same node inccur conflict?
-                    let rocks_path = format!("{}/rocksdb", self.tx_srv_home());
+                    let rocks_path = if port.is_empty() {
+                        format!("{}/rocksdb", self.tx_srv_home())
+                    } else {
+                        format!("{}/rocksdb-{}", self.tx_srv_home(), port)
+                    };
+
                     ini.set(SECTION_STORE, "rocksdb_storage_path", Some(rocks_path));
                 }
                 RocksDB::S3(s3) => {
@@ -938,7 +942,8 @@ impl Deployment {
         port: Option<String>,
     ) -> anyhow::Result<PathBuf> {
         let is_host = host.is_some();
-        let mut ini = self.build_eloqkv_config(is_host)?;
+        let port_str = port.clone().map_or("".to_string(), |p| p);
+        let mut ini = self.build_eloqkv_config(is_host, port_str)?;
         let mut cnf_path = upload_dir().join("redis_local.ini");
 
         // Use pattern matching to handle the presence of both host and port
@@ -1014,7 +1019,7 @@ impl Deployment {
     }
 
     pub fn gen_eloqkv_standby_config(&self, host: String, port: String) -> anyhow::Result<PathBuf> {
-        let mut ini = self.build_eloqkv_config(true)?;
+        let mut ini = self.build_eloqkv_config(true, port.clone())?;
         let cnf_path =
             upload_host_dir(&host).join(format!("{}-{}.{}", ELOQKV_STANDBY_INI, port, "ini"));
 
@@ -1073,7 +1078,7 @@ impl Deployment {
     }
 
     pub fn gen_eloqkv_voter_config(&self, host: String, port: String) -> anyhow::Result<PathBuf> {
-        let mut ini = self.build_eloqkv_config(true)?;
+        let mut ini = self.build_eloqkv_config(true, port.clone())?;
         let cnf_path =
             upload_host_dir(&host).join(format!("{}-{}.{}", ELOQKV_VOTER_INI, port, "ini"));
 
