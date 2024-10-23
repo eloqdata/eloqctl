@@ -69,6 +69,7 @@ impl TaskGroup for LaunchTaskGroup {
                 .tasks(
                     SubCommand::Start {
                         cluster: config.deployment.cluster_name.clone(),
+                        nodes: Vec::new(),
                     },
                     config.clone(),
                 )

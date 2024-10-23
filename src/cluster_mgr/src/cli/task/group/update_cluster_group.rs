@@ -89,7 +89,10 @@ impl TaskGroup for UpdateClusterTaskGroup {
         executable.extend(unpack_tasks);
 
         // start order: cassandra -> log-server -> tx-server
-        let start_cmd = SubCommand::Start { cluster };
+        let start_cmd = SubCommand::Start {
+            cluster,
+            nodes: Vec::new(),
+        };
         if deployment.storage_service.inner_cass().is_some() {
             let tasks = CassandraCtlTask::from_config(start_cmd.clone(), &config);
             let ba = CassandraCtlTask::start_barrier(tasks.len());

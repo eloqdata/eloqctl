@@ -1,5 +1,8 @@
-use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId};
+use crate::cli::task::task_base::{
+    CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId,
+};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::task_return_value;
 use async_trait::async_trait;
 use redis::cluster::ClusterClient;
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, Value};
@@ -152,31 +155,53 @@ impl TaskExecutor for RedisOpTask {
         _task_host: TaskHost,
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        // Use a vector of node addresses to create a ClusterClient
+        let mut task_result = HashMap::new();
+        task_result.insert(CMD.to_string(), TaskArgValue::Str(self.redis_cmd.clone()));
+
+        // Use a vector of node addresses to create a ClusterClient, the ClusterClient will handle the case where if a connection to one server is failed, move to another one in the cluster.
         let nodes: Vec<String> = self
             .redis_host_ports
             .iter()
             .map(|host_port| format!("redis://{}", host_port))
             .collect();
+        let nodes_info: String = nodes.clone().join(", ");
+
+        // username and password version:
+        // let nodes: Vec<String> = self
+        //     .redis_host_ports
+        //     .iter()
+        //     .map(|host_port| format!("redis://{}:{}@{}", username, password, host_port))
+        //     .collect();
 
         let client = ClusterClient::new(nodes)?;
-
-        // Use asynchronous multiplexed connection
-        let mut con = client.get_async_connection().await?;
-
-        let mut task_result = HashMap::new();
-        task_result.insert(CMD.to_string(), TaskArgValue::Str(self.redis_cmd.clone()));
+        // Use synchronous connection
+        let mut con = match client.get_connection() {
+            Ok(connection) => connection,
+            Err(err) => {
+                error!(
+                    "Can not connect to the cluster. Attempted nodes: [{}]. Error: {}",
+                    nodes_info, err
+                );
+                task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+                task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(err.to_string()));
+                task_return_value!(
+                    task_result,
+                    |status_code: i32| -> CmdErr {
+                        CmdErr::RedisOpErr(
+                            "Can not connect to the cluster".to_string(),
+                            status_code.to_string(),
+                        )
+                    },
+                    "RedisOpTask"
+                )
+            }
+        };
 
         // Use the command provided in redis_cmd
         let cmd_lower = self.task_id.cmd.to_lowercase();
-
-        // Execute the Redis command asynchronously
         let result = match cmd_lower.as_str() {
             "topology" => {
-                let query_result = redis::cmd("CLUSTER")
-                    .arg("SLOTS")
-                    .query_async::<_, Value>(&mut con)
-                    .await;
+                let query_result = redis::cmd("CLUSTER").arg("SLOTS").query::<Value>(&mut con);
 
                 // Closing connection explicitly if successful or failed
                 drop(con); // Manually close connection

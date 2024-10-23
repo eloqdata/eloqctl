@@ -51,7 +51,10 @@ impl TaskGroup for CtrlDBTaskGroup {
                 };
                 let (mut barrier, mut executable) =
                     self.stop_tasks(true, true, false, stop_cmd, &config, false);
-                let start_cmd = SubCommand::Start { cluster };
+                let start_cmd = SubCommand::Start {
+                    cluster,
+                    nodes: Vec::new(),
+                };
                 let (b, exe) = self.start_tasks(start_cmd, &config);
                 barrier.extend(b);
                 executable.extend(exe);
@@ -185,62 +188,83 @@ impl CtrlDBTaskGroup {
         let deployment = &config.deployment;
         let mut barrier = vec![];
         let mut executable = IndexMap::new();
-        // start order: cassandra -> log-server -> tx-server
-        if deployment.storage_service.inner_cass().is_some() {
-            let tasks = CassandraCtlTask::from_config(start_cmd.clone(), config);
-            let ba = CassandraCtlTask::start_barrier(tasks.len());
-            barrier.extend(ba);
-            executable.extend(tasks);
-        }
-        if deployment.log_service.is_some() {
-            let start_log = MonographLogCtlTask::from_config(start_cmd.clone(), config);
-            barrier.push(start_log.len());
-            executable.extend(start_log);
-            let probe = MonographLogProbeTask::from_config(config);
-            barrier.push(probe.len());
-            executable.extend(probe);
-        }
 
-        let start_tx = MonographTxCtlTask::from_config(start_cmd.clone(), config, ServerType::Tx);
-        barrier.push(start_tx.len());
-        executable.extend(start_tx);
-        if config.deployment.tx_service.standby_host_ports.is_some() {
-            let start_standby =
-                MonographTxCtlTask::from_config(start_cmd.clone(), config, ServerType::Standby);
-            barrier.push(start_standby.len());
-            executable.extend(start_standby);
-        }
-        if config.deployment.tx_service.voter_host_ports.is_some() {
-            let start_voter =
-                MonographTxCtlTask::from_config(start_cmd.clone(), config, ServerType::Voter);
-            barrier.push(start_voter.len());
-            executable.extend(start_voter);
-        }
+        if let SubCommand::Start { nodes, cluster, .. } = &start_cmd {
+            if !nodes.is_empty() {
+                for _ in nodes {
+                    let start_nodes = MonographTxCtlTask::from_config(
+                        start_cmd.clone(),
+                        config,
+                        ServerType::Node,
+                    );
+                    barrier.push(start_nodes.len());
+                    executable.extend(start_nodes);
+                }
+            } else {
+                // Start order: cassandra -> log-server -> tx-server
+                if deployment.storage_service.inner_cass().is_some() {
+                    let tasks = CassandraCtlTask::from_config(start_cmd.clone(), config);
+                    barrier.extend(CassandraCtlTask::start_barrier(tasks.len()));
+                    executable.extend(tasks);
+                }
 
-        if deployment.codis.is_some() {
-            let codis_tasks = CodisTask::from_config(config, codis_task::Operation::Start);
-            if !codis_tasks.is_empty() {
-                // start dashboard firstly, and then start all proxy servers
-                barrier.push(1);
-                barrier.push(codis_tasks.len() - 1);
-                executable.extend(codis_tasks);
+                if deployment.log_service.is_some() {
+                    let start_log = MonographLogCtlTask::from_config(start_cmd.clone(), config);
+                    barrier.push(start_log.len());
+                    executable.extend(start_log);
+
+                    let probe = MonographLogProbeTask::from_config(config);
+                    barrier.push(probe.len());
+                    executable.extend(probe);
+                }
+
+                let start_tx =
+                    MonographTxCtlTask::from_config(start_cmd.clone(), config, ServerType::Tx);
+                barrier.push(start_tx.len());
+                executable.extend(start_tx);
+
+                if config.deployment.tx_service.standby_host_ports.is_some() {
+                    let start_standby = MonographTxCtlTask::from_config(
+                        start_cmd.clone(),
+                        config,
+                        ServerType::Standby,
+                    );
+                    barrier.push(start_standby.len());
+                    executable.extend(start_standby);
+                }
+
+                if config.deployment.tx_service.voter_host_ports.is_some() {
+                    let start_voter = MonographTxCtlTask::from_config(
+                        start_cmd.clone(),
+                        config,
+                        ServerType::Voter,
+                    );
+                    barrier.push(start_voter.len());
+                    executable.extend(start_voter);
+                }
+
+                if deployment.codis.is_some() {
+                    let codis_tasks = CodisTask::from_config(config, codis_task::Operation::Start);
+                    if !codis_tasks.is_empty() {
+                        // Start dashboard first, then start all proxy servers
+                        barrier.push(1);
+                        barrier.push(codis_tasks.len() - 1);
+                        executable.extend(codis_tasks);
+                    }
+                }
             }
-        }
 
-        let cluster = match start_cmd {
-            SubCommand::Start { cluster } => cluster,
-            _ => unreachable!(),
-        };
-        // wait until cluster is ready for connection after start
-        let status_cmd = SubCommand::Status {
-            cluster,
-            user: None,
-            password: None,
-            wait: Some(30),
-        };
-        let status_tasks = self.status_tasks(status_cmd, config);
-        barrier.push(status_tasks.len());
-        executable.extend(status_tasks);
+            // Wait until cluster is ready for connection after start
+            let status_cmd = SubCommand::Status {
+                cluster: cluster.clone(),
+                user: None,
+                password: None,
+                wait: Some(30),
+            };
+            let status_tasks = self.status_tasks(status_cmd, config);
+            barrier.push(status_tasks.len());
+            executable.extend(status_tasks);
+        }
 
         (barrier, executable)
     }

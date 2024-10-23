@@ -149,7 +149,7 @@ pub struct CassandraCtlTask {
 impl CassandraCtlTask {
     pub fn from_config(cmd: SubCommand, config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
         let cassandra_task_ctrl_attr = match cmd {
-            SubCommand::Start { cluster: _ } | SubCommand::Restart { cluster: _ } => (
+            SubCommand::Start { cluster: _, .. } | SubCommand::Restart { cluster: _ } => (
                 "start",
                 TaskId {
                     cmd: "start".to_string(),

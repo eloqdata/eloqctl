@@ -83,7 +83,10 @@ impl LogCtlCmd {
                     .replace("_COLUMN", "$2");
                 let log_start_cmd = format!("/bin/bash {home_dir}/start_tx_log_{log_port}.bash");
                 let log_cmd = match &cmd_arg {
-                    SubCommand::Start { cluster: _ }
+                    SubCommand::Start {
+                        cluster: _,
+                        nodes: _,
+                    }
                     | SubCommand::Launch {
                         topology_file: _,
                         skip_deps: _,

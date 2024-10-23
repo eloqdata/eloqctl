@@ -58,6 +58,7 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> SubCommand 
         },
         "start" => SubCommand::Start {
             cluster: cluster.unwrap(),
+            nodes: Vec::new(),
         },
         "stop" => SubCommand::Stop {
             cluster: cluster.unwrap(),

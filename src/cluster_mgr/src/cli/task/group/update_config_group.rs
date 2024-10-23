@@ -53,6 +53,7 @@ impl TaskGroup for UpdateConfigTaskGroup {
             let start_tx_task = MonographTxCtlTask::from_config(
                 SubCommand::Start {
                     cluster: cluster_name.to_string(),
+                    nodes: Vec::new(),
                 },
                 &config,
                 ServerType::Tx,

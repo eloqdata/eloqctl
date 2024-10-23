@@ -6,7 +6,7 @@ connection:
 deployment:
   cluster_name: "eloqkv_with_hot_standby_and_voter"
   product: "EloqKV"
-  version: "nightly"
+  version: "latest"
   install_dir: "/home/${USER}"
   tx_service:
     tx_host_ports: [127.0.0.1:6379]

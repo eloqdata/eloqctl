@@ -38,10 +38,27 @@ pub enum TxCtlCmd {
     Status(String),
 }
 
+#[derive(Debug, PartialEq, Clone)]
 pub enum ServerType {
     Tx,
     Standby,
     Voter,
+    Node,
+}
+
+impl std::fmt::Display for ServerType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ServerType::Tx => "txservice",
+                ServerType::Standby => "standby",
+                ServerType::Voter => "voter",
+                ServerType::Node => "node",
+            }
+        )
+    }
 }
 
 get_ctl_cmd_string!(TxCtlCmd, Start, Stop, ForceStop, Status);
@@ -274,7 +291,7 @@ struct TaskGenerationContext<'a> {
 fn generate_tasks_for_host_ports(
     context: &TaskGenerationContext,
     host_ports: &[String],
-    server_type: &str,
+    server_type: ServerType,
 ) -> IndexMap<TaskId, TaskInstance> {
     let cmd_str_ref = context.cmd_arg.as_ref();
     host_ports
@@ -295,18 +312,12 @@ fn generate_tasks_for_host_ports(
 
             let cmd_task_input_tuple = match cmd_str_ref {
                 "start" => (
-                    match server_type {
-                        "txservice" => {
-                            TxCtlCmd::Start(context.config.deployment.tx_srv_start_cmd(port))
-                        }
-                        "standby" => {
-                            TxCtlCmd::Start(context.config.deployment.standby_srv_start_cmd(port))
-                        }
-                        "voter" => {
-                            TxCtlCmd::Start(context.config.deployment.voter_srv_start_cmd(port))
-                        }
-                        _ => unreachable!(),
-                    },
+                    TxCtlCmd::Start(
+                        context
+                            .config
+                            .deployment
+                            .srv_start_cmd(port, server_type.clone()),
+                    ),
                     HashMap::default(),
                 ),
                 "status" => (
@@ -400,36 +411,35 @@ impl MonographTxCtlTask {
         let conn_user = &config.connection.username;
         let ssh_port = config.connection.ssh_port() as usize;
         let tx_bin = config.deployment.tx_srv_bin();
-        let tx_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
-        let standby_host_ports = config.get_host_port_list(DeploymentPackage::MonographStandby);
-        let voter_host_ports = config.get_host_port_list(DeploymentPackage::MonographVoter);
+        let mut node_host_ports = vec![];
 
-        let mut wait_secs = -1;
-        let mut db_user = "_NONE".to_string();
-        let mut db_pwd = "_NONE".to_string();
-        let mut is_force_stop = false;
+        let (mut wait_secs, mut db_user, mut db_pwd, mut is_force_stop) =
+            (-1, "_NONE".to_string(), "_NONE".to_string(), false);
 
-        match cmd_arg.clone() {
-            SubCommand::Stop { force, .. } => is_force_stop = force,
-            SubCommand::Remove { cluster: _ } => is_force_stop = true,
+        match &cmd_arg {
+            SubCommand::Start { nodes, .. } if server_type == ServerType::Node => {
+                node_host_ports = nodes.clone();
+            }
+            SubCommand::Stop { force, .. } => is_force_stop = *force,
+            SubCommand::Remove { .. } => is_force_stop = true,
             SubCommand::Status {
-                cluster: _,
                 user,
                 password,
                 wait,
+                ..
             } => {
                 if let Some(user_val) = user {
-                    db_user = user_val;
+                    db_user = user_val.clone();
                 }
                 if let Some(password_val) = password {
-                    db_pwd = password_val;
+                    db_pwd = password_val.clone();
                 }
                 if let Some(w) = wait {
-                    wait_secs = w as i32;
+                    wait_secs = *w as i32;
                 }
             }
             _ => {}
-        };
+        }
 
         let context = TaskGenerationContext {
             cmd_arg: &cmd_arg,
@@ -444,32 +454,14 @@ impl MonographTxCtlTask {
             receiver: None,
         };
 
-        let mut tasks = IndexMap::new();
-        match server_type {
-            ServerType::Tx => {
-                tasks.extend(generate_tasks_for_host_ports(
-                    &context,
-                    &tx_host_ports,
-                    "txservice",
-                ));
-            }
-            ServerType::Standby => {
-                tasks.extend(generate_tasks_for_host_ports(
-                    &context,
-                    &standby_host_ports,
-                    "standby",
-                ));
-            }
-            ServerType::Voter => {
-                tasks.extend(generate_tasks_for_host_ports(
-                    &context,
-                    &voter_host_ports,
-                    "voter",
-                ));
-            }
-        }
+        let host_ports = match server_type {
+            ServerType::Tx => config.get_host_port_list(DeploymentPackage::MonographTx),
+            ServerType::Standby => config.get_host_port_list(DeploymentPackage::MonographStandby),
+            ServerType::Voter => config.get_host_port_list(DeploymentPackage::MonographVoter),
+            ServerType::Node => node_host_ports,
+        };
 
-        tasks
+        generate_tasks_for_host_ports(&context, &host_ports, server_type)
     }
 
     pub fn from_config_with_channel(
@@ -481,35 +473,31 @@ impl MonographTxCtlTask {
         let conn_user = &config.connection.username;
         let ssh_port = config.connection.ssh_port() as usize;
         let tx_bin = config.deployment.tx_srv_bin();
-        let tx_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
-        let standby_host_ports = config.get_host_port_list(DeploymentPackage::MonographStandby);
-        let voter_host_ports = config.get_host_port_list(DeploymentPackage::MonographVoter);
 
-        let mut wait_secs = -1;
-        let mut db_user = "_NONE".to_string();
-        let mut db_pwd = "_NONE".to_string();
-        let mut is_force_stop = false;
+        let (mut wait_secs, mut db_user, mut db_pwd, mut is_force_stop) =
+            (-1, "_NONE".to_string(), "_NONE".to_string(), false);
 
-        match cmd_arg.clone() {
-            SubCommand::Stop { force, .. } => is_force_stop = force,
+        match &cmd_arg {
+            SubCommand::Stop { force, .. } => is_force_stop = *force,
+            SubCommand::Remove { .. } => is_force_stop = true,
             SubCommand::Status {
-                cluster: _,
                 user,
                 password,
                 wait,
+                ..
             } => {
                 if let Some(user_val) = user {
-                    db_user = user_val;
+                    db_user = user_val.clone();
                 }
                 if let Some(password_val) = password {
-                    db_pwd = password_val;
+                    db_pwd = password_val.clone();
                 }
                 if let Some(w) = wait {
-                    wait_secs = w as i32;
+                    wait_secs = *w as i32;
                 }
             }
             _ => {}
-        };
+        }
 
         let context = TaskGenerationContext {
             cmd_arg: &cmd_arg,
@@ -524,32 +512,18 @@ impl MonographTxCtlTask {
             receiver,
         };
 
-        let mut tasks = IndexMap::new();
-        match server_type {
-            ServerType::Tx => {
-                tasks.extend(generate_tasks_for_host_ports(
-                    &context,
-                    &tx_host_ports,
-                    "txservice",
-                ));
-            }
-            ServerType::Standby => {
-                tasks.extend(generate_tasks_for_host_ports(
-                    &context,
-                    &standby_host_ports,
-                    "standby",
-                ));
-            }
-            ServerType::Voter => {
-                tasks.extend(generate_tasks_for_host_ports(
-                    &context,
-                    &voter_host_ports,
-                    "voter",
-                ));
-            }
-        }
+        let host_ports = match server_type {
+            ServerType::Tx => config.get_host_port_list(DeploymentPackage::MonographTx),
+            ServerType::Standby => config.get_host_port_list(DeploymentPackage::MonographStandby),
+            ServerType::Voter => config.get_host_port_list(DeploymentPackage::MonographVoter),
+            ServerType::Node => unreachable!(),
+        };
 
-        Ok(tasks)
+        Ok(generate_tasks_for_host_ports(
+            &context,
+            &host_ports,
+            server_type,
+        ))
     }
 
     pub fn new(
@@ -625,15 +599,22 @@ impl TaskExecutor for MonographTxCtlTask {
                 }
 
                 if start_time.elapsed() >= timeout {
-                    let redis_cmd_result = HashMap::from([(
-                        "cluster slots".to_string(),
-                        TaskArgValue::Str("timeout".to_string()),
-                    )]);
+                    let redis_cmd_result = HashMap::from([
+                        (
+                            CMD.to_string(),
+                            TaskArgValue::Str("cluster slots".to_string()),
+                        ),
+                        (CMD_STATUS.to_string(), TaskArgValue::Number(1)),
+                        (
+                            CMD_OUTPUT.to_string(),
+                            TaskArgValue::Str("timeout".to_string()),
+                        ),
+                    ]);
                     task_return_value!(
                         redis_cmd_result,
                         |status_code: i32| -> CmdErr {
-                            CmdErr::MonographCtlErr(
-                                self.task_id.format_string(),
+                            CmdErr::RedisOpErr(
+                                "timeout, fail to receive cluster slots response".to_string(),
                                 status_code.to_string(),
                             )
                         },

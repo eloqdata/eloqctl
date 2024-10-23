@@ -195,7 +195,7 @@ impl CmdExecutor {
             SubCommand::Demo { .. } => self.gen_demo_config(cmd).await,
             SubCommand::Install { cluster }
             | SubCommand::Stop { cluster, .. }
-            | SubCommand::Start { cluster }
+            | SubCommand::Start { cluster, nodes: _ }
             | SubCommand::LogService {
                 cluster,
                 command: _,
