@@ -12,7 +12,7 @@ fi
 export ELOQCTL_HOME="${HOME}/.eloqctl"
 export PATH="$PATH:$ELOQCTL_HOME/bin"
 
-bash waiter_src/concourse/install.sh "main"
+bash waiter_src/concourse/install.sh
 
 cd $ELOQCTL_HOME
 cat version
@@ -20,6 +20,8 @@ bash tests/launch.sh
 bash tests/demo.sh
 bash tests/update.sh
 bash tests/control.sh
+
+# enable_data_store=true for the tests below
 bash tests/launch_with_hot_standby.sh
 bash tests/launch_with_hot_standby_and_voter.sh
 bash tests/test_start_nodes.sh

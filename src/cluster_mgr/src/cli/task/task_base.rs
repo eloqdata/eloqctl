@@ -189,8 +189,8 @@ pub enum CmdErr {
     CopyTaskErr(String),
     #[error("Error executing MonographDB monitor component task {0}, error causes {1}")]
     MonitorCtlCmdErr(String, String),
-    #[error("Error interacting with redis. error causes {0}")]
-    RedisOpErr(String),
+    #[error("Error interacting with redis. possible reason: {0}, status_code={1}")]
+    RedisOpErr(String, String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]

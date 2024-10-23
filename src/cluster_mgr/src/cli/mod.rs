@@ -69,7 +69,7 @@ pub enum SubCommand {
         #[arg(long)]
         nodes: Vec<String>,
     },
-    // TODO(ZX) add stop --password feature, and store the password in internal storage in eloqctl
+    // TODO(ZX) add stop --password feature; later: store the password in internal storage in eloqctl
     #[command(long_about = "Stop cluster components")]
     #[strum(serialize = "stop")]
     Stop {

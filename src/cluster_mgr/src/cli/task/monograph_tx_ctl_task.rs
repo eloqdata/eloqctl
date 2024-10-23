@@ -599,15 +599,22 @@ impl TaskExecutor for MonographTxCtlTask {
                 }
 
                 if start_time.elapsed() >= timeout {
-                    let redis_cmd_result = HashMap::from([(
-                        "cluster slots".to_string(),
-                        TaskArgValue::Str("timeout".to_string()),
-                    )]);
+                    let redis_cmd_result = HashMap::from([
+                        (
+                            CMD.to_string(),
+                            TaskArgValue::Str("cluster slots".to_string()),
+                        ),
+                        (CMD_STATUS.to_string(), TaskArgValue::Number(1)),
+                        (
+                            CMD_OUTPUT.to_string(),
+                            TaskArgValue::Str("timeout".to_string()),
+                        ),
+                    ]);
                     task_return_value!(
                         redis_cmd_result,
                         |status_code: i32| -> CmdErr {
-                            CmdErr::MonographCtlErr(
-                                self.task_id.format_string(),
+                            CmdErr::RedisOpErr(
+                                "timeout, fail to receive cluster slots response".to_string(),
                                 status_code.to_string(),
                             )
                         },
