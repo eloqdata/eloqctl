@@ -78,7 +78,6 @@ eloqctl stop eloqkv_with_hot_standby_and_voter --all
 eloqctl inspect eloqkv_with_hot_standby_and_voter
 
 eloqctl list
-# eloqctl remove eloqsql-cluster
 eloqctl remove eloqkv_with_hot_standby_and_voter
 
 echo "Launch tests PASSED !!!"

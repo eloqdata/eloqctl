@@ -80,7 +80,6 @@ eloqctl stop eloqkv_with_hot_standby --all
 eloqctl inspect eloqkv_with_hot_standby
 
 eloqctl list
-# eloqctl remove eloqsql-cluster
 eloqctl remove eloqkv_with_hot_standby
 
 echo "Launch tests PASSED !!!"

@@ -6,7 +6,7 @@ RUN set -eux; \
     sed -i s/^mirrorlist=http/#mirrorlist=http/g /etc/yum.repos.d/*.repo; \
     yum install -y epel-release; \
     yum update -y; \
-    yum install -y sudo openssh-clients openssh-server iproute git; \
+    yum install -y sudo wget curl openssh-clients openssh-server iproute git rsync python3; \
     yum clean all;
 
 RUN useradd -rm -s /bin/bash -g root -G wheel eloquser && \

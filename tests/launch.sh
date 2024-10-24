@@ -22,7 +22,7 @@ eloqctl stop eloqkv-cluster --all
 eloqctl inspect eloqkv-cluster
 
 eloqctl list
-# eloqctl remove eloqsql-cluster
+eloqctl remove eloqsql-cluster
 eloqctl remove eloqkv-cluster
 
 echo "Launch tests PASSED !!!"

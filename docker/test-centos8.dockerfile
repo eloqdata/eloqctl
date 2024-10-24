@@ -6,7 +6,7 @@ RUN set -eux; \
     sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-* ; \
     dnf install -y epel-release; \
     dnf update -y; \
-    dnf install -y sudo openssh-clients openssh-server iproute python3 git; \
+    dnf install -y sudo wget curl openssh-clients openssh-server iproute git rsync python3; \
     dnf clean all;
 
 RUN useradd -rm -s /bin/bash -g root -G wheel eloquser && \

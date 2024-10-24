@@ -14,12 +14,12 @@ CLIENT_6389="${CLIENT_6379/6379/6389}"
 CLIENT_6399="${CLIENT_6379/6379/6399}"
 
 check_pid () {
-    set +x  # Disable printing commands
+    set +ex # Disable printing commands and exit on error(grep may return error)
     # Loop over each provided port number
     for port in "$@"; do
         # Loop until a PID is found for the specific port
         while true; do
-            pid=$(ps uxwe -u "$USER" | grep "/home/mono/eloqkv_with_hot_standby/EloqKV/bin/eloqkv" | grep "$port" | grep -v "grep" | awk '{print $2}')
+            pid=$(ps uxwe -u "$USER" | grep "/home/$USER/eloqkv_with_hot_standby/EloqKV/bin/eloqkv" | grep "$port" | grep -v "grep" | awk '{print $2}')
 
             if [[ -n "$pid" ]]; then
                 break
@@ -28,7 +28,7 @@ check_pid () {
             fi
         done
     done
-    set -x  # Enable printing commands again
+    set -ex
 
     echo "All processes are running."
 }
@@ -89,7 +89,7 @@ run_counter_command $CLIENT_6379 incr mycounter
 run_counter_command $CLIENT_6379 get mycounter
 
 echo "Kill a standby node..."
-ps uxwe -u $USER | grep /home/mono/eloqkv_with_hot_standby/EloqKV/bin/eloqkv | grep 6389 | grep -v grep |  awk '{print $2}' | xargs -r kill -9 
+ps uxwe -u $USER | grep /home/$USER/eloqkv_with_hot_standby/EloqKV/bin/eloqkv | grep 6389 | grep -v grep |  awk '{print $2}' | xargs -r kill -9 
 sleep 1
 eloqctl start eloqkv_with_hot_standby --nodes 127.0.0.1:6389
 check_pid 6379 6389 6399
@@ -105,7 +105,7 @@ run_counter_command $CLIENT_6379 get mycounter
 
 
 echo "Kill a leader node..."
-ps uxwe -u $USER | grep /home/mono/eloqkv_with_hot_standby/EloqKV/bin/eloqkv | grep 6379 | grep -v grep |  awk '{print $2}' | xargs -r kill -9 
+ps uxwe -u $USER | grep /home/$USER/eloqkv_with_hot_standby/EloqKV/bin/eloqkv | grep 6379 | grep -v grep |  awk '{print $2}' | xargs -r kill -9 
 sleep 1
 eloqctl start eloqkv_with_hot_standby --nodes 127.0.0.1:6379
 check_pid 6379 6389 6399

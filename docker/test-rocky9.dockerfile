@@ -3,8 +3,10 @@ FROM rockylinux:9
 RUN set -eux; \
     dnf install -y epel-release; \
     dnf update -y; \
-    dnf install -y sudo openssh-clients openssh-server iproute procps git; \
+    dnf install -y sudo wget openssh-clients openssh-server iproute procps git rsync; \
     dnf clean all;
+
+# rocky9 already has curl,python3 installed
 
 RUN useradd -rm -s /bin/bash -g root -G wheel eloquser && \
     echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
