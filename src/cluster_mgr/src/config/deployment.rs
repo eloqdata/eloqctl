@@ -320,6 +320,7 @@ impl Deployment {
     pub async fn find_tx_ini_in_this_host(
         &self,
         ssh_session: &SSHSession,
+        port: String,
     ) -> Result<String, Box<dyn Error>> {
         let home = self.tx_srv_home();
         match self.product() {
@@ -335,20 +336,22 @@ impl Deployment {
                 // Split the output into lines (filenames)
                 let filenames: Vec<&str> = output.lines().collect();
 
-                // Find the matching .ini file
+                // Find the matching .ini file that includes the port
                 let ini_filename = filenames
                     .iter()
                     .find(|&&filename| {
                         prefixes.iter().any(|prefix| {
-                            filename.starts_with(prefix) && filename.ends_with(".ini")
+                            filename.starts_with(prefix)
+                                && filename.ends_with(".ini")
+                                && filename.contains(&port)
                         })
                     })
                     .ok_or_else(|| {
                         format!(
-                            "No matching EloqKV .ini file found in home directory: {}",
-                            home
+                            "No matching EloqKV .ini file with port '{}' found in home directory: {}",
+                            port, home
                         )
-                    })?; // Use ? to unwrap or return the error
+                    })?;
 
                 // Return the full path
                 let ini_path = format!("{}/{}", home, ini_filename);

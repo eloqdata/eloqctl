@@ -25,11 +25,12 @@ impl MonographInstall {
     pub fn from_config(
         config: &DeployConfig,
         task_host: TaskHost,
+        port: String,
     ) -> IndexMap<TaskId, TaskInstance> {
         let (_, _, host) = task_host.ssh_conn_tuple();
         let task_id = TaskId {
             cmd: "install".to_string(),
-            task: "monograph-install".to_string(),
+            task: format!("monograph-install-{port}"),
             host,
         };
         IndexMap::from([(
@@ -105,6 +106,11 @@ impl TaskExecutor for MonographInstall {
                 .await?;
         let insdir = self.config.install_dir();
         let txsv_dir = self.config.deployment.tx_srv_home();
+
+        let task = self.task_id.task.clone();
+        let parts: Vec<&str> = task.rsplitn(2, '-').collect();
+        let port = parts[0].to_string();
+
         let bootstarp_sh = match self.config.product() {
             Product::EloqSQL => {
                 format!(
@@ -115,7 +121,7 @@ impl TaskExecutor for MonographInstall {
                 match self
                     .config
                     .deployment
-                    .find_tx_ini_in_this_host(&ssh_session)
+                    .find_tx_ini_in_this_host(&ssh_session, port.clone())
                     .await
                 {
                     Ok(tx_ini) => {
@@ -127,7 +133,7 @@ impl TaskExecutor for MonographInstall {
                         };
                         format!(
                             r#"cd {txsv_dir}; mkdir logs; export LD_LIBRARY_PATH={txsv_dir}/lib:$LD_LIBRARY_PATH; \
-                            {head}; bin/eloqkv --config={tx_ini} --bootstrap > logs/bootstrap.log 2>&1 "#
+                            {head}; bin/eloqkv --config={tx_ini} --bootstrap > logs/bootstrap-{port}.log 2>&1 "#
                         )
                     }
                     Err(err) => {

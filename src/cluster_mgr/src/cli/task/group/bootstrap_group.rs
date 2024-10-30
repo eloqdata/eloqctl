@@ -10,7 +10,6 @@ use crate::config::config_base::DeployConfig;
 use crate::config::deployment::Product;
 use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
-use std::collections::HashSet;
 use tracing::info;
 
 #[async_trait::async_trait]
@@ -57,25 +56,27 @@ impl TaskGroup for InstallDBTaskGroup {
         let conn_user = &config.connection.username;
         let ssh_port = config.connection.ssh_port();
 
-        let hosts = config
+        let host_ports = config
             .deployment
-            .get_host_list(DeploymentPackage::MonographTx);
-        let set: HashSet<_> = hosts.into_iter().collect();
-        let deduped_hosts: Vec<String> = set.into_iter().collect();
+            .get_host_port_list(DeploymentPackage::MonographTx);
         info!(
-            "InstallDBTaskGroup The bootstrap node is ={:?}",
-            deduped_hosts
+            "InstallDBTaskGroup The bootstrap target is ={:?}",
+            host_ports
         );
 
-        let bootstrap_tasks: IndexMap<TaskId, TaskInstance> = deduped_hosts
+        let bootstrap_tasks: IndexMap<TaskId, TaskInstance> = host_ports
             .into_iter()
-            .map(|host| {
+            .map(|host_port| {
+                let mut parts = host_port.split(':');
+                let bootstrap_host = parts.next().unwrap().to_string();
+                let bootstrap_port = parts.next().unwrap().to_string();
+
                 let install_db_host = TaskHost::Remote {
                     user: conn_user.clone(),
                     port: ssh_port as usize,
-                    host,
+                    host: bootstrap_host,
                 };
-                MonographInstall::from_config(&config, install_db_host)
+                MonographInstall::from_config(&config, install_db_host, bootstrap_port)
             })
             .flat_map(|map| map.into_iter())
             .collect();
