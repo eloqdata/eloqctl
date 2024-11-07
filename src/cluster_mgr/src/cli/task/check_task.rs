@@ -30,8 +30,10 @@ impl CheckTask {
                 }
             }
             if let Some(moni) = &self.config.deployment.monitor {
-                if moni.node_exporter.port == p {
-                    bail!("node exporter socket {}:{p} is already used", self.host);
+                if let Some(noex) = &moni.node_exporter {
+                    if noex.port == p {
+                        bail!("node exporter socket {}:{p} is already used", self.host);
+                    }
                 }
                 if let Some(myex) = &moni.mysql_exporter {
                     if myex.port == p {
@@ -58,8 +60,10 @@ impl CheckTask {
                 bail!("log-service socket {}:{p} is already used", self.host);
             }
             if let Some(moni) = &self.config.deployment.monitor {
-                if moni.node_exporter.port == p {
-                    bail!("node exporter socket {}:{p} is already used", self.host);
+                if let Some(noex) = &moni.node_exporter {
+                    if noex.port == p {
+                        bail!("node exporter socket {}:{p} is already used", self.host);
+                    }
                 }
             }
         }
@@ -80,7 +84,7 @@ impl CheckTask {
                 bail!("cassandra {name} socket {}:{p} is already used", self.host);
             }
             if let Some(moni) = &self.config.deployment.monitor {
-                if moni.node_exporter.port == p {
+                if moni.node_exporter.as_ref().unwrap().port == p {
                     bail!("node exporter socket {}:{p} is already used", self.host);
                 }
                 if let Some(cc) = &moni.cassandra_collector {
@@ -103,6 +107,8 @@ impl CheckTask {
             .as_ref()
             .unwrap()
             .prometheus
+            .as_ref()
+            .unwrap()
             .port;
         for p in sess.used_tcp_ports().await? {
             if port == p {
@@ -122,6 +128,8 @@ impl CheckTask {
             .as_ref()
             .unwrap()
             .prometheus
+            .as_ref()
+            .unwrap()
             .port;
         for p in sess.used_tcp_ports().await? {
             if port == p {
@@ -147,7 +155,7 @@ impl CheckTask {
                 bail!("codis socket {}:{p} is already used", self.host);
             }
             if let Some(moni) = &self.config.deployment.monitor {
-                if moni.node_exporter.port == p {
+                if moni.node_exporter.as_ref().unwrap().port == p {
                     bail!("node exporter socket {}:{p} is already used", self.host);
                 }
             }

@@ -6,7 +6,7 @@ use crate::config::deployment::{Deployment, Product};
 use crate::config::storage_service_config::{
     CassConnect, CassDeploy, CassKind, Cassandra, RocksDB, RocksLocal,
 };
-use crate::config::{StorageProvider, TopoFormat, CDN, CONFIG_PATH_DIR};
+use crate::config::{StorageProvider, TopoFormat, CDN, CONFIG_PATH_DIR, UPLOAD_PATH_DIR};
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
 use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, STATE_MGR};
@@ -86,8 +86,9 @@ impl CmdExecutor {
         }
         let up_dir = home.join("upload");
         if !up_dir.exists() {
-            std::fs::create_dir(up_dir)?;
+            std::fs::create_dir(up_dir.clone())?;
         }
+        env::set_var(UPLOAD_PATH_DIR, up_dir);
         let log_dir = home.join("logs");
         if !log_dir.exists() {
             std::fs::create_dir(log_dir)?;
@@ -300,8 +301,7 @@ impl CmdExecutor {
             | SubCommand::Deploy { .. }
             | SubCommand::Update {
                 cluster: Some(_), ..
-            }
-            | SubCommand::UpdateConf { .. } => {
+            } => {
                 std::fs::remove_dir_all(upload_dir())?;
                 std::fs::create_dir(upload_dir())?;
             }
@@ -412,14 +412,20 @@ impl CmdExecutor {
                 println!("Launch cluster finished, Enjoy!");
                 println!("Connect to server: \n\t{}", config.client_conn());
                 if let Some(moni) = &config.deployment.monitor {
-                    println!(
-                        "Prometheus: http://{}:{}",
-                        moni.prometheus.host, moni.prometheus.port
-                    );
-                    println!(
-                        "Grafana: http://{}:{}",
-                        moni.grafana.host, moni.grafana.port
-                    );
+                    if moni.prometheus.is_some() {
+                        println!(
+                            "Prometheus: http://{}:{}",
+                            moni.prometheus.as_ref().unwrap().host,
+                            moni.prometheus.as_ref().unwrap().port
+                        );
+                    }
+                    if moni.grafana.is_some() {
+                        println!(
+                            "Grafana: http://{}:{}",
+                            moni.grafana.as_ref().unwrap().host,
+                            moni.grafana.as_ref().unwrap().port
+                        );
+                    }
                 }
             }
             SubCommand::Remove { cluster } => {

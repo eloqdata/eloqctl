@@ -2,6 +2,7 @@ use crate::cli::task::task_base::{TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, list_files_by_host, UploadTaskBuilder,
 };
+use crate::cli::{create_upload_cluster_dir, upload_dir};
 use crate::config::config_base::{
     DeployConfig, UploadFile, CASSANDRA_COLLECTOR_AGENT_FILE_KEY, CASSANDRA_FILE_KEY,
     GRAFANA_FILE_KEY, MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY, MYSQL_EXPORTER_FILE_KEY,
@@ -9,9 +10,11 @@ use crate::config::config_base::{
 };
 use crate::config::deployment::{Deployment, Product};
 use crate::config::storage_service_config::CassKind;
+use crate::config::{config_template, ELOQKV_TEMPLATE_INI};
 use crate::config::{DeploymentPackage, DownloadUrl};
 use indexmap::IndexMap;
 use itertools::Itertools;
+use std::fs;
 
 pub struct MonographUploadBuilder;
 
@@ -135,6 +138,15 @@ impl UploadTaskBuilder for MonographUploadBuilder {
     /// Upload installation package, MonographDB configuration file,
     /// MonographDB install script, install config to remote host.
     fn build(&self, config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
+        // copy EloqKv.ini from ~/.eloqctl/config to ~/.eloqctl/upload/{cluster_name}
+        let config_template_file_path =
+            config_template(ELOQKV_TEMPLATE_INI).expect("get config template error");
+        let env_sh = upload_dir()
+            .join(config.deployment.cluster_name.clone())
+            .join(ELOQKV_TEMPLATE_INI);
+        create_upload_cluster_dir(&config.deployment.cluster_name);
+        fs::copy(&config_template_file_path, &env_sh).expect("copy config template error");
+
         let mut upload_files = self.build_monograph_misc_upload_file(config);
         let upload_tar_files = self.monograph_tar_upload_file(config);
 

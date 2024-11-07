@@ -1,4 +1,4 @@
-use crate::cli::{upload_dir, upload_host_dir};
+use crate::cli::{create_upload_cluster_dir, upload_dir};
 use crate::config::config_base::{
     CASSANDRA_COLLECTOR_AGENT_FILE_KEY, GRAFANA_FILE_KEY, MYSQL_EXPORTER_FILE_KEY,
     NODE_EXPORTER_FILE_KEY, PROMETHEUS_FILE_KEY,
@@ -89,9 +89,9 @@ pub struct Exporter {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Monitor {
     pub data_dir: Option<String>,
-    pub prometheus: Prometheus,
-    pub grafana: Grafana,
-    pub node_exporter: Exporter,
+    pub prometheus: Option<Prometheus>,
+    pub grafana: Option<Grafana>,
+    pub node_exporter: Option<Exporter>,
     pub mysql_exporter: Option<Exporter>,
     pub cassandra_collector: Option<CassandraCollector>,
     pub monograph_metrics: Option<MonographMetrics>,
@@ -105,11 +105,15 @@ impl Monitor {
 
     pub fn download_links_as_map(&self) -> anyhow::Result<HashMap<String, DownloadUrl>> {
         let mut links = HashMap::new();
-        download_urls!(links,
-            {PROMETHEUS_FILE_KEY, &self.prometheus.download_url},
-            {GRAFANA_FILE_KEY, &self.grafana.download_url},
-            {NODE_EXPORTER_FILE_KEY, &self.node_exporter.url},
-        );
+        if let Some(prom) = &self.prometheus {
+            download_urls!(links, {PROMETHEUS_FILE_KEY, &prom.download_url});
+        }
+        if let Some(graf) = &self.grafana {
+            download_urls!(links, {GRAFANA_FILE_KEY, &graf.download_url});
+        }
+        if let Some(noex) = &self.node_exporter {
+            download_urls!(links, {NODE_EXPORTER_FILE_KEY, &noex.url});
+        }
         if let Some(myex) = &self.mysql_exporter {
             download_urls!(links, {MYSQL_EXPORTER_FILE_KEY, &myex.url});
         }
@@ -130,31 +134,39 @@ impl Monitor {
     }
 
     pub fn gen_grafana_dashboard_config(&self, path: String) -> anyhow::Result<PathBuf> {
-        let dashboard_conf = load_yaml_config_template(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
-        assert!(dashboard_conf.is_ok());
-        let mut dashboard = dashboard_conf.unwrap();
-        let mut providers = dashboard.get("providers").unwrap().clone();
-        providers[0]["options"]["path"] = Value::String(path);
-        dashboard.insert("providers".to_string(), providers);
-        let dashboard_path = upload_dir().join(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
-        let dashboard_rs = File::create(dashboard_path.as_path())?;
-        serde_yaml::to_writer(dashboard_rs, &dashboard)?;
-        Ok(dashboard_path)
+        if self.grafana.is_some() {
+            let dashboard_conf = load_yaml_config_template(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
+            assert!(dashboard_conf.is_ok());
+            let mut dashboard = dashboard_conf.unwrap();
+            let mut providers = dashboard.get("providers").unwrap().clone();
+            providers[0]["options"]["path"] = Value::String(path);
+            dashboard.insert("providers".to_string(), providers);
+            let dashboard_path = upload_dir().join(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
+            let dashboard_rs = File::create(dashboard_path.as_path())?;
+            serde_yaml::to_writer(dashboard_rs, &dashboard)?;
+            Ok(dashboard_path)
+        } else {
+            panic!("graf config not found");
+        }
     }
 
     pub fn gen_grafana_config(&self) -> anyhow::Result<PathBuf> {
-        let grafana_http_port = self.grafana.port;
-        let grafana_config_path = config_template(GRAFANA_CONFIG_TEMPLATE)?;
-        let mut grafana_ini = ini::Ini::load_from_file(grafana_config_path)
-            .expect("can not local grafana config template");
-        grafana_ini.set_to(
-            Some("server"),
-            "http_port".to_string(),
-            grafana_http_port.to_string(),
-        );
-        let grafana_default_ini = upload_dir().join(GRAFANA_CONFIG_FILE);
-        grafana_ini.write_to_file(grafana_default_ini.as_path())?;
-        Ok(grafana_default_ini)
+        if let Some(graf) = &self.grafana {
+            let grafana_http_port = graf.port;
+            let grafana_config_path = config_template(GRAFANA_CONFIG_TEMPLATE)?;
+            let mut grafana_ini = ini::Ini::load_from_file(grafana_config_path)
+                .expect("can not load grafana config template");
+            grafana_ini.set_to(
+                Some("server"),
+                "http_port".to_string(),
+                grafana_http_port.to_string(),
+            );
+            let grafana_default_ini = upload_dir().join(GRAFANA_CONFIG_FILE);
+            grafana_ini.write_to_file(grafana_default_ini.as_path())?;
+            Ok(grafana_default_ini)
+        } else {
+            panic!("graf config not found");
+        }
     }
 
     pub fn gen_mysql_exporter_connect_config(
@@ -172,7 +184,8 @@ impl Monitor {
         mysql_exporter_conf.set("client", "host", Some(host.clone()));
         mysql_exporter_conf.set("client", "port", Some(mysql_port.to_string()));
 
-        let final_exporter_path = upload_host_dir(&host).join(format!("mysql_exporter_{host}.cnf"));
+        let final_exporter_path =
+            create_upload_cluster_dir(&host).join(format!("mysql_exporter_{host}.cnf"));
         mysql_exporter_conf.write(final_exporter_path.as_path())?;
         Ok(final_exporter_path)
     }
@@ -242,7 +255,7 @@ impl Monitor {
         &self,
         job_hosts: HashMap<String, Vec<String>>,
     ) -> anyhow::Result<PathBuf> {
-        let node_exporter_port = self.node_exporter.port;
+        let node_exporter_port = self.node_exporter.as_ref().unwrap().port;
         let monograph_metrics_opt = self.monograph_metrics.as_ref();
 
         let mut scrape_configs: Vec<Value> = vec![];
@@ -290,8 +303,8 @@ impl Monitor {
         //     scrape_configs.push(monograph_scrap_job_value);
         // }
 
-        let prometheus_host = &self.prometheus.host;
-        let prometheus_port = self.prometheus.port;
+        let prometheus_host = &self.prometheus.as_ref().unwrap().host;
+        let prometheus_port = self.prometheus.as_ref().unwrap().port;
         let prometheus_job_value = Monitor::build_prometheus_target_value(
             "prometheus".to_string(),
             None,
@@ -336,7 +349,11 @@ impl Monitor {
 
     pub fn gen_grafana_datasource_config(&self) -> anyhow::Result<PathBuf> {
         let prometheus = &self.prometheus;
-        let prometheus_url = format!("http://{}:{}", prometheus.host, prometheus.port);
+        let prometheus_url = format!(
+            "http://{}:{}",
+            prometheus.as_ref().unwrap().host,
+            prometheus.as_ref().unwrap().port
+        );
         let datasource_config_yaml = format!(
             r#"
         apiVersion: 1

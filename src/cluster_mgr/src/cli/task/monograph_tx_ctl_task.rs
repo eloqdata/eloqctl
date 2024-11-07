@@ -287,7 +287,6 @@ struct TaskGenerationContext<'a> {
     receiver: Option<watch::Receiver<ClusterNodes>>,
 }
 
-// Refactored function with reduced arguments
 fn generate_tasks_for_host_ports(
     context: &TaskGenerationContext,
     host_ports: &[String],
@@ -464,6 +463,7 @@ impl MonographTxCtlTask {
         generate_tasks_for_host_ports(&context, &host_ports, server_type)
     }
 
+    // currently only use in stop process
     pub fn from_config_with_channel(
         cmd_arg: SubCommand,
         config: &DeployConfig,

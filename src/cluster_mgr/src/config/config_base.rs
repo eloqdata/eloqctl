@@ -1,4 +1,4 @@
-use crate::cli::{ssh, upload_dir, upload_host_dir, HOME_DIR};
+use crate::cli::{create_upload_cluster_dir, ssh, upload_dir, HOME_DIR};
 use crate::config::connection::Connection;
 use crate::config::deployment::{Codis, Deployment, Hardware, Product, Version};
 use crate::config::log_service::LogProcessKey;
@@ -354,7 +354,8 @@ impl DeployConfig {
                     let host = &key.host;
                     let port = key.port;
                     let cmd_file_name = format!("start_tx_log_{}.bash", port);
-                    let script_location = upload_host_dir(host).join(cmd_file_name);
+                    let dir = format!("{}/{}", self.deployment.cluster_name, host);
+                    let script_location = create_upload_cluster_dir(&dir).join(cmd_file_name);
                     if let Err(write_err) = fs::write(script_location.clone(), cmd) {
                         error!("Failed gen Log start command. cause by {write_err:#?}");
                         panic!("Failed gen Log start command");

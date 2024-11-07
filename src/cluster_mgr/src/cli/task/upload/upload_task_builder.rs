@@ -6,7 +6,7 @@ use crate::cli::task::upload::monitor_upload_builder::*;
 use crate::cli::task::upload::monograph_upload_builder::{EloqUpload, MonographUploadBuilder};
 use crate::cli::task::upload::tx_conf_upload_builder::TxConfUpload;
 use crate::cli::task::upload::upload_task::UploadTask;
-use crate::cli::{upload_dir, upload_host_dir};
+use crate::cli::{create_upload_cluster_dir, upload_dir};
 use crate::config::config_base::{DeployConfig, UploadFile};
 use crate::config::connection::Connection;
 use crate::config::deployment::{Deployment, Product};
@@ -125,7 +125,8 @@ pub(crate) fn get_source_host(host: Option<String>) -> String {
 }
 
 pub(crate) fn list_files_by_host(host: &str, config: &Deployment) -> Vec<String> {
-    let mut paths = WalkDir::new(upload_host_dir(host))
+    let dir = format!("{}/{}", config.cluster_name, host);
+    let mut paths = WalkDir::new(create_upload_cluster_dir(&dir))
         .min_depth(1)
         .into_iter()
         .filter_map(|entry_rs| entry_rs.ok())

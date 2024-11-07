@@ -29,94 +29,46 @@ pub enum MonitorComponentCommand {
     Grafana { home: String },
 }
 
-macro_rules! basic_component_ctl_task {
-    ($cmd_args:expr,$config:expr, $cmd_component:ident, $monitor_component:ident,$component_home:expr) => {{
-        let monitor = $config.deployment.monitor.as_ref();
-        assert!(monitor.is_some());
-        let task_name = match $cmd_args.clone() {
-            SubCommand::Monitor {
-                cluster: _,
-                command,
-            } => {
-                format!("{}_{command}", $component_home)
-            }
-            _ => unreachable!(),
-        };
-        let component_obj = &monitor.unwrap().$monitor_component;
-        let conn_user = &$config.connection.username;
-        let ssh_port = $config.connection.ssh_port();
-        let task_host = TaskHost::Remote {
-            user: conn_user.clone(),
-            port: ssh_port as usize,
-            host: component_obj.host.clone(),
-        };
-        let home = format!("{}/{}", $config.install_dir(), $component_home);
-        let cmd = MonitorComponentCommand::$cmd_component { home };
-        IndexMap::from([build_monitor_task_instance!(
-            $config.clone(),
-            cmd,
-            task_name,
-            task_host,
-            $component_home,
-            $cmd_args.clone()
-        )])
-    }};
-}
-
-macro_rules! build_monitor_task_instance {
-    // add start/stop ctl_cmd argument.
-    ($config:expr,$ctl_cmd:expr,$task_name:expr,$task_remote_host:expr,$component_home:expr, $cmd_arg:expr) => {{
-        let (_, _, host) = &$task_remote_host.ssh_conn_tuple();
-        let cmd_ref = &$cmd_arg.as_ref().to_string();
-        let task_id = TaskId {
-            cmd: cmd_ref.to_string(),
-            task: $task_name.to_string(),
-            host: host.to_string(),
-        };
-        (
-            task_id.clone(),
-            TaskInstance {
-                task_input: HashMap::default(),
-                task: Box::new(MonitorCtlTask::new(
-                    $config.clone(),
-                    task_id,
-                    $ctl_cmd,
-                    $cmd_arg,
-                )),
-                task_host: $task_remote_host,
-            },
-        )
-    }};
-}
-
 impl MonitorComponentCommand {
-    pub fn start(&self, monitor: Monitor) -> String {
+    pub fn start(&self, monitor: &Monitor) -> Option<String> {
         match self {
             MonitorComponentCommand::NodeExporter { home } => {
-                let port = monitor.node_exporter.port;
-                format!(
-                    r#"{home}/node_exporter --web.listen-address=:{port} > /tmp/mono_node_exporter.log 2>&1 &"#
-                )
+                monitor.node_exporter.as_ref().map(|noex| {
+                    format!(
+                        r#"{home}/node_exporter --web.listen-address=:{port} > /tmp/mono_node_exporter.log 2>&1 &"#,
+                        home = home,
+                        port = noex.port
+                    )
+                })
             }
             MonitorComponentCommand::MySqlExporter {
                 home,
                 mysql_conf: my_conf,
             } => {
-                let port = monitor.mysql_exporter.as_ref().unwrap().port;
-                format!(
-                    r#"{home}/mysqld_exporter --web.listen-address=:{port} --config.my-cnf {my_conf} --log.level=info > /tmp/mono_mysql_exporter.log 2>&1 &"#
-                )
+                monitor.mysql_exporter.as_ref().map(|mysql_expt| {
+                    format!(
+                        r#"{home}/mysqld_exporter --web.listen-address=:{port} --config.my-cnf {my_conf} --log.level=info > /tmp/mono_mysql_exporter.log 2>&1 &"#,
+                        home = home,
+                        port = mysql_expt.port,
+                        my_conf = my_conf,
+                    )
+                })
             }
             MonitorComponentCommand::Grafana { home } => {
-                format!(
-                    r#"{home}/bin/grafana-server -homepath {home} -config {home}/conf/defaults.ini > /tmp/mono_grafana_server.log 2>&1 &"#
-                )
+                // Assuming Grafana is always configured when this command is used
+                Some(format!(
+                    r#"{home}/bin/grafana-server -homepath {home} -config {home}/conf/defaults.ini > /tmp/mono_grafana_server.log 2>&1 &"#,
+                    home = home
+                ))
             }
             MonitorComponentCommand::Prometheus { home } => {
-                let port = monitor.prometheus.port;
-                format!(
-                    r#"{home}/prometheus --web.listen-address="0.0.0.0:{port}" --storage.tsdb.path={home}/data --config.file={home}/prometheus.yml > /tmp/mono_prometheus.log 2>&1 &"#
-                )
+                monitor.prometheus.as_ref().map(|prom| {
+                    format!(
+                        r#"{home}/prometheus --web.listen-address="0.0.0.0:{port}" --storage.tsdb.path={home}/data --config.file={home}/prometheus.yml > /tmp/mono_prometheus.log 2>&1 &"#,
+                        home = home,
+                        port = prom.port
+                    )
+                })
             }
         }
     }
@@ -164,18 +116,116 @@ impl MonitorCtlTask {
         }
     }
 
+    fn build_monitor_task_instance(
+        config: DeployConfig,
+        ctl_cmd: MonitorComponentCommand,
+        task_name: String,
+        task_remote_host: TaskHost,
+        cmd_arg: SubCommand,
+    ) -> (TaskId, TaskInstance) {
+        let (_, _, host) = &task_remote_host.ssh_conn_tuple();
+        let cmd_ref = &cmd_arg.as_ref().to_string();
+        let task_id = TaskId {
+            cmd: cmd_ref.to_string(),
+            task: task_name.clone(),
+            host: host.to_string(),
+        };
+        (
+            task_id.clone(),
+            TaskInstance {
+                task_input: HashMap::default(),
+                task: Box::new(MonitorCtlTask::new(
+                    config.clone(),
+                    task_id,
+                    ctl_cmd,
+                    cmd_arg,
+                )),
+                task_host: task_remote_host,
+            },
+        )
+    }
+
+    fn basic_component_ctl_task(
+        cmd_args: SubCommand,
+        config: &DeployConfig,
+        cmd_component: MonitorComponentCommand,
+        monitor_component_host: String,
+        component_home: &str,
+    ) -> IndexMap<TaskId, TaskInstance> {
+        let task_name = match cmd_args.clone() {
+            SubCommand::Monitor {
+                cluster: _,
+                command,
+            } => {
+                format!("{}_{command}", component_home)
+            }
+            _ => unreachable!(),
+        };
+        let conn_user = &config.connection.username;
+        let ssh_port = config.connection.ssh_port();
+        let task_host = TaskHost::Remote {
+            user: conn_user.clone(),
+            port: ssh_port as usize,
+            host: monitor_component_host,
+        };
+        let (task_id, task_instance) = MonitorCtlTask::build_monitor_task_instance(
+            config.clone(),
+            cmd_component,
+            task_name,
+            task_host,
+            cmd_args.clone(),
+        );
+        let mut index_map = IndexMap::new();
+        index_map.insert(task_id, task_instance);
+        index_map
+    }
+
     pub fn grafana_ctl_task(
         cmd_arg: SubCommand,
         config: &DeployConfig,
     ) -> IndexMap<TaskId, TaskInstance> {
-        basic_component_ctl_task!(cmd_arg, config, Grafana, grafana, GRAFANA_FILE_KEY)
+        let monitor = config.deployment.monitor.as_ref().unwrap();
+
+        // Check if Grafana is configured
+        if let Some(component_obj) = &monitor.grafana {
+            let component_host = component_obj.host.clone();
+            let home = format!("{}/{}", config.install_dir(), GRAFANA_FILE_KEY);
+            let cmd = MonitorComponentCommand::Grafana { home };
+            MonitorCtlTask::basic_component_ctl_task(
+                cmd_arg,
+                config,
+                cmd,
+                component_host,
+                GRAFANA_FILE_KEY,
+            )
+        } else {
+            // Return an empty IndexMap if Grafana is not configured
+            IndexMap::new()
+        }
     }
 
     pub fn prometheus_ctl_task(
         cmd_arg: SubCommand,
         config: &DeployConfig,
     ) -> IndexMap<TaskId, TaskInstance> {
-        basic_component_ctl_task!(cmd_arg, config, Prometheus, prometheus, PROMETHEUS_FILE_KEY)
+        let monitor = config.deployment.monitor.as_ref().unwrap();
+
+        // Check if Prometheus is configured
+        if let Some(component_obj) = &monitor.prometheus {
+            let component_host = component_obj.host.clone();
+            let home = format!("{}/{}", config.install_dir(), PROMETHEUS_FILE_KEY);
+            let cmd = MonitorComponentCommand::Prometheus { home };
+            MonitorCtlTask::basic_component_ctl_task(
+                cmd_arg,
+                config,
+                cmd,
+                component_host,
+                PROMETHEUS_FILE_KEY,
+            )
+        } else {
+            // Return an empty IndexMap if Prometheus is not configured
+            IndexMap::new()
+        }
     }
 
     pub fn exporter_ctl_task(
@@ -191,13 +241,15 @@ impl MonitorCtlTask {
         all_hosts
             .iter()
             .filter(|(pkg, _hosts)| {
-                let pkg_copy = *pkg;
-                pkg_copy.eq(&DeploymentPackage::MonographTx)
-                    || pkg_copy.eq(&DeploymentPackage::MonographLog)
-                    || pkg_copy.eq(&DeploymentPackage::Storage)
+                matches!(
+                    pkg,
+                    DeploymentPackage::MonographTx
+                        | DeploymentPackage::MonographLog
+                        | DeploymentPackage::Storage
+                )
             })
             .flat_map(|(pkg, hosts)| {
-                let mysql_expt = pkg.eq(&DeploymentPackage::MonographTx)
+                let mysql_expt = pkg == &DeploymentPackage::MonographTx
                     && config.product() == Product::EloqSQL
                     && monitor.mysql_exporter.is_some();
                 hosts
@@ -212,32 +264,25 @@ impl MonitorCtlTask {
                         let node_exporter_cmd = MonitorComponentCommand::NodeExporter {
                             home: format!("{install_dir}/{NODE_EXPORTER_FILE_KEY}"),
                         };
-
-                        let task_remote_host_cloned = task_remote_host.clone();
-                        let mut exporter_cmd_vec = vec![build_monitor_task_instance!(
-                            config.clone(),
-                            node_exporter_cmd,
-                            format!("node_exporter_{cmd_str_ref}"),
-                            task_remote_host_cloned,
-                            NODE_EXPORTER_FILE_KEY,
-                            cmd_arg.clone()
-                        )];
-
+                        let mut exporter_cmd_vec =
+                            vec![MonitorCtlTask::build_monitor_task_instance(
+                                config.clone(),
+                                node_exporter_cmd,
+                                format!("node_exporter_{cmd_str_ref}"),
+                                task_remote_host.clone(),
+                                cmd_arg.clone(),
+                            )];
                         if mysql_expt {
                             let mysql_exporter_cmd = MonitorComponentCommand::MySqlExporter {
                                 home: format!("{install_dir}/{MYSQL_EXPORTER_FILE_KEY}"),
-                                mysql_conf: format!(
-                                    //"{install_dir}/mysqld_exporter/mysql_exporter_{monograph_host}.cnf"
-                                    "{install_dir}/mysql_exporter_{host}.cnf"
-                                ),
+                                mysql_conf: format!("{install_dir}/mysql_exporter_{host}.cnf"),
                             };
-                            exporter_cmd_vec.push(build_monitor_task_instance!(
-                                config,
+                            exporter_cmd_vec.push(MonitorCtlTask::build_monitor_task_instance(
+                                config.clone(),
                                 mysql_exporter_cmd,
                                 format!("mysql_exporter_{cmd_str_ref}"),
                                 task_remote_host,
-                                MYSQL_EXPORTER_FILE_KEY,
-                                cmd_arg.clone()
+                                cmd_arg.clone(),
                             ));
                         }
                         exporter_cmd_vec
@@ -286,14 +331,18 @@ impl TaskExecutor for MonitorCtlTask {
         let monitor_ctl_cmd_result = match cmd_str.as_str() {
             "start" => {
                 if monitor_component_pid.eq("NONE") {
-                    let start_cmd = self.monitor_ctl.start(monitor_ref.clone());
-                    debug!(r#"MonitorCtlTask start_cmd={start_cmd:?}"#);
-                    wait_command_complete!(
-                        start_cmd.clone(),
-                        process_info_cmd,
-                        ssh_session.clone(),
-                        is_some
-                    )
+                    if let Some(start_cmd) = self.monitor_ctl.start(monitor_ref) {
+                        debug!(r#"MonitorCtlTask start_cmd={start_cmd:?}"#);
+                        wait_command_complete!(
+                            start_cmd.clone(),
+                            process_info_cmd,
+                            ssh_session.clone(),
+                            is_some
+                        )
+                    } else {
+                        // Skip execution and return success
+                        Ok(process_rs)
+                    }
                 } else {
                     Ok(process_rs)
                 }

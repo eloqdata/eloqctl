@@ -20,10 +20,10 @@ pub mod log_service;
 pub mod monitor;
 pub mod storage_service_config;
 
-pub const ELOQSQL_INI: &str = "EloqSql.ini";
-pub const ELOQSQL_DYNAMO_INI: &str = "EloqSqlDynamo.ini";
+pub const ELOQSQL_TEMPLATE_INI: &str = "EloqSql.ini";
+pub const ELOQSQL_DYNAMO_TEMPLATE_INI: &str = "EloqSqlDynamo.ini";
 pub const ELOQSQL_CLIENT_PORT: u16 = 3316;
-pub const ELOQKV_TEMPLATE_INI: &str = "EloqKv";
+pub const ELOQKV_TEMPLATE_INI: &str = "EloqKv.ini";
 pub const ELOQKV_INI: &str = "EloqKv-tx";
 pub const ELOQKV_STANDBY_INI: &str = "EloqKv-standby";
 pub const ELOQKV_VOTER_INI: &str = "EloqKv-voter";
@@ -91,7 +91,9 @@ pub enum ConfigErr {
     DownloadUrlFormatErr(String),
 }
 
-pub const CONFIG_PATH_DIR: &str = "CLUSTER_MGR_CLI_CONFIG";
+pub const CONFIG_PATH_DIR: &str = "DEFAULT_CLUSTER_MGR_CLI_CONFIG";
+pub const UPLOAD_PATH_DIR: &str = "DEFAULT_CLUSTER_MGR_CLI_UPLOAD";
+
 pub const SECTION_MARIADB: &str = "mariadb";
 pub const SECTION_LOCAL: &str = "local";
 pub const SECTION_CLUSTER: &str = "cluster";
@@ -231,6 +233,7 @@ pub fn load_remote_env(path: Option<String>) -> anyhow::Result<HashMap<String, S
     Ok(env_props)
 }
 
+// ~/.eloqctl/config
 pub fn config_template(file_name: &str) -> anyhow::Result<PathBuf> {
     let config_path = std::env::var(CONFIG_PATH_DIR)?;
     let path_buf = PathBuf::from(config_path.as_str()).join(file_name);
@@ -239,6 +242,23 @@ pub fn config_template(file_name: &str) -> anyhow::Result<PathBuf> {
     } else {
         Err(anyhow!(
             "MonographDB config not found in the {:?}",
+            path_buf
+        ))
+    }
+}
+
+// ~/.eloqctl/upload/{cluster_name}
+pub fn cluster_config_template(cluster_name: &str, file_name: &str) -> anyhow::Result<PathBuf> {
+    let upload_path = std::env::var(UPLOAD_PATH_DIR)?;
+    let path_buf = PathBuf::from(upload_path.as_str())
+        .join(cluster_name)
+        .join(file_name);
+    if path_buf.exists() {
+        Ok(path_buf)
+    } else {
+        Err(anyhow!(
+            "Cluster ({}) config template not found in the {:?}",
+            cluster_name,
             path_buf
         ))
     }

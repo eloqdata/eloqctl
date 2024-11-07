@@ -69,7 +69,7 @@ pub enum SubCommand {
         #[arg(long)]
         nodes: Vec<String>,
     },
-    // TODO(ZX) add stop --password feature; later: store the password in internal storage in eloqctl
+    // TODO(ZX) later, add stop --password feature; later: store the password in internal storage in eloqctl
     #[command(long_about = "Stop cluster components")]
     #[strum(serialize = "stop")]
     Stop {
@@ -111,7 +111,9 @@ pub enum SubCommand {
         #[arg(long, value_name = "url")]
         cass_mirror: Option<String>,
     },
-    #[command(long_about = "Update config file by config/Eloq**.ini and restart")]
+    #[command(
+        long_about = "Update config file by ~/.eloqctl/upload/{cluster_name}/Eloqkv.ini and restart"
+    )]
     #[strum(serialize = "update-conf")]
     UpdateConf {
         cluster: String,
@@ -199,8 +201,8 @@ pub fn upload_dir() -> PathBuf {
     home_path().join("upload")
 }
 
-pub fn upload_host_dir(host: &str) -> PathBuf {
-    let dir = upload_dir().join(host);
-    create_dir_all(dir.as_path()).expect("create upload directory for host");
-    dir
+pub fn create_upload_cluster_dir(dir: &str) -> PathBuf {
+    let dir_buf = upload_dir().join(dir);
+    create_dir_all(dir_buf.as_path()).expect("create upload directory for host");
+    dir_buf
 }

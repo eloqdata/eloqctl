@@ -1,6 +1,6 @@
 use crate::cli::ssh::SSHSession;
 use crate::cli::task::monograph_tx_ctl_task::ServerType;
-use crate::cli::{upload_dir, upload_host_dir};
+use crate::cli::{create_upload_cluster_dir, upload_dir};
 use crate::config::config_base::CASSANDRA_FILE_KEY;
 use crate::config::config_base::{
     export_asan, LOG_SERVICE_HOME, MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY,
@@ -10,11 +10,12 @@ use crate::config::monitor::Monitor;
 use crate::config::storage_service_config::{Cassandra, RocksDB, StorageService};
 use crate::config::ConfigErr::GenCassandraConfigErr;
 use crate::config::{
-    config_template, load_yaml_config_template, DeploymentPackage, DownloadUrl, StorageProvider,
-    CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION, CASSANDRA_JVM_TEMPLATE, CDN,
-    CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF, ELOQKV_INI, ELOQKV_STANDBY_INI, ELOQKV_TEMPLATE_INI,
-    ELOQKV_VOTER_INI, ELOQSQL_CLIENT_PORT, ELOQSQL_DYNAMO_INI, ELOQSQL_INI, JVM_SETTING_HOLDER,
-    SECTION_CLUSTER, SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC, SECTION_STORE,
+    cluster_config_template, config_template, load_yaml_config_template, DeploymentPackage,
+    DownloadUrl, StorageProvider, CASSANDRA_CONF_TEMPLATE, CASSANDRA_JVM_OPTION,
+    CASSANDRA_JVM_TEMPLATE, CDN, CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF, ELOQKV_INI,
+    ELOQKV_STANDBY_INI, ELOQKV_TEMPLATE_INI, ELOQKV_VOTER_INI, ELOQSQL_CLIENT_PORT,
+    ELOQSQL_DYNAMO_TEMPLATE_INI, ELOQSQL_TEMPLATE_INI, JVM_SETTING_HOLDER, SECTION_CLUSTER,
+    SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC, SECTION_STORE,
 };
 use anyhow::{anyhow, Result};
 use configparser::ini::Ini;
@@ -79,12 +80,13 @@ macro_rules! set_by_user {
 }
 
 macro_rules! extract_monitor_host {
-    ($deployment_ref:expr, $monitor_components:ident) => {{
-        if let Some(monitor) = $deployment_ref.monitor.as_ref() {
-            vec![monitor.$monitor_components.host.clone()]
-        } else {
-            vec![]
-        }
+    ($deployment_ref:expr, $monitor_component:ident) => {{
+        $deployment_ref
+            .monitor
+            .as_ref()
+            .and_then(|monitor| monitor.$monitor_component.as_ref())
+            .map(|component| vec![component.host.clone()])
+            .unwrap_or_else(Vec::new)
     }};
 }
 
@@ -362,7 +364,7 @@ impl Deployment {
     pub fn tx_srv_ini(&self, port: &str) -> String {
         let home = self.tx_srv_home();
         match self.product() {
-            Product::EloqSQL => format!("{home}/{ELOQSQL_INI}"),
+            Product::EloqSQL => format!("{home}/{ELOQSQL_TEMPLATE_INI}"),
             Product::EloqKV => format!("{}/{}-{}.ini", home, ELOQKV_INI, port),
         }
     }
@@ -508,7 +510,7 @@ impl Deployment {
         let mut my_ini = Ini::new();
         if let Some(cass) = self.storage_service.cassandra.as_ref() {
             my_ini
-                .load(config_template(ELOQSQL_INI)?.as_path())
+                .load(config_template(ELOQSQL_TEMPLATE_INI)?.as_path())
                 .unwrap();
             let hosts = cass.host.join(",");
             my_ini.set(SECTION_MARIADB, "monograph_cass_hosts", Some(hosts));
@@ -528,7 +530,7 @@ impl Deployment {
             }
         } else {
             my_ini
-                .load(config_template(ELOQSQL_DYNAMO_INI)?.as_path())
+                .load(config_template(ELOQSQL_DYNAMO_TEMPLATE_INI)?.as_path())
                 .unwrap();
 
             let dynamodb = self.storage_service.dynamodb.as_ref().unwrap();
@@ -625,7 +627,7 @@ impl Deployment {
             (
                 host.clone(),
                 port.clone(),
-                upload_host_dir(&host).join(ELOQSQL_INI),
+                create_upload_cluster_dir(&host).join(ELOQSQL_TEMPLATE_INI),
             )
         } else {
             my_ini.set(
@@ -715,8 +717,12 @@ impl Deployment {
     pub fn build_eloqkv_config(&self, set_ip_list: bool, port: String) -> anyhow::Result<Ini> {
         let mut ini = Ini::new();
         // config template does not have port suffix
-        let filename = format!("{}.ini", ELOQKV_TEMPLATE_INI);
-        ini.load(config_template(&filename)?).unwrap();
+        ini.load(cluster_config_template(
+            &self.cluster_name,
+            ELOQKV_TEMPLATE_INI,
+        )?)
+        .unwrap();
+
         ini.set(
             SECTION_LOCAL,
             "eloq_data_path",
@@ -915,17 +921,25 @@ impl Deployment {
             );
         }
 
-        let enable_metric = if let Some(monitor) = &self.monitor {
-            monitor.monograph_metrics.is_some()
-        } else {
-            false
-        };
-        ini.set(
-            SECTION_METRIC,
-            "enable_metrics",
-            Some(enable_metric.to_string()),
-        );
+        if self.to_be_override(&ini, "metrics", "enable_metrics") {
+            let enable_metric = self
+                .monitor
+                .as_ref()
+                .and_then(|monitor| monitor.monograph_metrics.as_ref())
+                .is_some();
+            ini.set(
+                SECTION_METRIC,
+                "enable_metrics",
+                Some(enable_metric.to_string()),
+            );
+        }
+
         Ok(ini.clone())
+    }
+
+    fn to_be_override(&self, ini: &Ini, section: &str, key: &str) -> bool {
+        ini.get(section, key)
+            .map_or(false, |value| value == "${OVERRIDE}")
     }
 
     pub fn gen_eloqkv_tx_config(
@@ -941,8 +955,9 @@ impl Deployment {
         // Use pattern matching to handle the presence of both host and port
         let (host_get, port_get) = if let (Some(host_some), Some(port_some)) = (host, port) {
             // Construct the configuration path for the host
-            cnf_path =
-                upload_host_dir(&host_some).join(format!("{}-{}.{}", ELOQKV_INI, port_some, "ini"));
+            let dir = format!("{}/{}", self.cluster_name, host_some);
+            cnf_path = create_upload_cluster_dir(&dir)
+                .join(format!("{}-{}.{}", ELOQKV_INI, port_some, "ini"));
             (host_some.clone(), port_some.clone())
         } else {
             ini.set(SECTION_LOCAL, "ip", Some("127.0.0.1".to_owned()));
@@ -1016,8 +1031,9 @@ impl Deployment {
 
     pub fn gen_eloqkv_standby_config(&self, host: String, port: String) -> anyhow::Result<PathBuf> {
         let mut ini = self.build_eloqkv_config(true, port.clone())?;
-        let cnf_path =
-            upload_host_dir(&host).join(format!("{}-{}.{}", ELOQKV_STANDBY_INI, port, "ini"));
+        let dir = format!("{}/{}", self.cluster_name, host);
+        let cnf_path = create_upload_cluster_dir(&dir)
+            .join(format!("{}-{}.{}", ELOQKV_STANDBY_INI, port, "ini"));
 
         if self.log_service.is_some() {
             self.build_log_config()
@@ -1079,8 +1095,9 @@ impl Deployment {
 
     pub fn gen_eloqkv_voter_config(&self, host: String, port: String) -> anyhow::Result<PathBuf> {
         let mut ini = self.build_eloqkv_config(true, port.clone())?;
-        let cnf_path =
-            upload_host_dir(&host).join(format!("{}-{}.{}", ELOQKV_VOTER_INI, port, "ini"));
+        let dir = format!("{}/{}", self.cluster_name, host);
+        let cnf_path = create_upload_cluster_dir(&dir)
+            .join(format!("{}-{}.{}", ELOQKV_VOTER_INI, port, "ini"));
 
         if self.log_service.is_some() {
             self.build_log_config()
@@ -1395,7 +1412,7 @@ impl Deployment {
                 );
                 cass_conf_map.insert(String::from("broadcast_rpc_address"), host_value.clone());
                 cass_conf_map.insert(String::from("broadcast_address"), host_value);
-                let config_path = upload_host_dir(host).join("cassandra.yaml");
+                let config_path = create_upload_cluster_dir(host).join("cassandra.yaml");
                 let new_config_file = File::create(config_path.as_path()).unwrap();
                 let gen_config_write = serde_yaml::to_writer(new_config_file, &cass_conf_map);
                 assert!(gen_config_write.is_ok());
@@ -1426,7 +1443,7 @@ impl Deployment {
                 } else {
                     jvm_temp.clone()
                 };
-                let opt_path = upload_host_dir(host).join(CASSANDRA_JVM_OPTION);
+                let opt_path = create_upload_cluster_dir(host).join(CASSANDRA_JVM_OPTION);
                 File::create(opt_path.as_path())
                     .unwrap()
                     .write_all(jvm_opt.as_bytes())

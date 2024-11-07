@@ -16,22 +16,31 @@ impl TaskGroup for UpdateConfigTaskGroup {
     ) -> anyhow::Result<TaskExecutionContext> {
         let cluster_name = &config.deployment.cluster_name;
         let need_restart = match cmd_arg {
-            SubCommand::UpdateConf {
-                cluster: _,
-                restart,
-            } => restart,
+            SubCommand::UpdateConf { restart, .. } => restart,
             _ => unreachable!(),
         };
         let mut executable = IndexMap::new();
         let mut barrier = vec![];
         executable.extend(upload_tasks(UploadTaskBuilderType::TxConf, &config));
+        barrier.push(executable.len());
 
         if need_restart {
-            barrier.push(executable.len());
-
             // stop order: (standby-server -> voter-server ->) tx-server -> log-server -> kv-store
             if config.deployment.tx_service.standby_host_ports.is_some() {
-                stop_with_hot_standby(cmd_arg.clone(), &config, &mut barrier, &mut executable);
+                stop_with_hot_standby(
+                    SubCommand::Stop {
+                        cluster: cluster_name.clone(),
+                        tx: Some(true),
+                        log: true,
+                        store: false,
+                        monitor: false,
+                        force: false,
+                        all: false,
+                    },
+                    &config,
+                    &mut barrier,
+                    &mut executable,
+                );
             } else {
                 let stop_tx_task = MonographTxCtlTask::from_config(
                     SubCommand::Stop {
@@ -60,6 +69,32 @@ impl TaskGroup for UpdateConfigTaskGroup {
             );
             barrier.push(start_tx_task.len());
             executable.extend(start_tx_task);
+
+            if config.deployment.tx_service.standby_host_ports.is_some() {
+                let start_standby = MonographTxCtlTask::from_config(
+                    SubCommand::Start {
+                        cluster: cluster_name.to_string(),
+                        nodes: Vec::new(),
+                    },
+                    &config,
+                    ServerType::Standby,
+                );
+                barrier.push(start_standby.len());
+                executable.extend(start_standby);
+            }
+
+            if config.deployment.tx_service.voter_host_ports.is_some() {
+                let start_voter = MonographTxCtlTask::from_config(
+                    SubCommand::Start {
+                        cluster: cluster_name.to_string(),
+                        nodes: Vec::new(),
+                    },
+                    &config,
+                    ServerType::Voter,
+                );
+                barrier.push(start_voter.len());
+                executable.extend(start_voter);
+            }
         }
 
         Ok(TaskExecutionContext {

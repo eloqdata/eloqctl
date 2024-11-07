@@ -23,3 +23,8 @@ deployment:
   storage_service:
     rocksdb: !LOCAL
       # path: /tmp
+  # monitor:
+  #   data_dir: ""
+  #   monograph_metrics:
+  #     path: "/mono_metrics"
+  #     port: 18081
