@@ -188,11 +188,12 @@ impl DeployConfig {
     pub fn gen_all_monograph_configs(&self) -> anyhow::Result<Vec<PathBuf>> {
         let mut path_vec = match self.product() {
             Product::EloqSQL => vec![self.deployment.gen_eloqsql_config(None, None)?],
-            Product::EloqKV => vec![self.deployment.gen_eloqkv_tx_config(None, None)?],
+            Product::EloqKV => vec![self.deployment.gen_eloqkv_tx_config(None, None, None)?],
         };
         let tx_host_ports = &self.deployment.tx_service.tx_host_ports;
         let standby_host_ports = &self.deployment.tx_service.standby_host_ports;
         let voter_host_ports = &self.deployment.tx_service.voter_host_ports;
+        let requirepass = &self.deployment.tx_service.requirepass;
 
         let all_config_path = match self.product() {
             Product::EloqSQL => tx_host_ports
@@ -255,7 +256,7 @@ impl DeployConfig {
 
                         // Generate config using non-empty host and port
                         self.deployment
-                            .gen_eloqkv_tx_config(Some(host), Some(port))
+                            .gen_eloqkv_tx_config(Some(host), Some(port), requirepass.clone())
                             .unwrap()
                     })
                 })
@@ -280,7 +281,7 @@ impl DeployConfig {
                             let host = parts.first().unwrap_or(&"").to_string();
                             let port = parts.get(1).unwrap_or(&"").to_string();
                             self.deployment
-                                .gen_eloqkv_standby_config(host, port)
+                                .gen_eloqkv_standby_config(host, port, requirepass.clone())
                                 .unwrap()
                         })
                     })
@@ -305,7 +306,9 @@ impl DeployConfig {
                             let parts: Vec<&str> = hostport.split(':').collect();
                             let host = parts.first().unwrap_or(&"").to_string();
                             let port = parts.get(1).unwrap_or(&"").to_string();
-                            self.deployment.gen_eloqkv_voter_config(host, port).unwrap()
+                            self.deployment
+                                .gen_eloqkv_voter_config(host, port, requirepass.clone())
+                                .unwrap()
                         })
                     })
                     .collect(),

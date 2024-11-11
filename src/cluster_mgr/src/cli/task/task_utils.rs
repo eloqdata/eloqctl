@@ -249,7 +249,18 @@ pub fn stop_with_hot_standby(
     });
     let rx_tx = tx_channel.subscribe();
 
-    let topology_task = RedisOpTask::new(task_id.clone(), redis_host_ports, redis_cmd, tx_channel);
+    let mut redis_op_password: Option<String> = None;
+    if let SubCommand::Stop { password, .. } = &cmd {
+        redis_op_password = password.clone();
+    }
+
+    let topology_task = RedisOpTask::new(
+        task_id.clone(),
+        redis_host_ports,
+        redis_cmd,
+        tx_channel,
+        redis_op_password,
+    );
 
     let task_instance = TaskInstance {
         task_input: HashMap::default(),

@@ -63,6 +63,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
             monitor: false,
             force: false,
             all: false,
+            password: None,
         };
 
         if config.deployment.tx_service.standby_host_ports.is_some() {

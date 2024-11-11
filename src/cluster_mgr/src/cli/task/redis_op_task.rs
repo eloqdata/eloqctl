@@ -18,6 +18,7 @@ pub struct RedisOpTask {
     redis_host_ports: Vec<String>,
     redis_cmd: String,
     sender: watch::Sender<ClusterNodes>,
+    password: Option<String>,
 }
 
 impl RedisOpTask {
@@ -26,12 +27,14 @@ impl RedisOpTask {
         redis_host_ports: Vec<String>,
         redis_cmd: String,
         sender: watch::Sender<ClusterNodes>,
+        password: Option<String>,
     ) -> Self {
         Self {
             task_id,
             redis_host_ports,
             redis_cmd,
             sender,
+            password,
         }
     }
 }
@@ -155,24 +158,22 @@ impl TaskExecutor for RedisOpTask {
         _task_host: TaskHost,
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        let mut task_result = HashMap::new();
-        task_result.insert(CMD.to_string(), TaskArgValue::Str(self.redis_cmd.clone()));
+        let mut task_result =
+            HashMap::from([(CMD.to_string(), TaskArgValue::Str(self.redis_cmd.clone()))]);
 
-        // Use a vector of node addresses to create a ClusterClient, the ClusterClient will handle the case where if a connection to one server is failed, move to another one in the cluster.
         let nodes: Vec<String> = self
             .redis_host_ports
             .iter()
-            .map(|host_port| format!("redis://{}", host_port))
+            .map(|host_port| {
+                if let Some(password) = &self.password {
+                    format!("redis://:{}@{}", password, host_port)
+                } else {
+                    format!("redis://{}", host_port)
+                }
+            })
             .collect();
-        let nodes_info: String = nodes.clone().join(", ");
 
-        // username and password version:
-        // let nodes: Vec<String> = self
-        //     .redis_host_ports
-        //     .iter()
-        //     .map(|host_port| format!("redis://{}:{}@{}", username, password, host_port))
-        //     .collect();
-
+        let nodes_info = nodes.join(", ");
         let client = ClusterClient::new(nodes)?;
         // Use synchronous connection
         let mut con = match client.get_connection() {

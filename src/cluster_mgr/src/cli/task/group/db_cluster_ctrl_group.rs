@@ -48,6 +48,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                     monitor: false,
                     force: false,
                     all: false,
+                    password: None,
                 };
                 let (mut barrier, mut executable) =
                     self.stop_tasks(true, true, false, stop_cmd, &config, false);
@@ -69,6 +70,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                 monitor,
                 force: _,
                 all,
+                ..
             } => {
                 let (cluster, tx, log, store, monitor) = if all {
                     (cluster, true, true, true, true)

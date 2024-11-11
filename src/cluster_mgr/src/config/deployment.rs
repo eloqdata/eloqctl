@@ -124,6 +124,7 @@ pub struct MonographService {
     pub tx_host_ports: Vec<String>,
     pub standby_host_ports: Option<Vec<String>>,
     pub voter_host_ports: Option<Vec<String>>,
+    pub requirepass: Option<String>,
     pub client_port: Option<u16>, // only used in mysql
 }
 
@@ -452,7 +453,7 @@ impl Deployment {
     pub fn get_redis_keyspace(&self) -> anyhow::Result<String> {
         let my_local = upload_dir().join("redis_local.ini");
         if !my_local.exists() {
-            self.gen_eloqkv_tx_config(None, None)?;
+            self.gen_eloqkv_tx_config(None, None, None)?;
         }
         let mut my_ini_local = Ini::new();
         let _config_map_rs = my_ini_local.load(my_local).unwrap();
@@ -714,7 +715,12 @@ impl Deployment {
         Ok(cnf_path)
     }
 
-    pub fn build_eloqkv_config(&self, set_ip_list: bool, port: String) -> anyhow::Result<Ini> {
+    pub fn build_eloqkv_config(
+        &self,
+        set_ip_list: bool,
+        port: String,
+        requirepass: Option<String>,
+    ) -> anyhow::Result<Ini> {
         let mut ini = Ini::new();
         // config template does not have port suffix
         ini.load(cluster_config_template(
@@ -728,6 +734,10 @@ impl Deployment {
             "eloq_data_path",
             Some(format!("{}/data", self.tx_srv_home())),
         );
+
+        if requirepass.is_some() {
+            ini.set(SECTION_LOCAL, "requirepass", requirepass);
+        }
 
         match self.storage_service.provider().unwrap() {
             StorageProvider::Cassandra => {
@@ -946,11 +956,13 @@ impl Deployment {
         &self,
         host: Option<String>,
         port: Option<String>,
+        requirepass: Option<String>,
     ) -> anyhow::Result<PathBuf> {
+        let mut cnf_path = upload_dir().join("redis_local.ini");
+
         let is_host = host.is_some();
         let port_str = port.clone().map_or("".to_string(), |p| p);
-        let mut ini = self.build_eloqkv_config(is_host, port_str)?;
-        let mut cnf_path = upload_dir().join("redis_local.ini");
+        let mut ini = self.build_eloqkv_config(is_host, port_str, requirepass)?;
 
         // Use pattern matching to handle the presence of both host and port
         let (host_get, port_get) = if let (Some(host_some), Some(port_some)) = (host, port) {
@@ -1029,12 +1041,17 @@ impl Deployment {
         Ok(cnf_path)
     }
 
-    pub fn gen_eloqkv_standby_config(&self, host: String, port: String) -> anyhow::Result<PathBuf> {
-        let mut ini = self.build_eloqkv_config(true, port.clone())?;
+    pub fn gen_eloqkv_standby_config(
+        &self,
+        host: String,
+        port: String,
+        requirepass: Option<String>,
+    ) -> anyhow::Result<PathBuf> {
         let dir = format!("{}/{}", self.cluster_name, host);
         let cnf_path = create_upload_cluster_dir(&dir)
             .join(format!("{}-{}.{}", ELOQKV_STANDBY_INI, port, "ini"));
 
+        let mut ini = self.build_eloqkv_config(true, port.clone(), requirepass)?;
         if self.log_service.is_some() {
             self.build_log_config()
                 .into_iter()
@@ -1093,12 +1110,17 @@ impl Deployment {
         Ok(cnf_path)
     }
 
-    pub fn gen_eloqkv_voter_config(&self, host: String, port: String) -> anyhow::Result<PathBuf> {
-        let mut ini = self.build_eloqkv_config(true, port.clone())?;
+    pub fn gen_eloqkv_voter_config(
+        &self,
+        host: String,
+        port: String,
+        requirepass: Option<String>,
+    ) -> anyhow::Result<PathBuf> {
         let dir = format!("{}/{}", self.cluster_name, host);
         let cnf_path = create_upload_cluster_dir(&dir)
             .join(format!("{}-{}.{}", ELOQKV_VOTER_INI, port, "ini"));
 
+        let mut ini = self.build_eloqkv_config(true, port.clone(), requirepass)?;
         if self.log_service.is_some() {
             self.build_log_config()
                 .into_iter()

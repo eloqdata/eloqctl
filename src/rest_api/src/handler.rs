@@ -68,6 +68,7 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> SubCommand 
             monitor: false,
             force: false,
             all: false,
+            password: None,
         },
         "deploy" => SubCommand::Deploy {
             topology_file: "_NONE".to_string(),

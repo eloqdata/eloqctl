@@ -12,6 +12,7 @@ deployment:
     tx_host_ports: [127.0.0.1:6379]
     standby_host_ports: [127.0.0.1:6389]
     voter_host_ports: [127.0.0.1:6399]
+    # requirepass: "asd"
 
   log_service:
     nodes:
