@@ -3,8 +3,6 @@ set -exo pipefail
 
 echo ">>> Test Start --nodes command"
 
-sed -i "s|enable_data_store=false|enable_data_store=true|" ${ELOQCTL_HOME}/config/EloqKv.ini
-
 MY_IP=$(ip -4 addr | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | sed -n '2p')
 sed -i "s|127.0.0.1|${MY_IP}|g" "${ELOQCTL_HOME}/config/examples/eloqkv_rocksdb_standby.yaml"
 

@@ -9,7 +9,6 @@ cqlsh ${CASSANDRA_HOST} -e "DROP KEYSPACE IF EXISTS ${KEYSPACE_NAME}"
 
 sed -i "s|monograph_keyspace_name=eloqsql|monograph_keyspace_name=${KEYSPACE_NAME}|" ${ELOQCTL_HOME}/config/EloqSql.ini
 sed -i "s|#cass_keyspace=eloqkv|cass_keyspace=${KEYSPACE_NAME}|" ${ELOQCTL_HOME}/config/EloqKv.ini
-sed -i "s|enable_data_store=false|enable_data_store=true|" ${ELOQCTL_HOME}/config/EloqKv.ini
 
 eloqctl demo eloq-sql --skip-deps --unlimited --ext-cass ${CASSANDRA_HOST}
 CLIENT=$(eloqctl -q connect demo-sql-cassandra)
