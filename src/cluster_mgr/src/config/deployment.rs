@@ -735,6 +735,12 @@ impl Deployment {
             Some(format!("{}/data", self.tx_srv_home())),
         );
 
+        ini.set(
+            SECTION_LOCAL,
+            "enable_data_store",
+            Some(self.log_service.is_some().to_string()),
+        );
+
         if requirepass.is_some() {
             ini.set(SECTION_LOCAL, "requirepass", requirepass);
         }
