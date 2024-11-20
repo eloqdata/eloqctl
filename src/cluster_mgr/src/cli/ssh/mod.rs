@@ -51,10 +51,10 @@ impl SSHSession {
             TaskHost::Remote {
                 user,
                 port: ssh_port,
-                host: host_str,
+                host,
             } => {
                 info!("ssh connect key {key_path}");
-                SSHSession::connect(key_path, user.as_str(), &host_str, ssh_port).await
+                SSHSession::connect(key_path, user.as_str(), &host, ssh_port).await
             }
             _ => {
                 unreachable!()

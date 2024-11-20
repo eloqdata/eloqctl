@@ -1,5 +1,6 @@
 use crate::cli::task::task_base::TaskMgr;
 use crate::cli::util::{cpu_arch, file_pg_bar, os_id, os_major_version};
+use crate::cli::BackupCommand;
 use crate::cli::{upload_dir, SubCommand, HOME_DIR};
 use crate::config::config_base::{DeployConfig, VersionRow};
 use crate::config::deployment::{Deployment, Product};
@@ -219,6 +220,7 @@ impl CmdExecutor {
             | SubCommand::Inspect { cluster, .. }
             | SubCommand::Remove { cluster }
             | SubCommand::Connect { cluster }
+            | SubCommand::Backup { cluster, .. }
             | SubCommand::Scale {
                 cluster,
                 add_tx_node: _,
@@ -439,6 +441,34 @@ impl CmdExecutor {
                 self.save_deployment_config(&config, true).await?;
                 println!("cluster {cluster} is updated!");
             }
+            SubCommand::Backup { cluster, command } => match &command {
+                BackupCommand::Start { .. } => {}
+                BackupCommand::List {} => {
+                    let success_task_entity = STATE_MGR.list_snapshots(cluster.to_string()).await?;
+
+                    let success_task_vec = success_task_entity
+                        .iter()
+                        .filter(|snapshot_info_entity| snapshot_info_entity.snapshot_status == 0)
+                        .map(|snapshot_info_entity| {
+                            let cluster_name = &snapshot_info_entity.cluster_name;
+                            let create_timestamp = &snapshot_info_entity.snapshot_ts;
+                            let snapshot_path = &snapshot_info_entity.snapshot_path;
+                            let dest_host = &snapshot_info_entity.dest_host;
+                            let dest_user = &snapshot_info_entity.dest_user;
+                            (
+                                cluster_name,
+                                create_timestamp,
+                                snapshot_path,
+                                dest_host,
+                                dest_user,
+                            )
+                        })
+                        .collect_vec();
+
+                    println!("available snapshots: {:#?}", success_task_vec);
+                }
+                BackupCommand::Remove { .. } => {}
+            },
             _ => {}
         }
         Ok(())

@@ -23,7 +23,7 @@ dependencies = ["clippy"]
 [tasks.build_eloqctl]
 command = "cargo"
 args = ["build", "--package", "cluster_mgr", "--release"]
-dependencies = ["format"]
+dependencies = ["format", "generate_proto"]
 
 [tasks.devtools_build]
 command = "cargo"
@@ -80,4 +80,9 @@ if [ ! -f eloqctl ]; then
   ln -s cluster_mgr eloqctl
 fi
 '''
-dependencies = ["build_eloqctl"]
+dependencies = ["generate_proto", "build_eloqctl"]
+
+
+[tasks.generate_proto]
+command = "cargo"
+args = ["check", "--package", "cluster_mgr"]

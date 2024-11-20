@@ -99,6 +99,48 @@ impl ExecCustomCommand {
             .collect::<IndexMap<TaskId, TaskInstance>>()
     }
 
+    pub fn from_path(
+        cmd: &SubCommand,
+        task: String,
+        content: String,
+        config: &DeployConfig,
+        dest_host: &Option<String>,
+        dest_user: &Option<String>,
+    ) -> (TaskId, TaskInstance) {
+        let conn_user = &config.connection.username;
+        let (user, host) =
+            if let (Some(dest_user), Some(dest_host)) = (dest_user.clone(), dest_host.clone()) {
+                (dest_user, dest_host)
+            } else {
+                (conn_user.clone(), "localhost".to_string())
+            };
+
+        let ssh_port = config.connection.ssh_port() as usize;
+        let task_host = TaskHost::Remote {
+            user: user,
+            port: ssh_port,
+            host: host,
+        };
+
+        let task_id = TaskId {
+            cmd: cmd.as_ref().to_string(),
+            task: task,
+            host: "_local".to_string(),
+        };
+        (
+            task_id.clone(),
+            TaskInstance {
+                task_input: HashMap::default(),
+                task: Box::new(ExecCustomCommand::new(
+                    content.clone(),
+                    task_id,
+                    config.clone(),
+                )),
+                task_host,
+            },
+        )
+    }
+
     pub fn new(cmd: String, task_id: TaskId, config: DeployConfig) -> Self {
         Self {
             cmd,
