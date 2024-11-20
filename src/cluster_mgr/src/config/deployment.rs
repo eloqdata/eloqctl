@@ -980,13 +980,6 @@ impl Deployment {
         } else {
             ini.set(SECTION_LOCAL, "ip", Some("127.0.0.1".to_owned()));
             ini.set(SECTION_LOCAL, "port", Some("6379".to_owned()));
-            ini.set(SECTION_LOCAL, "core_number", Some("1".to_owned()));
-            ini.set(SECTION_LOCAL, "event_dispatcher_num", Some("1".to_owned()));
-            ini.set(
-                SECTION_LOCAL,
-                "node_memory_limit_mb",
-                Some("512".to_owned()),
-            );
             ini.write(cnf_path.as_path())?;
             return Ok(cnf_path);
         };
@@ -1000,47 +993,44 @@ impl Deployment {
         ini.set(SECTION_LOCAL, "ip", Some(host_get.clone()));
         ini.set(SECTION_LOCAL, "port", Some(port_get.clone()));
 
-        let opt_hw = self.get_hardware(&host_get);
-        if opt_hw.is_none() {
-            warn!("hardware information for {host_get} is missing");
-        }
-        let key = "core_number";
-        let mut core_tx = 1; // minimal value
-        if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
-            core_tx = val;
-        } else {
-            if let Some(hw) = opt_hw {
+        if let Some(hw) = self.get_hardware(&host_get) {
+            let key = "core_number";
+            let mut core_tx = 1; // minimal value
+            if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
+                core_tx = val;
+            } else {
                 assert!(hw.cpu > 0);
                 core_tx = match hw.cpu {
                     1 | 2 => 1, // Set core_tx to 1 if hw.cpu is 1 or 2
                     3 | 4 => 2, // Set core_tx to 2 if hw.cpu is 3 or 4
                     _ => core_tx.max((hw.cpu * 4) / 5),
                 };
-            }
-            ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
-        }
 
-        let key = "event_dispatcher_num";
-        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
-        if val.is_none() {
-            let core_io = (core_tx + 7) / 8;
-            ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
-        }
-
-        let union_cass = self
-            .topology()
-            .get(&host_get)
-            .unwrap()
-            .contains(&DeploymentPackage::Storage);
-        let key = "node_memory_limit_mb";
-        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
-        if val.is_none() {
-            let mut limit = opt_hw.map(|hw| (hw.memory * 4) / 5).unwrap_or(GB);
-            if union_cass {
-                limit /= 2;
+                ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
             }
-            assert!(limit > 0);
-            ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+
+            let key = "event_dispatcher_num";
+            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
+            if val.is_none() {
+                let core_io = (core_tx + 7) / 8;
+                ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
+            }
+
+            let union_cass = self
+                .topology()
+                .get(&host_get)
+                .unwrap()
+                .contains(&DeploymentPackage::Storage);
+            let key = "node_memory_limit_mb";
+            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
+            if val.is_none() {
+                let mut limit = hw.memory * 4 / 5;
+                if union_cass {
+                    limit /= 2;
+                }
+                assert!(limit > 0);
+                ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+            }
         }
 
         ini.write(cnf_path.as_path())?;
@@ -1069,47 +1059,44 @@ impl Deployment {
         ini.set(SECTION_LOCAL, "ip", Some(host.clone()));
         ini.set(SECTION_LOCAL, "port", Some(port.clone()));
 
-        let opt_hw = self.get_hardware(&host);
-        if opt_hw.is_none() {
-            warn!("hardware information for {host} is missing");
-        }
-        let key = "core_number";
-        let mut core_tx = 1; // minimal value
-        if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
-            core_tx = val;
-        } else {
-            if let Some(hw) = opt_hw {
+        if let Some(hw) = self.get_hardware(&host) {
+            let key = "core_number";
+            let mut core_tx = 1; // minimal value
+            if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
+                core_tx = val;
+            } else {
                 assert!(hw.cpu > 0);
                 core_tx = match hw.cpu {
                     1 | 2 => 1, // Set core_tx to 1 if hw.cpu is 1 or 2
                     3 | 4 => 2, // Set core_tx to 2 if hw.cpu is 3 or 4
                     _ => core_tx.max((hw.cpu * 4) / 5),
                 };
-            }
-            ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
-        }
 
-        let key = "event_dispatcher_num";
-        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
-        if val.is_none() {
-            let core_io = (core_tx + 7) / 8;
-            ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
-        }
-
-        let union_cass = self
-            .topology()
-            .get(&host)
-            .unwrap()
-            .contains(&DeploymentPackage::Storage);
-        let key = "node_memory_limit_mb";
-        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
-        if val.is_none() {
-            let mut limit = opt_hw.map(|hw| (hw.memory * 4) / 5).unwrap_or(GB);
-            if union_cass {
-                limit /= 2;
+                ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
             }
-            assert!(limit > 0);
-            ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+
+            let key = "event_dispatcher_num";
+            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
+            if val.is_none() {
+                let core_io = (core_tx + 7) / 8;
+                ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
+            }
+
+            let union_cass = self
+                .topology()
+                .get(&host)
+                .unwrap()
+                .contains(&DeploymentPackage::Storage);
+            let key = "node_memory_limit_mb";
+            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
+            if val.is_none() {
+                let mut limit = hw.memory * 4 / 5;
+                if union_cass {
+                    limit /= 2;
+                }
+                assert!(limit > 0);
+                ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+            }
         }
 
         ini.write(cnf_path.as_path())?;
@@ -1138,47 +1125,44 @@ impl Deployment {
         ini.set(SECTION_LOCAL, "ip", Some(host.clone()));
         ini.set(SECTION_LOCAL, "port", Some(port.clone()));
 
-        let opt_hw = self.get_hardware(&host);
-        if opt_hw.is_none() {
-            warn!("hardware information for {host} is missing");
-        }
-        let key = "core_number";
-        let mut core_tx = 1; // minimal value
-        if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
-            core_tx = val;
-        } else {
-            if let Some(hw) = opt_hw {
+        if let Some(hw) = self.get_hardware(&host) {
+            let key = "core_number";
+            let mut core_tx = 1; // minimal value
+            if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
+                core_tx = val;
+            } else {
                 assert!(hw.cpu > 0);
                 core_tx = match hw.cpu {
                     1 | 2 => 1, // Set core_tx to 1 if hw.cpu is 1 or 2
                     3 | 4 => 2, // Set core_tx to 2 if hw.cpu is 3 or 4
                     _ => core_tx.max((hw.cpu * 4) / 5),
                 };
-            }
-            ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
-        }
 
-        let key = "event_dispatcher_num";
-        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
-        if val.is_none() {
-            let core_io = (core_tx + 7) / 8;
-            ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
-        }
-
-        let union_cass = self
-            .topology()
-            .get(&host)
-            .unwrap()
-            .contains(&DeploymentPackage::Storage);
-        let key = "node_memory_limit_mb";
-        let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
-        if val.is_none() {
-            let mut limit = opt_hw.map(|hw| (hw.memory * 4) / 5).unwrap_or(GB);
-            if union_cass {
-                limit /= 2;
+                ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
             }
-            assert!(limit > 0);
-            ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+
+            let key = "event_dispatcher_num";
+            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
+            if val.is_none() {
+                let core_io = (core_tx + 7) / 8;
+                ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
+            }
+
+            let union_cass = self
+                .topology()
+                .get(&host)
+                .unwrap()
+                .contains(&DeploymentPackage::Storage);
+            let key = "node_memory_limit_mb";
+            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
+            if val.is_none() {
+                let mut limit = hw.memory * 4 / 5;
+                if union_cass {
+                    limit /= 2;
+                }
+                assert!(limit > 0);
+                ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+            }
         }
 
         ini.write(cnf_path.as_path())?;

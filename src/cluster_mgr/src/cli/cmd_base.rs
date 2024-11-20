@@ -189,7 +189,6 @@ impl CmdExecutor {
             } => {
                 let mut config = DeployConfig::load(Some(topology_file))?;
                 self.resolve_version(&mut config.deployment).await?;
-                config.scan_hardware().await?;
                 self.save_deployment_config(&config, false).await?;
                 info!("CmdExecutor Save DeploymentConfig successfully.");
                 Ok(config)
@@ -315,7 +314,6 @@ impl CmdExecutor {
             Some(mut config) => {
                 config.connection.auth.check_keypair()?;
                 self.resolve_version(&mut config.deployment).await?;
-                config.scan_hardware().await?;
                 self.save_deployment_config(&config, true).await?;
                 config
             }
@@ -666,7 +664,6 @@ impl CmdExecutor {
                 deploy.cluster_name.push_str(&name_suffix);
                 if unlimited {
                     deploy.hardware = None;
-                    config.scan_hardware().await?;
                 }
                 self.save_deployment_config(&config, false).await?;
                 Ok(config)

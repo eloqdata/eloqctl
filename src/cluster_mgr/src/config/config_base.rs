@@ -619,36 +619,6 @@ impl DeployConfig {
             .collect_vec()
     }
 
-    pub async fn scan_hardware(&mut self) -> anyhow::Result<()> {
-        let hw_sh = tokio::fs::read_to_string(config_template("hardware.sh")?).await?;
-        let mut hw_info = ssh::SSHSession::parallel(
-            self.connection.ssh_auth_key().unwrap(),
-            &self.connection.username,
-            self.connection.ssh_port() as usize,
-            self.get_unique_host_list(),
-            &hw_sh,
-        )
-        .await?
-        .into_iter()
-        .map(|(host, out)| {
-            let hw = out.trim().split(',').collect::<Vec<&str>>();
-            info!("{} hardware: cpu={}, memory={}Mib", host, hw[0], hw[1]);
-            let hw = Hardware {
-                cpu: hw[0].parse().unwrap(),
-                memory: hw[1].parse().unwrap(),
-            };
-            (host, hw)
-        })
-        .collect::<HashMap<String, Hardware>>();
-
-        // user configured hardware info will override scan result
-        if let Some(hw) = self.deployment.hardware.take() {
-            hw_info.extend(hw);
-        }
-        self.deployment.hardware = Some(hw_info);
-        Ok(())
-    }
-
     pub fn abstract_info(&self) -> DeployAbstract {
         DeployAbstract {
             name: self.deployment.cluster_name.clone(),
