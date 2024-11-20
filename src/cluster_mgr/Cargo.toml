@@ -9,8 +9,9 @@ anyhow = "1"
 async-trait = "0.1"
 bytes = "1"
 cdrs-tokio = "8.1.2"
-chrono = "0.4"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4.2", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+humantime = "2.1"
 configparser = { version = "3.0.2", features = ["indexmap"] }
 crossbeam-channel = "0.5"
 dirs = "5.0.1"
@@ -46,7 +47,9 @@ strum_macros = "0.25.3"
 sysinfo = "0.30.0"
 tabled = "0.15.0"
 thiserror = "1"
+tonic = { version = "0.9", features = ["transport"] }
 tokio = { version = "1", features = ["full"] }
+prost = "0.11"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
     "alloc",
@@ -77,3 +80,5 @@ toml = "0.8.10"
 tokio-postgres = "0.7.10"
 redis = { version = "0.24", features = ["cluster", "cluster-async", "aio", "tokio-comp"] }
 
+[build-dependencies]
+tonic-build = "0.9"

@@ -3,10 +3,12 @@ use crate::config::config_base::DeployConfig;
 use crate::config::CONFIG_PATH_DIR;
 use crate::state::deployment_operation::DeploymentOperation;
 use crate::state::service_status_operation::{ServiceInstanceEntity, ServiceInstanceOperation};
+use crate::state::snapshot_info_operation::{SnapshotEntity, SnapshotOperation};
 use crate::state::state_base::{QueryCondition, StateOperation, StateOperationAny};
 use crate::state::task_status_operation::{TaskStatusEntity, TaskStatusOperation};
 use crate::StateValue;
 use anyhow::{anyhow, Result};
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use sqlx::migrate::MigrateDatabase;
 use sqlx::sqlite::{SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
@@ -22,6 +24,7 @@ use tracing::{error, info};
 pub const DEPLOYMENT_STATE: &str = "Deployment";
 pub const TASK_STATUS_STATE: &str = "TaskStatus";
 pub const SERVICE_STATUS_STATE: &str = "ServiceStatus";
+pub const SNAPSHOT_STATUS_STATE: &str = "SnapshotStatus";
 
 pub(crate) static CLUSTER_MGR_CLI_DB: &str = "cluster_mgr_state.db";
 pub(crate) static MONO_CLUSTER_MGR_SCHEMA_PATH: &str = "MONO_CLUSTER_MGR_SCHEMA_PATH";
@@ -130,6 +133,21 @@ impl StateMgr {
             .collect_vec())
     }
 
+    pub async fn list_snapshots(&self, cluster: String) -> Result<Vec<SnapshotEntity>> {
+        let snapshot_info_operation =
+            self.get_state_operation::<SnapshotOperation>(SNAPSHOT_STATUS_STATE);
+
+        let snapshot_status_entity = snapshot_info_operation
+            .load(|| -> Option<QueryCondition> {
+                Some(QueryCondition {
+                    cond_text: "cluster_name = $1".to_string(),
+                    bind_values: vec![StateValue::Varchar(cluster.to_string())],
+                })
+            })
+            .await?;
+        Ok(snapshot_status_entity)
+    }
+
     pub async fn load_deployment_from_state(&self, cluster: &str) -> Result<Option<DeployConfig>> {
         let deployment_state = self.get_state_operation::<DeploymentOperation>(DEPLOYMENT_STATE);
         let deployment_entity_vec = deployment_state
@@ -168,6 +186,32 @@ impl StateMgr {
             .get_state_operation::<ServiceInstanceOperation>(SERVICE_STATUS_STATE)
             .del(|| -> Option<QueryCondition> { Some(cond.clone()) })
             .await?;
+        Ok(rows)
+    }
+
+    pub async fn remove_snapshots(
+        &self,
+        cluster: &str,
+        cutoff_datetime: &Option<DateTime<Utc>>,
+    ) -> Result<u64> {
+        let mut cond_text = format!("cluster_name=$1 ");
+        let mut bind_values = vec![StateValue::Varchar(cluster.to_owned())];
+
+        if cutoff_datetime.is_some() {
+            cond_text.push_str(format!(" and snapshot_ts<$2").as_str());
+            bind_values.push(StateValue::Timestamp(cutoff_datetime.unwrap()))
+        }
+
+        let cond = QueryCondition {
+            cond_text: cond_text.clone(),
+            bind_values: bind_values.clone(),
+        };
+
+        let rows = self
+            .get_state_operation::<SnapshotOperation>(SNAPSHOT_STATUS_STATE)
+            .del(|| -> Option<QueryCondition> { Some(cond.clone()) })
+            .await?;
+
         Ok(rows)
     }
 
@@ -299,12 +343,19 @@ impl StateMgr {
                 Box::leak(ServiceInstanceOperation::boxed(db_conn_pool.clone()))
                     as &dyn StateOperationAny;
 
+            let snapshot_status_opt_ref =
+                Box::leak(SnapshotOperation::boxed(db_conn_pool.clone())) as &dyn StateOperationAny;
+
             let state_map: HashMap<String, Arc<&'static dyn StateOperationAny>> = HashMap::from([
                 (DEPLOYMENT_STATE.to_string(), Arc::new(deployment_opt_ref)),
                 (TASK_STATUS_STATE.to_string(), Arc::new(task_status_opt_ref)),
                 (
                     SERVICE_STATUS_STATE.to_string(),
                     Arc::new(service_status_opt_ref),
+                ),
+                (
+                    SNAPSHOT_STATUS_STATE.to_string(),
+                    Arc::new(snapshot_status_opt_ref),
                 ),
             ]);
             info!("Create StateMgr instance success.");
@@ -363,7 +414,8 @@ mod tests {
                 "t_deployment",
                 "t_task_status",
                 "t_service_instance",
-                "t_service_config"
+                "t_service_config",
+                "t_snapshot_info"
             ]
         );
     }

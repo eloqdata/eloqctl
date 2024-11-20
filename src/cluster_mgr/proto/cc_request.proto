@@ -1,0 +1,42 @@
+syntax="proto3";
+package txservice.remote;
+
+option cc_generic_services = true;
+
+service CcRpcService {
+    rpc CreateClusterBackup(CreateClusterBackupRequest) returns (ClusterBackupResponse);
+    rpc FetchClusterBackup(FetchClusterBackupRequest) returns (ClusterBackupResponse);
+}
+
+enum BackupTaskStatus{
+    Unknown = 0;
+    Inited = 1;
+    Running = 2;
+    Failed = 3;
+    Finished = 4;
+}
+
+message BackupInfo{
+    uint32 ng_id = 1;
+    BackupTaskStatus status = 2;
+}
+
+// used on all node group
+message CreateClusterBackupRequest{
+    string backup_name = 1;
+    string dest_host = 2;
+    string dest_user = 3;
+    string dest_path = 4;
+}
+
+message FetchClusterBackupRequest{
+    string backup_name = 1;
+}
+
+message ClusterBackupResponse{
+    string backup_name = 1;
+    // failed, finished, running.
+    string result = 2;
+    repeated BackupInfo backup_infos = 3;
+}
+

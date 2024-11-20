@@ -33,7 +33,17 @@ create table if not exists t_service_config
     config_id        integer     not null primary key AUTOINCREMENT,
     service_name     varchar(60) not null,
     config           text,
-    is_enable        integer     not null, -- 0:enable 0:disable
+    is_enable        integer     not null, -- 0:enable 1:disable
     create_timestamp timestamp   not null DEFAULT CURRENT_TIMESTAMP,
     update_timestamp timestamp   not null DEFAULT CURRENT_TIMESTAMP
+);
+create table if not exists t_snapshot_info
+(
+    cluster_name        varchar(200) not null,
+    snapshot_ts         timestamp    not null DEFAULT CURRENT_TIMESTAMP,
+    snapshot_status     integer      not null, -- 0:available,1:deleted,2:creating,
+    snapshot_path       varchar(500) not null,
+    dest_host           varchar(100) not null,
+    dest_user           varchar(100) not null,
+    primary key (cluster_name, snapshot_ts)
 );

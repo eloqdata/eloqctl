@@ -1,3 +1,4 @@
+mod backup_group;
 mod bootstrap_group;
 mod check_group;
 mod custom_cmd_group;
@@ -59,7 +60,8 @@ task_group_boxed! {
     {UpdateConfigTaskGroup},
     {LaunchTaskGroup},
     {RemoveTaskGroup},
-    {CheckTaskGroup}
+    {CheckTaskGroup},
+    {BackupTaskGroup}
 }
 
 pub static TASK_GROUP: OnceCell<HashMap<String, Box<dyn TaskGroup>>> = OnceCell::new();
@@ -83,6 +85,7 @@ pub fn init_task_group() -> &'static HashMap<String, Box<dyn TaskGroup>> {
             ("remove".to_string(), RemoveTaskGroup::boxed()),
             ("demo".to_string(), LaunchTaskGroup::boxed()),
             ("check".to_string(), CheckTaskGroup::boxed()),
+            ("backup".to_string(), BackupTaskGroup::boxed()),
         ])
     })
 }
