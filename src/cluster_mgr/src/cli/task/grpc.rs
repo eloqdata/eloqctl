@@ -17,7 +17,7 @@ impl GrpcClient {
         Ok(Self { client })
     }
 
-    pub async fn trigger_snapshot(
+    pub async fn trigger_backup(
         &mut self,
         backup_name: String,
         dest_host: String,

@@ -1,6 +1,6 @@
-use crate::cli::{create_upload_cluster_dir, ssh, upload_dir, HOME_DIR};
+use crate::cli::{create_upload_cluster_dir, upload_dir, HOME_DIR};
 use crate::config::connection::Connection;
-use crate::config::deployment::{Codis, Deployment, Hardware, Product, Version};
+use crate::config::deployment::{Codis, Deployment, Product, Version};
 use crate::config::log_service::LogProcessKey;
 use crate::config::{
     config_path_string, config_template, DeploymentPackage, StorageProvider,

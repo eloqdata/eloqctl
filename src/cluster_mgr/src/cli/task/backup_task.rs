@@ -6,7 +6,6 @@ use crate::state::state_base::StateOperation;
 use crate::state::state_mgr::{SNAPSHOT_STATUS_STATE, STATE_MGR};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use futures::future::join_all;
 use local_ip_address::local_ip;
 use redis::cluster::ClusterClient;
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, Value};
@@ -286,27 +285,30 @@ impl TaskExecutor for BackupTask {
                 .await;
 
                 for node in &masters {
-                    // clone for async move
-                    let node = node.clone();
+                    // Clone variables for the async block
+                    let node_ip = node.ip.clone();
+                    let node_port = node.port.clone() + 10000 + 1;
                     let dest_host = dest_host.clone();
                     let dest_user = dest_user.clone();
 
                     let backup_name = format!(
                         "snapshot-{}-{}:{}-{}",
                         self.cluster_name.clone(),
-                        node.ip,
-                        node.port + 10000 + 1,
+                        node_ip,
+                        node_port,
                         Self::pretty_string(self.snapshot_ts)
                     );
+
+                    // Create the async task
                     let task = async move {
-                        let url = format!("http://{}:{}", node.ip, node.port + 10000 + 1);
+                        let url = format!("http://{}:{}", node_ip, node_port);
                         let mut grpc_client = GrpcClient::new(&url).await.map_err(|e| {
                             error!("Failed to create GrpcClient for {}: {}", url, e);
                             anyhow::anyhow!(e)
                         })?;
 
                         let response = grpc_client
-                            .trigger_snapshot(
+                            .trigger_backup(
                                 backup_name.clone(),
                                 dest_host.clone(),
                                 dest_user.clone(),
@@ -319,12 +321,12 @@ impl TaskExecutor for BackupTask {
                             )
                             .await
                             .map_err(|e| {
-                                error!("Failed to trigger snapshot on {}: {}", url, e);
+                                error!("Failed to trigger backup on {}: {}", url, e);
                                 anyhow::anyhow!(e)
                             })?;
 
                         info!(
-                            "Triggered snapshot on {}: backup_name={}, result={}",
+                            "Triggered backup on {}: backup_name={}, result={}",
                             url, backup_name, response.result
                         );
                         Ok::<(String, String, String), anyhow::Error>((
@@ -333,33 +335,45 @@ impl TaskExecutor for BackupTask {
                             response.result,
                         ))
                     };
-                    tasks.push(task);
-                }
 
-                // Execute all tasks concurrently
-                let results = join_all(tasks).await;
-
-                let mut success = true;
-                let mut task_ids = Vec::new();
-                let mut errors = Vec::new();
-                let mut all_responses_finished = true;
-
-                for result in results {
-                    match result {
-                        Ok((url, backup_name, response_result)) => {
-                            task_ids.push((url, backup_name));
-                            if response_result.to_lowercase() != "finished" {
-                                all_responses_finished = false;
-                            }
+                    // Await the task and handle the result
+                    match task.await {
+                        Ok(result) => {
+                            tasks.push(result);
+                            break; // Break the loop on the first successful response
                         }
                         Err(e) => {
-                            success = false;
-                            errors.push(e.to_string());
+                            error!("Error triggering backup on node {}: {}", node.ip.clone(), e);
+                            continue; // Move to the next node on error
                         }
                     }
                 }
 
-                if success && all_responses_finished {
+                let mut trigger_backup_succeed = true;
+                let mut backup_finished = true;
+                let mut task_url = String::new();
+                let mut task_backup_name = String::new();
+
+                // Assert that tasks is empty if all nodes failed
+                if tasks.is_empty() {
+                    error!("All nodes failed to trigger backup.");
+                    trigger_backup_succeed = false;
+                } else {
+                    assert!(tasks.len() == 1);
+                    // Process the successful result(s)
+                    for (url, backup_name, response_result) in tasks {
+                        // Your processing logic here
+                        // For example:
+                        task_url = url;
+                        task_backup_name = backup_name;
+                        if response_result.to_lowercase() != "finished" {
+                            backup_finished = false;
+                        }
+                        // You can collect task_ids or check if all responses are finished
+                    }
+                }
+
+                if trigger_backup_succeed && backup_finished {
                     self.save_snapshot_info(self.snapshot_ts.clone(), 0, dest_host, dest_user)
                         .await;
 
@@ -368,103 +382,95 @@ impl TaskExecutor for BackupTask {
                         CMD_OUTPUT.to_string(),
                         TaskArgValue::Str("All snapshots completed successfully".to_string()),
                     );
-                } else if !success {
+                } else if !trigger_backup_succeed {
                     self.save_snapshot_info(self.snapshot_ts.clone(), 1, dest_host, dest_user)
                         .await;
 
                     task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
-                    task_result.insert("errors".to_string(), TaskArgValue::Str(errors.join("; ")));
+                    task_result.insert(
+                        "errors".to_string(),
+                        TaskArgValue::Str("trigger backup failed".to_string()),
+                    );
                     task_result.insert(
                         CMD_OUTPUT.to_string(),
-                        TaskArgValue::Str("Failed to trigger snapshot on some masters".to_string()),
+                        TaskArgValue::Str("Failed to trigger backup on some masters".to_string()),
                     );
                 } else {
-                    let mut status_check_tasks = Vec::new();
-                    for (url, backup_name) in &task_ids {
-                        let url = url.clone();
-                        let task = async move {
-                            let mut grpc_client = match GrpcClient::new(&url).await {
-                                Ok(client) => client,
-                                Err(e) => {
-                                    error!("Failed to create GrpcClient for {}: {}", url, e);
-                                    return Err(anyhow::anyhow!(e));
-                                }
-                            };
-
-                            loop {
-                                match grpc_client
-                                    .query_snapshot_status(backup_name.to_string())
-                                    .await
-                                {
-                                    Ok(response) => {
-                                        if response.result.to_lowercase() == "finished" {
-                                            info!("Snapshot finished for {}: {:#?}", url, response);
-                                            break Ok((url.clone(), true));
-                                        } else {
-                                            info!(
-                                                "Snapshot in progress for {}: {:#?}",
-                                                url, response
-                                            );
-                                            // Wait before checking again
-                                            sleep(Duration::from_secs(2)).await;
-                                        }
-                                    }
-                                    Err(e) => {
-                                        error!(
-                                            "Failed to query snapshot status for {}: {}",
-                                            url, e
-                                        );
-                                        // You can decide to retry or fail immediately
-                                        break Err(anyhow::anyhow!(e));
-                                    }
-                                }
+                    let task = async move {
+                        let url = task_url.clone();
+                        let backup_name = task_backup_name.clone();
+                        let mut grpc_client = match GrpcClient::new(&url).await {
+                            Ok(client) => client,
+                            Err(e) => {
+                                error!("Failed to create GrpcClient for {}: {}", url, e);
+                                return Err(anyhow::anyhow!(e));
                             }
                         };
-                        status_check_tasks.push(task);
-                    }
-                    // Execute all status check tasks concurrently
-                    let status_results = join_all(status_check_tasks).await;
 
-                    let mut all_finished = true;
-                    let mut status_errors = Vec::new();
-
-                    for result in status_results {
-                        match result {
-                            Ok((_url, _finished)) => {
-                                // Do nothing, already printed in the task
-                            }
-                            Err(e) => {
-                                all_finished = false;
-                                status_errors.push(e.to_string());
+                        loop {
+                            match grpc_client
+                                .query_snapshot_status(backup_name.to_string())
+                                .await
+                            {
+                                Ok(response) => {
+                                    if response.result.to_lowercase() == "finished" {
+                                        info!("Snapshot finished for {}: {:#?}", url, response);
+                                        break Ok((url.clone(), true));
+                                    } else if response.result.to_lowercase() == "failed" {
+                                        error!("backup failed");
+                                        break Err(anyhow::anyhow!("backup failed"));
+                                    } else {
+                                        info!("Snapshot in progress for {}: {:#?}", url, response);
+                                        // Wait before checking again
+                                        sleep(Duration::from_secs(2)).await;
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to query snapshot status for {}: {}", url, e);
+                                    // You can decide to retry or fail immediately
+                                    break Err(anyhow::anyhow!(e));
+                                }
                             }
                         }
-                    }
+                    };
 
-                    if all_finished {
-                        self.save_snapshot_info(self.snapshot_ts.clone(), 0, dest_host, dest_user)
+                    // Await the task and handle the result
+                    match task.await {
+                        Ok(_) => {
+                            self.save_snapshot_info(
+                                self.snapshot_ts.clone(),
+                                0,
+                                dest_host,
+                                dest_user,
+                            )
                             .await;
 
-                        task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
-                        task_result.insert(
-                            CMD_OUTPUT.to_string(),
-                            TaskArgValue::Str("All snapshots completed successfully".to_string()),
-                        );
-                    } else {
-                        self.save_snapshot_info(self.snapshot_ts.clone(), 1, dest_host, dest_user)
+                            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
+                            task_result.insert(
+                                CMD_OUTPUT.to_string(),
+                                TaskArgValue::Str(
+                                    "All snapshots completed successfully".to_string(),
+                                ),
+                            );
+                        }
+                        Err(e) => {
+                            error!("Error backup failed");
+                            self.save_snapshot_info(
+                                self.snapshot_ts.clone(),
+                                1,
+                                dest_host,
+                                dest_user,
+                            )
                             .await;
 
-                        task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
-                        task_result.insert(
-                            "errors".to_string(),
-                            TaskArgValue::Str(status_errors.join("; ")),
-                        );
-                        task_result.insert(
-                            CMD_OUTPUT.to_string(),
-                            TaskArgValue::Str(
-                                "Some snapshots failed or did not complete successfully"
-                                    .to_string(),
-                            ),
-                        );
+                            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+                            task_result
+                                .insert("errors".to_string(), TaskArgValue::Str(e.to_string()));
+                            task_result.insert(
+                                CMD_OUTPUT.to_string(),
+                                TaskArgValue::Str("Backup failed on one or more nodes".to_string()),
+                            );
+                        }
                     }
                 }
 
