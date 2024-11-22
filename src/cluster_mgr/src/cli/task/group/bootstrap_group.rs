@@ -64,8 +64,18 @@ impl TaskGroup for InstallDBTaskGroup {
             host_ports
         );
 
+        let process_only_first_host_port = config.deployment.storage_service.cassandra.is_some()
+            || config.deployment.storage_service.dynamodb.is_some();
+
+        let num_hosts_to_process = if process_only_first_host_port {
+            1
+        } else {
+            host_ports.len()
+        };
+
         let bootstrap_tasks: IndexMap<TaskId, TaskInstance> = host_ports
-            .into_iter()
+            .iter()
+            .take(num_hosts_to_process)
             .map(|host_port| {
                 let mut parts = host_port.split(':');
                 let bootstrap_host = parts.next().unwrap().to_string();
@@ -76,6 +86,7 @@ impl TaskGroup for InstallDBTaskGroup {
                     port: ssh_port as usize,
                     host: bootstrap_host,
                 };
+
                 MonographInstall::from_config(&config, install_db_host, bootstrap_port)
             })
             .flat_map(|map| map.into_iter())
