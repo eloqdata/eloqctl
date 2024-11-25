@@ -141,7 +141,22 @@ impl StateMgr {
             .load(|| -> Option<QueryCondition> {
                 Some(QueryCondition {
                     cond_text: "cluster_name = $1".to_string(),
-                    bind_values: vec![StateValue::Varchar(cluster.to_string())],
+                    bind_values: vec![StateValue::Varchar(cluster.clone())],
+                })
+            })
+            .await?;
+        Ok(snapshot_status_entity)
+    }
+
+    pub async fn get_from_snapshot_path(&self, path: String) -> Result<Vec<SnapshotEntity>> {
+        let snapshot_info_operation =
+            self.get_state_operation::<SnapshotOperation>(SNAPSHOT_STATUS_STATE);
+
+        let snapshot_status_entity = snapshot_info_operation
+            .load(|| -> Option<QueryCondition> {
+                Some(QueryCondition {
+                    cond_text: "snapshot_path  = $1".to_string(),
+                    bind_values: vec![StateValue::Varchar(path.clone())],
                 })
             })
             .await?;

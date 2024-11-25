@@ -292,6 +292,24 @@ pub enum BackupCommand {
         )]
         before: Option<chrono::DateTime<chrono::Utc>>,
     },
+    #[strum(serialize = "dump-aof")]
+    DumpAOF {
+        #[arg(long)]
+        rocksdb_path: String,
+        #[arg(long)]
+        output_file_dir: String,
+        #[arg(long)]
+        thread_count: Option<String>,
+    },
+    #[strum(serialize = "dump-rdb")]
+    DumpRDB {
+        #[arg(long)]
+        rocksdb_path: String,
+        #[arg(long)]
+        output_file_dir: String,
+        #[arg(long)]
+        thread_count: Option<String>,
+    },
 }
 
 pub const HOME_DIR: &str = "ELOQCTL_HOME";

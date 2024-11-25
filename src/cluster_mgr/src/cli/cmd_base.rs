@@ -466,6 +466,8 @@ impl CmdExecutor {
                     println!("available snapshots: {:#?}", success_task_vec);
                 }
                 BackupCommand::Remove { .. } => {}
+                BackupCommand::DumpAOF { .. } => {}
+                BackupCommand::DumpRDB { .. } => {}
             },
             _ => {}
         }

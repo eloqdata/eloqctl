@@ -2,7 +2,7 @@ use crate::cli::task::backup_task::BackupTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{BackupTaskGroup, TaskGroup};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
-use crate::cli::SubCommand;
+use crate::cli::{BackupCommand, SubCommand};
 use crate::config::config_base::DeployConfig;
 use crate::config::DeploymentPackage;
 use crate::state::state_mgr::STATE_MGR;
@@ -24,7 +24,7 @@ impl TaskGroup for BackupTaskGroup {
         match &cmd {
             SubCommand::Backup { cluster, command } => {
                 match command {
-                    crate::cli::BackupCommand::Start {
+                    BackupCommand::Start {
                         path,
                         password,
                         dest_host,
@@ -32,6 +32,7 @@ impl TaskGroup for BackupTaskGroup {
                     } => {
                         let snapshot_ts = Utc::now();
 
+                        // Q? send task to all leader host?
                         let mut mkdir_remote_dir: IndexMap<TaskId, TaskInstance> =
                             Default::default();
                         let full_path = format!(
@@ -86,10 +87,10 @@ impl TaskGroup for BackupTaskGroup {
                         barrier.push(1);
                         executable.insert(task_id, task_instance);
                     }
-                    crate::cli::BackupCommand::List {} => {
+                    BackupCommand::List {} => {
                         // do the work in CmdExecutor::run()::finishing()
                     }
-                    crate::cli::BackupCommand::Remove { until, before } => {
+                    BackupCommand::Remove { until, before } => {
                         let success_task_entity =
                             STATE_MGR.list_snapshots(cluster.to_string()).await?;
 
@@ -147,6 +148,86 @@ impl TaskGroup for BackupTaskGroup {
 
                         barrier.push(rm_remote_dir.len());
                         executable.extend(rm_remote_dir);
+                    }
+                    BackupCommand::DumpAOF {
+                        rocksdb_path,
+                        output_file_dir,
+                        thread_count,
+                    } => {
+                        let success_task_entity = STATE_MGR
+                            .get_from_snapshot_path(rocksdb_path.to_string())
+                            .await?;
+
+                        let tmp_vec = success_task_entity
+                            .iter()
+                            .map(|snapshot_info_entity| {
+                                (
+                                    snapshot_info_entity.dest_host.clone(),
+                                    snapshot_info_entity.dest_user.clone(),
+                                )
+                            })
+                            .collect_vec();
+
+                        let (dest_host, dest_user) = tmp_vec.first().unwrap();
+                        let mut dump_task: IndexMap<TaskId, TaskInstance> = Default::default();
+                        let (id, instance) = ExecCustomCommand::from_path(
+                            &cmd,
+                            format!("dump to aof"),
+                            format!(
+                                r#"bash -c 'for i in $(ls -1 "{}"); do "{}"/bin/eloqkv_to_aof --rocksdb_path "{}/$i" --output_file_dir "{}/$i" --thread_count "{}"; done '"#,
+                                rocksdb_path,
+                                config.deployment.tx_srv_home(),
+                                rocksdb_path,
+                                output_file_dir,
+                                thread_count.clone().unwrap_or_else(|| "1".to_string())
+                            ),
+                            &config,
+                            &Some(dest_host.to_string()),
+                            &Some(dest_user.to_string()),
+                        );
+                        dump_task.insert(id, instance);
+                        barrier.push(dump_task.len());
+                        executable.extend(dump_task);
+                    }
+                    BackupCommand::DumpRDB {
+                        rocksdb_path,
+                        output_file_dir,
+                        thread_count,
+                    } => {
+                        let success_task_entity = STATE_MGR
+                            .get_from_snapshot_path(rocksdb_path.to_string())
+                            .await?;
+
+                        let tmp_vec = success_task_entity
+                            .iter()
+                            .map(|snapshot_info_entity| {
+                                (
+                                    snapshot_info_entity.dest_host.clone(),
+                                    snapshot_info_entity.dest_user.clone(),
+                                )
+                            })
+                            .collect_vec();
+
+                        let (dest_host, dest_user) = tmp_vec.first().unwrap();
+                        let mut dump_task: IndexMap<TaskId, TaskInstance> = Default::default();
+                        let (id, instance) = ExecCustomCommand::from_path(
+                            &cmd,
+                            format!("dump to rdb"),
+                            format!(
+                                r#"bash -c 'for i in $(ls -1 "{}"); do "{}"/bin/eloqkv_to_rdb --rocksdb_path "{}/$i" --output_file "{}/$i.rdb" --thread_count "{}"; done '"#,
+                                rocksdb_path,
+                                config.deployment.tx_srv_home(),
+                                rocksdb_path,
+                                output_file_dir,
+                                thread_count.clone().unwrap_or_else(|| "1".to_string())
+                            ),
+                            &config,
+                            &Some(dest_host.to_string()),
+                            &Some(dest_user.to_string()),
+                        );
+                        dump_task.insert(id, instance);
+                        barrier.push(dump_task.len());
+                        executable.extend(dump_task);
                     }
                 }
             }
