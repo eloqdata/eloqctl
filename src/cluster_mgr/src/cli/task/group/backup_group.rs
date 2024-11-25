@@ -174,7 +174,8 @@ impl TaskGroup for BackupTaskGroup {
                             &cmd,
                             format!("dump to aof"),
                             format!(
-                                r#"bash -c 'for i in $(ls -1 "{}"); do "{}"/bin/eloqkv_to_aof --rocksdb_path "{}/$i" --output_file_dir "{}/$i" --thread_count "{}"; done '"#,
+                                r#"bash -c 'export LD_LIBRARY_PATH={}/lib; for i in $(ls -1 "{}"); do "{}"/bin/eloqkv_to_aof --rocksdb_path "{}/$i" --output_file_dir "{}/$i" --thread_count "{}"; done '"#,
+                                config.deployment.tx_srv_home(),
                                 rocksdb_path,
                                 config.deployment.tx_srv_home(),
                                 rocksdb_path,
@@ -214,7 +215,8 @@ impl TaskGroup for BackupTaskGroup {
                             &cmd,
                             format!("dump to rdb"),
                             format!(
-                                r#"bash -c 'for i in $(ls -1 "{}"); do "{}"/bin/eloqkv_to_rdb --rocksdb_path "{}/$i" --output_file "{}/$i.rdb" --thread_count "{}"; done '"#,
+                                r#"bash -c 'export LD_LIBRARY_PATH={}/lib; for i in $(ls -1 "{}"); do "{}"/bin/eloqkv_to_rdb --rocksdb_path "{}/$i" --output_file "{}/$i.rdb" --thread_count "{}"; done '"#,
+                                config.deployment.tx_srv_home(),
                                 rocksdb_path,
                                 config.deployment.tx_srv_home(),
                                 rocksdb_path,
