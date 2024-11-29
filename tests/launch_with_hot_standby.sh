@@ -1,7 +1,7 @@
 #!/bin/bash
 set -exo pipefail
 
-echo ">>> Test Launch command"
+echo ">>> Test standby"
 
 MY_IP=$(ip -4 addr | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | sed -n '2p')
 sed -i "s|127.0.0.1|${MY_IP}|g" "${ELOQCTL_HOME}/config/examples/eloqkv_rocksdb_standby.yaml"
@@ -40,11 +40,15 @@ wait_for_cluster_ready() {
 }
 
 wait_for_cluster_ready
+$CLIENT_6379 cluster slots
+
 
 # Function to run a command and check for errors
 run_counter_command() {
+    local EXPECTED_RESULT="${@: -1}"       # Get the last argument as expected result
+    local CMD=( "${@:1:$#-1}" )            # All arguments except the last one form the command
     local OUTPUT
-    OUTPUT=$("$@")
+    OUTPUT=$("${CMD[@]}")
     local STATUS=$?
 
     # Convert OUTPUT to lowercase
@@ -52,27 +56,37 @@ run_counter_command() {
     local OUTPUT_LOWER=${OUTPUT,,}
 
     if [[ $STATUS -ne 0 ]] || ! [[ $OUTPUT_LOWER =~ ^[0-9]+$ ]]; then
-        echo "Error executing command: $*"
+        echo "Error executing command: ${CMD[*]}"
         echo "Output: $OUTPUT"
+        exit 1
+    fi
+
+    # Compare OUTPUT with EXPECTED_RESULT
+    if [[ "$OUTPUT" != "$EXPECTED_RESULT" ]]; then
+        echo "Output does not match expected result."
+        echo "Expected: $EXPECTED_RESULT"
+        echo "Actual: $OUTPUT"
         exit 1
     fi
 }
 
-
 # test if the leader set in config is still the leader
-run_counter_command $CLIENT_6379 incr mycounter
-run_counter_command $CLIENT_6379 get mycounter
-run_counter_command $CLIENT_6379 incr mycounter
-run_counter_command $CLIENT_6379 get mycounter
+run_counter_command $CLIENT_6379 incr mycounter 1
+run_counter_command $CLIENT_6379 get mycounter 1
+run_counter_command $CLIENT_6379 incr mycounter 2
+run_counter_command $CLIENT_6379 get mycounter 2
+
 
 eloqctl restart eloqkv_with_hot_standby
 wait_for_cluster_ready
+$CLIENT_6379 cluster slots
+
 
 # test if the leader set in config is still the leader
-run_counter_command $CLIENT_6379 incr mycounter
-run_counter_command $CLIENT_6379 get mycounter
-run_counter_command $CLIENT_6379 incr mycounter
-run_counter_command $CLIENT_6379 get mycounter
+run_counter_command $CLIENT_6379 incr mycounter 3
+run_counter_command $CLIENT_6379 get mycounter 3
+run_counter_command $CLIENT_6379 incr mycounter 4
+run_counter_command $CLIENT_6379 get mycounter 4
 
 eloqctl stop eloqkv_with_hot_standby --all
 eloqctl inspect eloqkv_with_hot_standby
@@ -80,4 +94,4 @@ eloqctl inspect eloqkv_with_hot_standby
 eloqctl list
 eloqctl remove eloqkv_with_hot_standby
 
-echo "Launch tests PASSED !!!"
+echo "standby tests PASSED !!!"

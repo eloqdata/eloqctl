@@ -1,10 +1,12 @@
-mod cc_request {
+pub(crate) mod cc_request {
     tonic::include_proto!("txservice.remote"); // The package name from your .proto file
 }
 use crate::cli::task::grpc::cc_request::{
-    ClusterBackupResponse, CreateClusterBackupRequest, FetchClusterBackupRequest,
+    CheckCkptStatusRequest, CheckCkptStatusResponse, ClusterBackupResponse,
+    CreateClusterBackupRequest, FetchClusterBackupRequest, NotifyShutdownCkptRequest,
+    NotifyShutdownCkptResponse,
 };
-use cc_request::cc_rpc_service_client::CcRpcServiceClient;
+use cc_request::{cc_rpc_service_client::CcRpcServiceClient, CkptStatus};
 use tonic::transport::Channel;
 
 pub struct GrpcClient {
@@ -25,23 +27,77 @@ impl GrpcClient {
         dest_path: String,
     ) -> Result<ClusterBackupResponse, tonic::Status> {
         let request = tonic::Request::new(CreateClusterBackupRequest {
-            backup_name,
+            backup_name: backup_name.clone(),
             dest_host,
             dest_user,
             dest_path,
         });
 
         let response = self.client.create_cluster_backup(request).await?;
-        Ok(response.into_inner())
+        let response_inner = response.into_inner();
+
+        if response_inner.result == "failed" {
+            Err(tonic::Status::internal(format!(
+                "Backup creation failed for '{}'",
+                backup_name
+            )))
+        } else {
+            Ok(response_inner)
+        }
     }
 
     pub async fn query_snapshot_status(
         &mut self,
         backup_name: String,
     ) -> Result<ClusterBackupResponse, tonic::Status> {
-        let request = tonic::Request::new(FetchClusterBackupRequest { backup_name });
+        let request = tonic::Request::new(FetchClusterBackupRequest {
+            backup_name: backup_name.clone(),
+        });
 
         let response = self.client.fetch_cluster_backup(request).await?;
-        Ok(response.into_inner())
+        let response_inner = response.into_inner();
+
+        if response_inner.result == "failed" {
+            Err(tonic::Status::internal(format!(
+                "Failed to fetch backup status for '{}'",
+                backup_name
+            )))
+        } else {
+            Ok(response_inner)
+        }
+    }
+
+    pub async fn trigger_ckpt(&mut self) -> Result<NotifyShutdownCkptResponse, tonic::Status> {
+        let request = tonic::Request::new(NotifyShutdownCkptRequest {});
+
+        let response = self.client.notify_shutdown_ckpt(request).await?;
+
+        let response_inner = response.into_inner();
+
+        if response_inner.error {
+            Err(tonic::Status::unknown(
+                "An error occurred during shutdown checkpoint",
+            ))
+        } else {
+            Ok(response_inner)
+        }
+    }
+
+    pub async fn query_ckpt_status(
+        &mut self,
+        trigger_ckpt_ts: u64,
+    ) -> Result<CheckCkptStatusResponse, tonic::Status> {
+        let request = tonic::Request::new(CheckCkptStatusRequest { trigger_ckpt_ts });
+
+        let response = self.client.check_ckpt_status(request).await?;
+
+        let response_inner = response.into_inner();
+
+        match CkptStatus::from_i32(response_inner.status) {
+            Some(CkptStatus::CkptFailed) => Err(tonic::Status::unknown(
+                "An error occurred during shutdown checkpoint",
+            )),
+            _ => Ok(response_inner),
+        }
     }
 }

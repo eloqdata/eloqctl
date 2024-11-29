@@ -65,8 +65,10 @@ $CLIENT_6379 cluster slots
 
 # Function to run a command and check for errors
 run_counter_command() {
+    local EXPECTED_RESULT="${@: -1}"       # Get the last argument as expected result
+    local CMD=( "${@:1:$#-1}" )            # All arguments except the last one form the command
     local OUTPUT
-    OUTPUT=$("$@")
+    OUTPUT=$("${CMD[@]}")
     local STATUS=$?
 
     # Convert OUTPUT to lowercase
@@ -74,17 +76,26 @@ run_counter_command() {
     local OUTPUT_LOWER=${OUTPUT,,}
 
     if [[ $STATUS -ne 0 ]] || ! [[ $OUTPUT_LOWER =~ ^[0-9]+$ ]]; then
-        echo "Error executing command: $*"
+        echo "Error executing command: ${CMD[*]}"
         echo "Output: $OUTPUT"
+        exit 1
+    fi
+
+    # Compare OUTPUT with EXPECTED_RESULT
+    if [[ "$OUTPUT" != "$EXPECTED_RESULT" ]]; then
+        echo "Output does not match expected result."
+        echo "Expected: $EXPECTED_RESULT"
+        echo "Actual: $OUTPUT"
         exit 1
     fi
 }
 
+
 # test if the leader set in config is still the leader
-run_counter_command $CLIENT_6379 incr mycounter
-run_counter_command $CLIENT_6379 get mycounter
-run_counter_command $CLIENT_6379 incr mycounter
-run_counter_command $CLIENT_6379 get mycounter
+run_counter_command $CLIENT_6379 incr mycounter 1
+run_counter_command $CLIENT_6379 get mycounter 1
+run_counter_command $CLIENT_6379 incr mycounter 2
+run_counter_command $CLIENT_6379 get mycounter 2
 
 echo "Kill a standby node..."
 ps uxwe -u $USER | grep /home/$USER/eloqkv_with_hot_standby/EloqKV/bin/eloqkv | grep 6389 | grep -v grep |  awk '{print $2}' | xargs -r kill -9 
@@ -95,10 +106,10 @@ wait_for_cluster_ready
 $CLIENT_6389 -e cluster slots
 
 # test if the leader set in config is still the leader
-run_counter_command $CLIENT_6379 incr mycounter
-run_counter_command $CLIENT_6379 get mycounter
-run_counter_command $CLIENT_6379 incr mycounter
-run_counter_command $CLIENT_6379 get mycounter
+run_counter_command $CLIENT_6379 incr mycounter 3
+run_counter_command $CLIENT_6379 get mycounter 3
+run_counter_command $CLIENT_6379 incr mycounter 4
+run_counter_command $CLIENT_6379 get mycounter 4
 
 
 
@@ -141,22 +152,23 @@ test_read() {
             esac
 
             # Check if the output is a valid number
-            if [[ "$GET_OUTPUT" =~ ^[0-9]+$ ]]; then
+            if [[ "$GET_OUTPUT" == "4" ]]; then
                 set -ex
-                echo "$PORT is able to read."
+                echo "$PORT is able to read: $GET_OUTPUT."
                 break
             else
                 echo "Waiting for $PORT to be ready... ($GET_OUTPUT)"
                 sleep $RETRY_DELAY
                 ((COUNT++))
+
+                if [ $COUNT -ge $MAX_RETRIES ]; then
+                    set -ex
+                    echo "$PORT is not able to read after $MAX_RETRIES retries."
+                    exit 1
+                fi
             fi
         done
 
-        if [ $COUNT -ge $MAX_RETRIES ]; then
-            set -ex
-            echo "$PORT is not able to read after $MAX_RETRIES retries."
-            exit 1
-        fi
     done
 
     echo "All specified Redis clients are able to read."

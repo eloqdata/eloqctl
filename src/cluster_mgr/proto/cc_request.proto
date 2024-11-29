@@ -6,6 +6,8 @@ option cc_generic_services = true;
 service CcRpcService {
     rpc CreateClusterBackup(CreateClusterBackupRequest) returns (ClusterBackupResponse);
     rpc FetchClusterBackup(FetchClusterBackupRequest) returns (ClusterBackupResponse);
+    rpc NotifyShutdownCkpt(NotifyShutdownCkptRequest) returns (NotifyShutdownCkptResponse);
+    rpc CheckCkptStatus(CheckCkptStatusRequest) returns (CheckCkptStatusResponse);
 }
 
 enum BackupTaskStatus{
@@ -40,3 +42,23 @@ message ClusterBackupResponse{
     repeated BackupInfo backup_infos = 3;
 }
 
+message NotifyShutdownCkptRequest {}
+message NotifyShutdownCkptResponse {
+    bool error = 1;
+    uint64 trigger_ckpt_ts = 2;
+}
+
+
+enum CkptStatus{
+    CkptUnknown = 0;
+    CkptRunning = 1;
+    CkptFailed = 2;
+    CkptFinished = 3;
+}
+
+message CheckCkptStatusRequest {
+    uint64 trigger_ckpt_ts = 1;
+}
+message CheckCkptStatusResponse {
+    CkptStatus status = 1;
+}

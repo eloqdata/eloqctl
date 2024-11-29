@@ -1,17 +1,26 @@
+use crate::cli::task::grpc::cc_request::{
+    CheckCkptStatusResponse, CkptStatus, NotifyShutdownCkptResponse,
+};
+use crate::cli::task::grpc::GrpcClient;
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId,
 };
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::task_return_value;
+use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
+use futures::future::join_all;
 use redis::cluster::ClusterClient;
 use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, Value};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::time::Duration;
 use tokio::sync::watch;
+use tokio::time::sleep;
 use tracing::{error, info};
 
+// only used in stop cluster with standby
 #[derive(Clone, Debug)]
 pub struct RedisOpTask {
     task_id: TaskId,
@@ -65,6 +74,31 @@ impl Hash for NodeInfo {
 pub struct ClusterNodes {
     pub masters: Vec<NodeInfo>,
     pub replicas: Vec<NodeInfo>,
+}
+
+fn parse_node_info(value: &Value) -> RedisResult<NodeInfo> {
+    let node_info = match value {
+        Value::Bulk(node_info) => node_info,
+        _ => {
+            return Err(RedisError::from((
+                ErrorKind::TypeError,
+                "Expected bulk array in node info",
+            )))
+        }
+    };
+
+    if node_info.len() < 2 {
+        return Err(RedisError::from((
+            ErrorKind::TypeError,
+            "Node info array too short",
+        )));
+    }
+
+    let ip = String::from_redis_value(&node_info[0])?;
+    let port = u16::from_redis_value(&node_info[1])?;
+    let node_info = NodeInfo { ip, port };
+
+    Ok(node_info)
 }
 
 fn parse_cluster_slots(value: Value) -> RedisResult<Vec<ClusterNodes>> {
@@ -121,30 +155,68 @@ fn parse_cluster_slots(value: Value) -> RedisResult<Vec<ClusterNodes>> {
     Ok(cluster_slots)
 }
 
-fn parse_node_info(value: &Value) -> RedisResult<NodeInfo> {
-    // Node info is an array
-    let node_info = match value {
-        Value::Bulk(node_info) => node_info,
-        _ => {
-            return Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Expected bulk array in node info",
-            )))
+const MAX_RETRIES: usize = 500;
+const RETRY_DELAY: Duration = Duration::from_secs(2);
+
+async fn query_ckpt_status_with_retry(
+    master: NodeInfo,
+    trigger_ckpt_ts: u64,
+    max_retries: usize,
+    retry_delay: Duration,
+) -> Result<CheckCkptStatusResponse> {
+    let ip = &master.ip;
+    let port = master.port + 10000 + 1;
+    let url = format!("http://{}:{}", ip, port);
+    let mut retries = 0;
+
+    loop {
+        let mut grpc_client = GrpcClient::new(&url).await.map_err(|e| {
+            error!("Failed to create GrpcClient for {}: {}", url, e);
+            e
+        })?;
+
+        let response = grpc_client
+            .query_ckpt_status(trigger_ckpt_ts)
+            .await
+            .map_err(|e| {
+                error!("Failed to query ckpt for {}: {}", url, e);
+                e
+            })?;
+
+        match CkptStatus::from_i32(response.status) {
+            Some(CkptStatus::CkptFinished) => {
+                info!("Checkpoint finished for {}: {:#?}", url, response);
+                return Ok(response);
+            }
+            Some(CkptStatus::CkptRunning) => {
+                if retries >= max_retries {
+                    error!(
+                        "Maximum retries reached for {}. Checkpoint is still running.",
+                        url
+                    );
+                    return Err(anyhow!(
+                        "Checkpoint is still running after max retries for {}",
+                        url
+                    ));
+                } else {
+                    retries += 1;
+                    info!(
+                        "Checkpoint is still running for {}. Retrying... (Attempt {}/{})",
+                        url, retries, max_retries
+                    );
+                    sleep(retry_delay).await;
+                }
+            }
+            Some(CkptStatus::CkptFailed) => {
+                error!("Checkpoint failed for {}: {:#?}", url, response);
+                return Err(anyhow!("Checkpoint failed for {}", url));
+            }
+            _ => {
+                error!("Unexpected checkpoint status for {}: {:#?}", url, response);
+                return Err(anyhow!("Unexpected checkpoint status for {}", url));
+            }
         }
-    };
-
-    if node_info.len() < 2 {
-        return Err(RedisError::from((
-            ErrorKind::TypeError,
-            "Node info array too short",
-        )));
     }
-
-    let ip = String::from_redis_value(&node_info[0])?;
-    let port = u16::from_redis_value(&node_info[1])?;
-    let node_info = NodeInfo { ip, port };
-
-    Ok(node_info)
 }
 
 #[async_trait]
@@ -222,27 +294,119 @@ impl TaskExecutor for RedisOpTask {
         // Processing the result
         match result {
             Ok(value) => {
-                // Parse the cluster slots
                 let cluster_nodes = parse_cluster_slots(value)?;
 
-                // Use HashSet to collect unique masters and replicas
-                use std::collections::HashSet;
-
-                let mut masters = HashSet::new();
-                let mut replicas = HashSet::new();
+                let mut unique_masters = HashSet::new();
+                let mut unique_replicas = HashSet::new();
 
                 for slot in &cluster_nodes {
                     for master in &slot.masters {
-                        masters.insert(master.clone());
+                        unique_masters.insert(master.clone());
                     }
                     for replica in &slot.replicas {
-                        replicas.insert(replica.clone());
+                        unique_replicas.insert(replica.clone());
                     }
                 }
 
+                // TODO(ZX) open this after merge related mono_redis and tx_service pr
+                // let mut trigger_ckpt_tasks = Vec::new();
+                // for master in &unique_masters {
+                //     let ip = &master.ip;
+                //     let port = master.port + 10000 + 1;
+
+                //     let task = async move {
+                //         let url = format!("http://{}:{}", ip, port);
+                //         let mut grpc_client = GrpcClient::new(&url).await.map_err(|e| {
+                //             error!("Failed to create GrpcClient for {}: {}", url, e);
+                //             e
+                //         })?;
+                //         let response = grpc_client.trigger_ckpt().await.map_err(|e| {
+                //             error!("Failed to trigger ckpt for {}: {}", url, e);
+                //             e
+                //         })?;
+                //         info!("Successfully trigger ckpt for {}: {:#?}", url, response);
+                //         Ok(response)
+                //     };
+                //     trigger_ckpt_tasks.push(task);
+                // }
+                // // Execute all tasks concurrently
+                // let trigger_responses: Vec<std::result::Result<NotifyShutdownCkptResponse, Error>> =
+                //     join_all(trigger_ckpt_tasks).await;
+
+                // let mut has_error = false;
+                // let mut error_message = String::new();
+                // let mut trigger_ckpt_ts_list = Vec::new();
+
+                // for result in trigger_responses {
+                //     match result {
+                //         Ok(response) => {
+                //             if response.error {
+                //                 has_error = true;
+                //                 error_message = "NotifyShutdownResponse error".to_string();
+                //                 break;
+                //             } else {
+                //                 let ts = response.trigger_ckpt_ts;
+                //                 trigger_ckpt_ts_list.push(ts);
+                //             }
+                //         }
+                //         Err(e) => {
+                //             has_error = true;
+                //             error_message = e.to_string();
+                //             break;
+                //         }
+                //     }
+                // }
+
+                // if has_error {
+                //     task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+                //     task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(error_message));
+                //     return Ok(Some(task_result));
+                // }
+
+                // // Now, implement the retry logic for query_ckpt_status
+                // let mut query_ckpt_tasks = Vec::new();
+                // for (i, master) in unique_masters.iter().enumerate() {
+                //     let master = master.clone();
+                //     let trigger_ckpt_ts = trigger_ckpt_ts_list[i];
+
+                //     let task = query_ckpt_status_with_retry(
+                //         master,
+                //         trigger_ckpt_ts,
+                //         MAX_RETRIES,
+                //         RETRY_DELAY,
+                //     );
+                //     query_ckpt_tasks.push(task);
+                // }
+
+                // // Execute all tasks concurrently
+                // let query_responses: Vec<Result<CheckCkptStatusResponse>> =
+                //     join_all(query_ckpt_tasks).await;
+
+                // let mut has_error = false;
+                // let mut error_message = String::new();
+
+                // for result in query_responses {
+                //     match result {
+                //         Ok(_response) => {
+                //             // Checkpoint finished successfully
+                //         }
+                //         Err(e) => {
+                //             has_error = true;
+                //             error_message = e.to_string();
+                //             break;
+                //         }
+                //     }
+                // }
+
+                // if has_error {
+                //     task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+                //     task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(error_message));
+                //     return Ok(Some(task_result));
+                // }
+
                 // Convert HashSets to Vectors
-                let unique_masters: Vec<NodeInfo> = masters.into_iter().collect();
-                let unique_replicas: Vec<NodeInfo> = replicas.into_iter().collect();
+                let unique_masters: Vec<NodeInfo> = unique_masters.into_iter().collect();
+                let unique_replicas: Vec<NodeInfo> = unique_replicas.into_iter().collect();
 
                 // For debugging: print the unique masters and replicas
                 for master in &unique_masters {
@@ -264,7 +428,9 @@ impl TaskExecutor for RedisOpTask {
 
                 // Send the cluster_nodes to the receiver
                 if let Err(err) = self.sender.send(cluster_nodes) {
-                    error!("Failed to send cluster nodes: {}", err);
+                    error!("Failed to send cluster nodes result to channel: {}", err);
+                    task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+                    task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(err.to_string()));
                 }
             }
             Err(err) => {

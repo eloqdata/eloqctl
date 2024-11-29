@@ -416,13 +416,12 @@ impl TaskExecutor for BackupTask {
                                     if response.result.to_lowercase() == "finished" {
                                         info!("Snapshot finished for {}: {:#?}", url, response);
                                         break Ok((url.clone(), true));
-                                    } else if response.result.to_lowercase() == "failed" {
-                                        error!("backup failed");
-                                        break Err(anyhow::anyhow!("backup failed"));
-                                    } else {
+                                    } else if response.result.to_lowercase() == "running" {
                                         info!("Snapshot in progress for {}: {:#?}", url, response);
                                         // Wait before checking again
                                         sleep(Duration::from_secs(2)).await;
+                                    } else {
+                                        unreachable!()
                                     }
                                 }
                                 Err(e) => {

@@ -1,14 +1,17 @@
 #!/bin/bash
 set -exo pipefail
 
-echo ">>> Test standby with voter"
+echo ">>> Test multiple node group"
+
+sed -i "s|enable_data_store=false|enable_data_store=true|" ${ELOQCTL_HOME}/config/EloqKv.ini
 
 MY_IP=$(ip -4 addr | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | sed -n '2p')
-sed -i "s|127.0.0.1|${MY_IP}|g" "${ELOQCTL_HOME}/config/examples/eloqkv_rocksdb_standby_with_voter.yaml"
+sed -i "s|127.0.0.1|${MY_IP}|g" "${ELOQCTL_HOME}/config/examples/eloqkv_rocksdb_multiple_ng.yaml"
 
-eloqctl launch "${ELOQCTL_HOME}/config/examples/eloqkv_rocksdb_standby_with_voter.yaml" -s
-CLIENT_6379=$(eloqctl -q connect eloqkv_with_hot_standby_and_voter)
+eloqctl launch "${ELOQCTL_HOME}/config/examples/eloqkv_rocksdb_multiple_ng.yaml" -s
+CLIENT_6379=$(eloqctl -q connect eloqkv_with_hot_standby)
 CLIENT_6389="${CLIENT_6379/6379/6389}"
+CLIENT_6399="${CLIENT_6379/6379/6399}"
 
 wait_for_cluster_ready() {
     set +ex
@@ -20,8 +23,9 @@ wait_for_cluster_ready() {
     while [ $COUNT -lt $MAX_RETRIES ]; do
         $CLIENT_6379 set k v
         GET_OUTPUT_1=$($CLIENT_6389 get k)
+        GET_OUTPUT_2=$($CLIENT_6399 get k)
         
-        if [[ "$GET_OUTPUT_1" == "v" ]]; then
+        if [[ "$GET_OUTPUT_1" == "v" && "$GET_OUTPUT_2" == "v" ]]; then
             $CLIENT_6379 set k q
             set -ex
             echo "Cluster is ready."
@@ -36,9 +40,9 @@ wait_for_cluster_ready() {
     echo "Cluster is not ready after $MAX_RETRIES retries."
     exit 1
 }
+
 wait_for_cluster_ready
 $CLIENT_6379 cluster slots
-
 
 
 # Function to run a command and check for errors
@@ -68,14 +72,13 @@ run_counter_command() {
     fi
 }
 
-
 # test if the leader set in config is still the leader
 run_counter_command $CLIENT_6379 incr mycounter 1
 run_counter_command $CLIENT_6379 get mycounter 1
 run_counter_command $CLIENT_6379 incr mycounter 2
 run_counter_command $CLIENT_6379 get mycounter 2
 
-eloqctl restart eloqkv_with_hot_standby_and_voter
+eloqctl restart eloqkv_with_hot_standby
 wait_for_cluster_ready
 $CLIENT_6379 cluster slots
 
@@ -86,10 +89,10 @@ run_counter_command $CLIENT_6379 get mycounter 3
 run_counter_command $CLIENT_6379 incr mycounter 4
 run_counter_command $CLIENT_6379 get mycounter 4
 
-eloqctl stop eloqkv_with_hot_standby_and_voter --all
-eloqctl inspect eloqkv_with_hot_standby_and_voter
+# eloqctl stop eloqkv_with_hot_standby --all
+# eloqctl inspect eloqkv_with_hot_standby
 
-eloqctl list
-eloqctl remove eloqkv_with_hot_standby_and_voter
+# eloqctl list
+# eloqctl remove eloqkv_with_hot_standby
 
-echo "standby with voter tests PASSED !!!"
+echo "multiple node group tests PASSED !!!"

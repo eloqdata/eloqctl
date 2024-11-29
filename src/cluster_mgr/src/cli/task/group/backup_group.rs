@@ -32,7 +32,6 @@ impl TaskGroup for BackupTaskGroup {
                     } => {
                         let snapshot_ts = Utc::now();
 
-                        // Q? send task to all leader host?
                         let mut mkdir_remote_dir: IndexMap<TaskId, TaskInstance> =
                             Default::default();
                         let full_path = format!(
@@ -154,39 +153,56 @@ impl TaskGroup for BackupTaskGroup {
                         output_file_dir,
                         thread_count,
                     } => {
+                        // Retrieve the snapshot info entities from the state manager
                         let success_task_entity = STATE_MGR
                             .get_from_snapshot_path(rocksdb_path.to_string())
                             .await?;
 
-                        let tmp_vec = success_task_entity
-                            .iter()
-                            .map(|snapshot_info_entity| {
-                                (
-                                    snapshot_info_entity.dest_host.clone(),
-                                    snapshot_info_entity.dest_user.clone(),
-                                )
-                            })
-                            .collect_vec();
+                        // Get the first snapshot info entity
+                        let snapshot_info = match success_task_entity.first() {
+                            Some(entity) => entity,
+                            None => {
+                                return Err(anyhow::anyhow!(
+                                    "No snapshot info entities found for path: {}",
+                                    rocksdb_path
+                                ));
+                            }
+                        };
 
-                        let (dest_host, dest_user) = tmp_vec.first().unwrap();
+                        let dest_host_option = Some(snapshot_info.dest_host.clone());
+                        let dest_user_option = Some(snapshot_info.dest_user.clone());
+
                         let mut dump_task: IndexMap<TaskId, TaskInstance> = Default::default();
+
+                        // Prepare the command parameters
+                        let tx_srv_home = config.deployment.tx_srv_home();
+                        let thread_count = thread_count.as_deref().unwrap_or("1");
+
+                        // Construct the command string
+                        let command = format!(
+                            r#"bash -c 'export LD_LIBRARY_PATH={}/lib; for i in $(ls -1 "{}"); do "{}/bin/eloqkv_to_aof" --rocksdb_path "{}/$i" --output_file_dir "{}/$i" --thread_count "{}"; done'"#,
+                            tx_srv_home,
+                            rocksdb_path,
+                            tx_srv_home,
+                            rocksdb_path,
+                            output_file_dir,
+                            thread_count
+                        );
+
+                        // Create the task instance
                         let (id, instance) = ExecCustomCommand::from_path(
                             &cmd,
                             format!("dump to aof"),
-                            format!(
-                                r#"bash -c 'export LD_LIBRARY_PATH={}/lib; for i in $(ls -1 "{}"); do "{}"/bin/eloqkv_to_aof --rocksdb_path "{}/$i" --output_file_dir "{}/$i" --thread_count "{}"; done '"#,
-                                config.deployment.tx_srv_home(),
-                                rocksdb_path,
-                                config.deployment.tx_srv_home(),
-                                rocksdb_path,
-                                output_file_dir,
-                                thread_count.clone().unwrap_or_else(|| "1".to_string())
-                            ),
+                            command,
                             &config,
-                            &Some(dest_host.to_string()),
-                            &Some(dest_user.to_string()),
+                            &dest_host_option,
+                            &dest_user_option,
                         );
+
+                        // Insert the task instance into the dump task map
                         dump_task.insert(id, instance);
+
+                        // Update the barrier and executable
                         barrier.push(dump_task.len());
                         executable.extend(dump_task);
                     }
@@ -195,39 +211,56 @@ impl TaskGroup for BackupTaskGroup {
                         output_file_dir,
                         thread_count,
                     } => {
+                        // Retrieve the snapshot info entities from the state manager
                         let success_task_entity = STATE_MGR
-                            .get_from_snapshot_path(rocksdb_path.to_string())
+                            .get_from_snapshot_path(rocksdb_path.clone())
                             .await?;
 
-                        let tmp_vec = success_task_entity
-                            .iter()
-                            .map(|snapshot_info_entity| {
-                                (
-                                    snapshot_info_entity.dest_host.clone(),
-                                    snapshot_info_entity.dest_user.clone(),
-                                )
-                            })
-                            .collect_vec();
+                        // Get the first snapshot info entity
+                        let snapshot_info = match success_task_entity.first() {
+                            Some(entity) => entity,
+                            None => {
+                                return Err(anyhow::anyhow!(
+                                    "No snapshot info entities found for path: {}",
+                                    rocksdb_path
+                                ));
+                            }
+                        };
 
-                        let (dest_host, dest_user) = tmp_vec.first().unwrap();
+                        let dest_host_option = Some(snapshot_info.dest_host.clone());
+                        let dest_user_option = Some(snapshot_info.dest_user.clone());
+
                         let mut dump_task: IndexMap<TaskId, TaskInstance> = Default::default();
+
+                        // Prepare the command parameters
+                        let tx_srv_home = config.deployment.tx_srv_home();
+                        let thread_count = thread_count.as_deref().unwrap_or("1");
+
+                        // Construct the command string
+                        let command = format!(
+                            r#"bash -c 'export LD_LIBRARY_PATH={}/lib; for i in $(ls -1 "{}"); do "{}/bin/eloqkv_to_rdb" --rocksdb_path "{}/$i" --output_file "{}/$i.rdb" --thread_count "{}"; done'"#,
+                            tx_srv_home,
+                            rocksdb_path,
+                            tx_srv_home,
+                            rocksdb_path,
+                            output_file_dir,
+                            thread_count
+                        );
+
+                        // Create the task instance
                         let (id, instance) = ExecCustomCommand::from_path(
                             &cmd,
                             format!("dump to rdb"),
-                            format!(
-                                r#"bash -c 'export LD_LIBRARY_PATH={}/lib; for i in $(ls -1 "{}"); do "{}"/bin/eloqkv_to_rdb --rocksdb_path "{}/$i" --output_file "{}/$i.rdb" --thread_count "{}"; done '"#,
-                                config.deployment.tx_srv_home(),
-                                rocksdb_path,
-                                config.deployment.tx_srv_home(),
-                                rocksdb_path,
-                                output_file_dir,
-                                thread_count.clone().unwrap_or_else(|| "1".to_string())
-                            ),
+                            command,
                             &config,
-                            &Some(dest_host.to_string()),
-                            &Some(dest_user.to_string()),
+                            &dest_host_option,
+                            &dest_user_option,
                         );
+
+                        // Insert the task instance into the dump task map
                         dump_task.insert(id, instance);
+
+                        // Update the barrier and executable
                         barrier.push(dump_task.len());
                         executable.extend(dump_task);
                     }
