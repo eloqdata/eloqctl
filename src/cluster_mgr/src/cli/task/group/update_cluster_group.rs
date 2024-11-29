@@ -1,6 +1,6 @@
 use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
 use crate::cli::task::download_task::DownloadTask;
-use crate::cli::task::group::{TaskGroup, UpdateClusterTaskGroup};
+use crate::cli::task::group::{Config, TaskGroup, UpdateClusterTaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
@@ -9,7 +9,6 @@ use crate::cli::task::task_utils::stop_with_hot_standby;
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
-use crate::config::config_base::DeployConfig;
 use indexmap::IndexMap;
 
 #[async_trait::async_trait]
@@ -17,8 +16,17 @@ impl TaskGroup for UpdateClusterTaskGroup {
     async fn tasks(
         &self,
         cmd_arg: SubCommand,
-        config: DeployConfig,
+        config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Expected ClusterConfig for UpdateClusterTaskGroup"
+                ))
+            }
+        };
+
         let (update_eloq, update_cass) = match &cmd_arg {
             SubCommand::Update {
                 version, cassandra, ..
@@ -29,24 +37,24 @@ impl TaskGroup for UpdateClusterTaskGroup {
             return Ok(TaskExecutionContext::dummy());
         }
 
-        let deployment = &config.deployment;
+        let deployment = &cluster_config.deployment;
         let cluster = deployment.cluster_name.clone();
 
         let mut downloads = vec![];
         let mut upload_img = IndexMap::new();
         let mut unpack_tasks = IndexMap::new();
         if update_eloq {
-            downloads.push(config.deployment.tx_image().to_owned());
-            if let Some(img) = config.deployment.log_image() {
+            downloads.push(cluster_config.deployment.tx_image().to_owned());
+            if let Some(img) = cluster_config.deployment.log_image() {
                 downloads.push(img.to_owned());
             }
             upload_img.extend(upload_tasks(UploadTaskBuilderType::EloqImage, &config));
-            unpack_tasks.extend(UnpackFileTask::unpack_eloqservers(&config));
+            unpack_tasks.extend(UnpackFileTask::unpack_eloqservers(&cluster_config));
         }
         if update_cass {
             downloads.push(deployment.storage_service.inner_cass().unwrap().image_url());
             upload_img.extend(upload_tasks(UploadTaskBuilderType::CassImage, &config));
-            unpack_tasks.extend(UnpackFileTask::unpack_cassandra(&config, true));
+            unpack_tasks.extend(UnpackFileTask::unpack_cassandra(&cluster_config, true));
         }
         let download_task = DownloadTask::instances(DownloadTask::from_urls(downloads));
         let mut barrier = vec![download_task.len(), upload_img.len()];
@@ -66,22 +74,32 @@ impl TaskGroup for UpdateClusterTaskGroup {
             password: None,
         };
 
-        if config.deployment.tx_service.standby_host_ports.is_some() {
-            stop_with_hot_standby(stop_cmd.clone(), &config, &mut barrier, &mut executable);
+        if cluster_config
+            .deployment
+            .tx_service
+            .standby_host_ports
+            .is_some()
+        {
+            stop_with_hot_standby(
+                stop_cmd.clone(),
+                &cluster_config,
+                &mut barrier,
+                &mut executable,
+            );
         } else {
             let stop_tx =
-                MonographTxCtlTask::from_config(stop_cmd.clone(), &config, ServerType::Tx);
+                MonographTxCtlTask::from_config(stop_cmd.clone(), &cluster_config, ServerType::Tx);
             barrier.push(stop_tx.len());
             executable.extend(stop_tx);
         }
 
         if deployment.log_service.is_some() {
-            let stop_log = MonographLogCtlTask::from_config(stop_cmd.clone(), &config);
+            let stop_log = MonographLogCtlTask::from_config(stop_cmd.clone(), &cluster_config);
             barrier.push(stop_log.len());
             executable.extend(stop_log);
         }
         if update_cass {
-            let tasks = CassandraCtlTask::from_config(stop_cmd, &config);
+            let tasks = CassandraCtlTask::from_config(stop_cmd, &cluster_config);
             barrier.push(tasks.len());
             executable.extend(tasks);
         }
@@ -95,20 +113,20 @@ impl TaskGroup for UpdateClusterTaskGroup {
             nodes: Vec::new(),
         };
         if deployment.storage_service.inner_cass().is_some() {
-            let tasks = CassandraCtlTask::from_config(start_cmd.clone(), &config);
+            let tasks = CassandraCtlTask::from_config(start_cmd.clone(), &cluster_config);
             let ba = CassandraCtlTask::start_barrier(tasks.len());
             barrier.extend(ba);
             executable.extend(tasks);
         }
         if deployment.log_service.is_some() {
-            let start_log = MonographLogCtlTask::from_config(start_cmd.clone(), &config);
+            let start_log = MonographLogCtlTask::from_config(start_cmd.clone(), &cluster_config);
             barrier.push(start_log.len());
             executable.extend(start_log);
-            let probe = MonographLogProbeTask::from_config(&config);
+            let probe = MonographLogProbeTask::from_config(&cluster_config);
             barrier.push(probe.len());
             executable.extend(probe);
         }
-        let start_tx = MonographTxCtlTask::from_config(start_cmd, &config, ServerType::Tx);
+        let start_tx = MonographTxCtlTask::from_config(start_cmd, &cluster_config, ServerType::Tx);
         barrier.push(start_tx.len());
         executable.extend(start_tx);
         Ok(TaskExecutionContext {

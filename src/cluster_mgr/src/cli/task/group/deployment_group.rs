@@ -1,12 +1,12 @@
 use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
-use crate::cli::task::group::{DeploymentTaskGroup, TaskGroup};
+use crate::cli::task::group::{Config, DeploymentTaskGroup, TaskGroup};
 use crate::cli::task::local_copy_task::LocalCopyTask;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskId, TaskInstance};
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
-use crate::config::config_base::{DeployConfig, DEPLOYMENT_CHECK_SUCCESS_TASK};
+use crate::config::config_base::DEPLOYMENT_CHECK_SUCCESS_TASK;
 use crate::state::state_mgr::STATE_MGR;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -33,10 +33,19 @@ impl TaskGroup for DeploymentTaskGroup {
     async fn tasks(
         &self,
         cmd_args: SubCommand,
-        config: DeployConfig,
+        config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Expected ClusterConfig for DeploymentTaskGroup"
+                ))
+            }
+        };
+
         let cmd_ref = cmd_args.as_ref().to_string();
-        let cluster = &config.deployment.cluster_name;
+        let cluster = &cluster_config.deployment.cluster_name;
         let success_task_entity = STATE_MGR
             .load_task_status_from_state(cluster.to_string(), Some(0), Some(vec![cmd_ref.clone()]))
             .await?;
@@ -49,11 +58,11 @@ impl TaskGroup for DeploymentTaskGroup {
             })
             .collect_vec();
 
-        let download_task = DownloadTask::from_config(&config)?;
-        let mut copy_or_download_task_instances = LocalCopyTask::form_config(&config)?;
+        let download_task = DownloadTask::from_config(&cluster_config)?;
+        let mut copy_or_download_task_instances = LocalCopyTask::form_config(&cluster_config)?;
         copy_or_download_task_instances.extend(download_task);
 
-        let need_skip_success_task = if let Some(ref opts) = config.conf_opts {
+        let need_skip_success_task = if let Some(ref opts) = cluster_config.conf_opts {
             if let Some(check) = opts.get(DEPLOYMENT_CHECK_SUCCESS_TASK) {
                 *check
             } else {
@@ -69,14 +78,14 @@ impl TaskGroup for DeploymentTaskGroup {
                     &success_task_vec,
                 ),
                 DeploymentTaskGroup::skip_success_task_execution(
-                    &UnpackFileTask::from_config(&config)?,
+                    &UnpackFileTask::from_config(&cluster_config)?,
                     &success_task_vec,
                 ),
             )
         } else {
             (
                 upload_tasks(UploadTaskBuilderType::MonographAll, &config),
-                UnpackFileTask::from_config(&config)?,
+                UnpackFileTask::from_config(&cluster_config)?,
             )
         };
 
@@ -85,7 +94,7 @@ impl TaskGroup for DeploymentTaskGroup {
         let mkdir_remote_dir = ExecCustomCommand::from_config(
             &cmd_args,
             "mkdir",
-            format!("mkdir -p {}", config.install_dir()),
+            format!("mkdir -p {}", cluster_config.install_dir()),
             &config,
         );
         let upload_monitor_conf_tasks = upload_tasks(UploadTaskBuilderType::MonitorConf, &config);

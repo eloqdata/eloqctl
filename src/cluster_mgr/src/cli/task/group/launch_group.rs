@@ -1,10 +1,9 @@
 use crate::cli::task::group::{
-    CheckTaskGroup, CtrlDBTaskGroup, DeploymentTaskGroup, InstallDBTaskGroup,
+    CheckTaskGroup, Config, CtrlDBTaskGroup, DeploymentTaskGroup, InstallDBTaskGroup,
     InstallDepPkgTaskGroup, LaunchTaskGroup, MonitorCtlTaskGroup, TaskGroup,
 };
 use crate::cli::task::task_base::{merge_execution, TaskExecutionContext};
 use crate::cli::SubCommand;
-use crate::config::config_base::DeployConfig;
 use crate::config::CONFIG_PATH_DIR;
 use std::env;
 
@@ -13,8 +12,17 @@ impl TaskGroup for LaunchTaskGroup {
     async fn tasks(
         &self,
         cmd_arg: SubCommand,
-        config: DeployConfig,
+        config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Expected ClusterConfig for LaunchTaskGroup"
+                ))
+            }
+        };
+
         let (skip_deps, topo_file) = match cmd_arg.clone() {
             SubCommand::Launch {
                 topology_file,
@@ -36,7 +44,7 @@ impl TaskGroup for LaunchTaskGroup {
             let cmd = SubCommand::RunDeps {
                 topology_file: topo_file.clone(),
             };
-            InstallDepPkgTaskGroup.tasks(cmd, config.clone()).await?
+            InstallDepPkgTaskGroup.tasks(cmd, config).await?
         };
 
         let exe_ctx = vec![
@@ -46,7 +54,7 @@ impl TaskGroup for LaunchTaskGroup {
                     SubCommand::Check {
                         topology_file: topo_file.clone(),
                     },
-                    config.clone(),
+                    config,
                 )
                 .await?,
             DeploymentTaskGroup
@@ -54,33 +62,33 @@ impl TaskGroup for LaunchTaskGroup {
                     SubCommand::Deploy {
                         topology_file: topo_file.clone(),
                     },
-                    config.clone(),
+                    config,
                 )
                 .await?,
             InstallDBTaskGroup
                 .tasks(
                     SubCommand::Install {
-                        cluster: config.deployment.cluster_name.clone(),
+                        cluster: cluster_config.deployment.cluster_name.clone(),
                     },
-                    config.clone(),
+                    config,
                 )
                 .await?,
             CtrlDBTaskGroup
                 .tasks(
                     SubCommand::Start {
-                        cluster: config.deployment.cluster_name.clone(),
+                        cluster: cluster_config.deployment.cluster_name.clone(),
                         nodes: Vec::new(),
                     },
-                    config.clone(),
+                    config,
                 )
                 .await?,
             MonitorCtlTaskGroup
                 .tasks(
                     SubCommand::Monitor {
-                        cluster: config.deployment.cluster_name.clone(),
+                        cluster: cluster_config.deployment.cluster_name.clone(),
                         command: "start".to_string(),
                     },
-                    config.clone(),
+                    config,
                 )
                 .await?,
         ];

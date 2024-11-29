@@ -1,8 +1,9 @@
+use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, UploadTaskBuilder,
 };
-use crate::config::config_base::{DeployConfig, UploadFile};
+use crate::config::config_base::UploadFile;
 use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -11,17 +12,22 @@ use std::path::Path;
 pub struct TxConfUpload;
 
 impl UploadTaskBuilder for TxConfUpload {
-    fn build(&self, config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
-        let all_conf_path = config
+    fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => panic!("Expected ClusterConfig for TxConfUpload"),
+        };
+
+        let all_conf_path = cluster_config
             .gen_all_monograph_configs()
             .expect("Failed generate my_HOST.ini")
             .iter()
             .map(|path_buf| path_buf.to_str().unwrap().to_string())
             .collect_vec();
-        let remote_dest = config.deployment.tx_srv_home();
-        let mut all_hosts = config.get_host_list(DeploymentPackage::MonographTx);
-        all_hosts.extend(config.get_host_list(DeploymentPackage::MonographStandby));
-        all_hosts.extend(config.get_host_list(DeploymentPackage::MonographVoter));
+        let remote_dest = cluster_config.deployment.tx_srv_home();
+        let mut all_hosts = cluster_config.get_host_list(DeploymentPackage::MonographTx);
+        all_hosts.extend(cluster_config.get_host_list(DeploymentPackage::MonographStandby));
+        all_hosts.extend(cluster_config.get_host_list(DeploymentPackage::MonographVoter));
 
         let upload_cnf_files = all_hosts
             .iter()

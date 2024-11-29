@@ -1,16 +1,19 @@
+use crate::cli::task::group::Config;
 use crate::cli::task::task_base::TaskMgr;
 use crate::cli::util::{cpu_arch, file_pg_bar, os_id, os_major_version};
-use crate::cli::BackupCommand;
 use crate::cli::{upload_dir, SubCommand, HOME_DIR};
+use crate::cli::{BackupCommand, ProxyCommand};
 use crate::config::config_base::{DeployConfig, VersionRow};
 use crate::config::deployment::{Deployment, Product};
+use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::storage_service_config::{
     CassConnect, CassDeploy, CassKind, Cassandra, RocksDB, RocksLocal,
 };
 use crate::config::{StorageProvider, TopoFormat, CDN, CONFIG_PATH_DIR, UPLOAD_PATH_DIR};
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
+use crate::state::proxy_operation::{ProxyEntity, ProxyOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
-use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, STATE_MGR};
+use crate::state::state_mgr::{StateMgr, DEPLOYMENT_STATE, PROXY_STATE, STATE_MGR};
 use crate::StateValue;
 use anyhow::{anyhow, bail, Result};
 use futures::StreamExt;
@@ -180,7 +183,41 @@ impl CmdExecutor {
         Ok(())
     }
 
-    async fn get_config(&self, cmd: SubCommand) -> anyhow::Result<DeployConfig> {
+    async fn save_proxy_config(&self, config: &ProxyConfig, upsert: bool) -> Result<()> {
+        println!("save_proxy_config for ProxyConfig");
+        let proxy_operation = self
+            .state_mgr
+            .get_state_operation::<ProxyOperation>(PROXY_STATE);
+
+        let proxy_name = config.proxy_service.proxy_name.clone();
+        let proxy_entity = proxy_operation
+            .load(|| -> Option<QueryCondition> {
+                Some(QueryCondition {
+                    cond_text: "proxy_name = $1".to_string(),
+                    bind_values: vec![StateValue::Varchar(proxy_name.to_string())],
+                })
+            })
+            .await?;
+        if !proxy_entity.is_empty() && !upsert {
+            bail!("Proxy {proxy_name} already exists");
+        }
+        let all_hosts = config.proxy_service.proxy_hosts.join(";");
+        let config_string = config.to_yaml();
+        info!("ProxyConfig saved: proxy_name={proxy_name} @ {all_hosts}");
+        let default_timestamp = chrono::DateTime::default();
+        proxy_operation
+            .put(ProxyEntity {
+                proxy_name: proxy_name.to_string(),
+                proxy_config: config_string,
+                proxy_host_list: all_hosts,
+                create_timestamp: default_timestamp,
+                update_timestamp: default_timestamp,
+            })
+            .await?;
+        Ok(())
+    }
+
+    async fn get_config(&self, cmd: SubCommand) -> anyhow::Result<Config> {
         match cmd {
             SubCommand::Deploy { topology_file }
             | SubCommand::Launch {
@@ -191,7 +228,7 @@ impl CmdExecutor {
                 self.resolve_version(&mut config.deployment).await?;
                 self.save_deployment_config(&config, false).await?;
                 info!("CmdExecutor Save DeploymentConfig successfully.");
-                Ok(config)
+                Ok(Config::Cluster(config))
             }
             SubCommand::Demo { .. } => self.gen_demo_config(cmd).await,
             SubCommand::Install { cluster }
@@ -230,14 +267,14 @@ impl CmdExecutor {
                     .load_deployment_from_state(&cluster)
                     .await?
                     .ok_or(anyhow!("cluster {} not found", cluster))?;
-                Ok(config)
+                Ok(Config::Cluster(config))
             }
             SubCommand::RunDeps { topology_file }
             | SubCommand::Check { topology_file }
             | SubCommand::Exec {
                 command: _,
                 topology_file,
-            } => Ok(DeployConfig::load(Some(topology_file))?),
+            } => Ok(Config::Cluster(DeployConfig::load(Some(topology_file))?)),
             SubCommand::Update {
                 cluster: Some(cluster),
                 version,
@@ -279,8 +316,43 @@ impl CmdExecutor {
                         bail!("can not update cassandra");
                     }
                 }
-                Ok(config)
+                Ok(Config::Cluster(config))
             }
+            SubCommand::Proxy { command } => {
+                match &command {
+                    ProxyCommand::Start { config } => {
+                        // Load and handle the Start command with the provided config
+                        let mut proxy_config = ProxyConfig::load(Some(config.to_string()))?;
+                        self.resolve_proxy_version(&mut proxy_config);
+                        self.save_proxy_config(&proxy_config, true).await?;
+                        Ok(Config::Proxy(proxy_config))
+                    }
+                    ProxyCommand::Stop { proxy_name } => {
+                        let proxy_config = self
+                            .state_mgr
+                            .load_proxy_from_state(proxy_name)
+                            .await?
+                            .ok_or(anyhow!("proxy config not found"))?;
+                        Ok(Config::Proxy(proxy_config))
+                    }
+                    ProxyCommand::Add {
+                        proxy_name,
+                        cluster_name,
+                    }
+                    | ProxyCommand::Remove {
+                        proxy_name,
+                        cluster_name,
+                    } => {
+                        let proxy_config = self
+                            .state_mgr
+                            .load_proxy_from_state(proxy_name)
+                            .await?
+                            .ok_or(anyhow!("proxy config not found"))?;
+                        Ok(Config::Proxy(proxy_config))
+                    }
+                }
+            }
+
             _ => unreachable!(),
         }
     }
@@ -288,7 +360,7 @@ impl CmdExecutor {
     pub async fn run(
         &'static self,
         cmd: SubCommand,
-        config: Option<DeployConfig>,
+        option_config: Option<Config>,
         quiet: bool,
     ) -> Result<()> {
         match &cmd {
@@ -309,167 +381,249 @@ impl CmdExecutor {
             _ => {}
         }
 
-        // fetch config from file or database
-        let config = match config {
-            Some(mut config) => {
-                config.connection.auth.check_keypair()?;
-                self.resolve_version(&mut config.deployment).await?;
-                self.save_deployment_config(&config, true).await?;
-                config
-            }
+        // Extract cluster_config from option_config or load it
+        let config = match option_config {
+            Some(config) => match config {
+                Config::Cluster(mut deploy_config) => {
+                    deploy_config.connection.auth.check_keypair()?;
+                    self.resolve_version(&mut deploy_config.deployment).await?;
+                    self.save_deployment_config(&deploy_config, true).await?;
+                    Config::Cluster(deploy_config)
+                }
+                Config::Proxy(proxy_config) => Config::Proxy(proxy_config),
+            },
             None => self.get_config(cmd.clone()).await?,
         };
 
-        match cmd.clone() {
-            SubCommand::Connect { .. } => {
-                println!("{}", config.client_conn());
+        match config {
+            Config::Cluster(mut deploy_config) => {
+                // Operations specific to ClusterConfig
+
+                match cmd.clone() {
+                    SubCommand::Connect { .. } => {
+                        println!("{}", deploy_config.client_conn());
+                    }
+                    SubCommand::Inspect { cluster: _, format } => match format {
+                        Some(fmt) => match fmt {
+                            TopoFormat::Yaml => println!("{}", deploy_config.to_yaml()),
+                            TopoFormat::Json => println!("{}", deploy_config.to_json()),
+                        },
+                        None => println!("{:#?}", deploy_config),
+                    },
+                    SubCommand::Scale {
+                        cluster: _,
+                        add_tx_node,
+                        del_tx_node,
+                    } => {
+                        // Handle scaling logic
+                        // Same as before
+                        let add: HashSet<String> = add_tx_node.iter().cloned().collect();
+                        let del: HashSet<String> = del_tx_node.iter().cloned().collect();
+
+                        if !add.is_disjoint(&del) {
+                            bail!("add_tx_node is overlapped with del_tx_node");
+                        }
+
+                        let host_ports: HashSet<String> = deploy_config
+                            .deployment
+                            .tx_service
+                            .tx_host_ports
+                            .clone()
+                            .into_iter()
+                            .collect();
+
+                        let host_set: HashSet<String> = host_ports
+                            .iter()
+                            .filter_map(|hp| hp.split(':').next().map(String::from))
+                            .collect();
+
+                        if !add.is_disjoint(&host_set) {
+                            bail!("can't add node already in cluster");
+                        }
+
+                        if !del.is_subset(&host_set) {
+                            bail!("deleted node not found");
+                        }
+
+                        if add.is_empty() && del.is_empty() {
+                            warn!("scale do nothing");
+                            return Ok(());
+                        }
+
+                        // Modify cluster configuration
+                        let tx_host_ports = &mut deploy_config.deployment.tx_service.tx_host_ports;
+                        let mut tx_hosts: Vec<String> = tx_host_ports
+                            .iter()
+                            .filter_map(|hp| hp.split(':').next().map(String::from))
+                            .collect();
+
+                        tx_hosts.retain(|h| !del_tx_node.contains(h));
+                        tx_hosts.extend(add_tx_node.clone());
+
+                        // Save updated configuration
+                        self.save_deployment_config(&deploy_config, true).await?;
+                        println!("Cluster scaled successfully!");
+                    }
+                    _ => {
+                        let task_mgr = self.task_mgr.clone();
+                        let outfile = if quiet {
+                            let f = fs::OpenOptions::new()
+                                .create(true)
+                                .truncate(true)
+                                .open(self.home.join("task-result"))?;
+                            Some(f)
+                        } else {
+                            None
+                        };
+
+                        let recv_rs_and_print_join = tokio::task::spawn(async move {
+                            task_mgr
+                                .write_task_result(outfile)
+                                .await
+                                .expect("write task result failed");
+                        });
+
+                        // Generate and run tasks
+                        let rs = self
+                            .task_mgr
+                            .run_tasks(cmd.clone(), Config::Cluster(deploy_config.clone()))
+                            .await?;
+                        recv_rs_and_print_join.await?;
+                        info!(r#"all tasks complete. task_size={}"#, rs.len());
+
+                        // Using cluster_config again without moving it
+                        self.finishing(cmd, Config::Cluster(deploy_config)).await?;
+                    }
+                }
             }
-            SubCommand::Inspect { cluster: _, format } => match format {
-                Some(fmt) => match fmt {
-                    TopoFormat::Yaml => println!("{}", config.to_yaml()),
-                    TopoFormat::Json => println!("{}", config.to_json()),
-                },
-                None => println!("{:#?}", config),
-            },
-            SubCommand::Scale {
-                cluster: _,
-                add_tx_node,
-                del_tx_node,
-            } => {
-                let add: HashSet<String> = HashSet::from_iter(add_tx_node.clone().into_iter());
-                let del: HashSet<String> = HashSet::from_iter(del_tx_node.clone().into_iter());
-                if add.intersection(&del).count() > 0 {
-                    bail!("add_tx_node is overlaped with del_tx_node")
+            Config::Proxy(proxy_config) => {
+                proxy_config.connection.auth.check_keypair()?;
+                match cmd.clone() {
+                    SubCommand::Proxy { .. } => {
+                        let task_mgr = self.task_mgr.clone();
+                        let outfile = if quiet {
+                            let f = fs::OpenOptions::new()
+                                .create(true)
+                                .truncate(true)
+                                .open(self.home.join("task-result"))?;
+                            Some(f)
+                        } else {
+                            None
+                        };
+
+                        let recv_rs_and_print_join = tokio::task::spawn(async move {
+                            task_mgr
+                                .write_task_result(outfile)
+                                .await
+                                .expect("write task result failed");
+                        });
+
+                        // Generate and run tasks
+                        let rs = self
+                            .task_mgr
+                            .run_tasks(cmd.clone(), Config::Proxy(proxy_config.clone()))
+                            .await?;
+                        recv_rs_and_print_join.await?;
+                        info!(r#"all tasks complete. task_size={}"#, rs.len());
+
+                        // Using cluster_config again without moving it
+                        self.finishing(cmd, Config::Proxy(proxy_config)).await?;
+                    }
+                    _ => unreachable!(),
                 }
-                let host_ports: HashSet<String> = HashSet::from_iter(
-                    config
-                        .deployment
-                        .tx_service
-                        .tx_host_ports
-                        .clone()
-                        .into_iter(),
-                );
-                let mut host_set: HashSet<String> = HashSet::new();
-                for host_port in host_ports {
-                    let host = host_port.split(':').next().unwrap(); // Handle empty strings
-                    host_set.insert(host.to_string());
-                }
-                if add.intersection(&host_set).count() > 0 {
-                    bail!("can't add node already in cluster")
-                }
-                if !del.is_subset(&host_set) {
-                    bail!("deleted node not found")
-                }
-                if add.is_empty() && del.is_empty() {
-                    warn!("scale do nothing");
-                    return Ok(());
-                }
-                // TODO(zhanghao): scale cluster
-                let mut config = config;
-                let tx_host_ports = &mut config.deployment.tx_service.tx_host_ports;
-                let mut tx_hosts: Vec<String> = Vec::new();
-                for host_port in tx_host_ports {
-                    let host = host_port.split(':').next().unwrap(); // Handle empty strings
-                    tx_hosts.push(host.to_string());
-                }
-                tx_hosts.retain(|h| !del_tx_node.contains(h));
-                tx_hosts.extend(add_tx_node);
-                // self.save_deployment_config(&config, true).await?;
-                // println!("cluster {cluster} is scaled!");
-                unimplemented!()
-            }
-            _ => {
-                let task_mgr = self.task_mgr.clone();
-                let outfile = if quiet {
-                    let f = fs::OpenOptions::new()
-                        .create(true)
-                        .truncate(true)
-                        .open(self.home.join("task-result"))?;
-                    Some(f)
-                } else {
-                    None
-                };
-                let recv_rs_and_print_join = tokio::task::spawn(async move {
-                    task_mgr
-                        .write_task_result(outfile)
-                        .await
-                        .expect("write task result failed");
-                });
-                // Generate and run tasks
-                let rs = self.task_mgr.run_tasks(cmd.clone(), config.clone()).await?;
-                recv_rs_and_print_join.await?;
-                info!(r#"all tasks complete.task_size={}"#, rs.len());
-                self.finishing(cmd, config).await?;
             }
         }
+
         Ok(())
     }
 
-    async fn finishing(&self, cmd: SubCommand, config: DeployConfig) -> Result<()> {
+    async fn finishing(&self, cmd: SubCommand, config: Config) -> Result<()> {
         // After all tasks finished
-        match cmd {
-            SubCommand::Launch { .. } | SubCommand::Demo { .. } => {
-                println!("Launch cluster finished, Enjoy!");
-                println!("Connect to server: \n\t{}", config.client_conn());
-                if let Some(moni) = &config.deployment.monitor {
-                    if moni.prometheus.is_some() {
-                        println!(
-                            "Prometheus: http://{}:{}",
-                            moni.prometheus.as_ref().unwrap().host,
-                            moni.prometheus.as_ref().unwrap().port
-                        );
-                    }
-                    if moni.grafana.is_some() {
-                        println!(
-                            "Grafana: http://{}:{}",
-                            moni.grafana.as_ref().unwrap().host,
-                            moni.grafana.as_ref().unwrap().port
-                        );
+        match config {
+            Config::Cluster(cfg) => match cmd {
+                SubCommand::Launch { .. } | SubCommand::Demo { .. } => {
+                    println!("Launch cluster finished, Enjoy!");
+                    println!("Connect to server: \n\t{}", cfg.client_conn());
+                    if let Some(moni) = &cfg.deployment.monitor {
+                        if moni.prometheus.is_some() {
+                            println!(
+                                "Prometheus: http://{}:{}",
+                                moni.prometheus.as_ref().unwrap().host,
+                                moni.prometheus.as_ref().unwrap().port
+                            );
+                        }
+                        if moni.grafana.is_some() {
+                            println!(
+                                "Grafana: http://{}:{}",
+                                moni.grafana.as_ref().unwrap().host,
+                                moni.grafana.as_ref().unwrap().port
+                            );
+                        }
                     }
                 }
-            }
-            SubCommand::Remove { cluster } => {
-                let n = self.state_mgr.delete_cluster(&cluster).await?;
-                info!("cluster state cleared rows={n}");
-            }
-            SubCommand::Update {
-                cluster: Some(cluster),
-                ..
-            } => {
-                self.save_deployment_config(&config, true).await?;
-                println!("cluster {cluster} is updated!");
-            }
-            SubCommand::Backup { cluster, command } => match &command {
-                BackupCommand::Start { .. } => {}
-                BackupCommand::List {} => {
-                    let success_task_entity = STATE_MGR.list_snapshots(cluster.to_string()).await?;
-
-                    let success_task_vec = success_task_entity
-                        .iter()
-                        .filter(|snapshot_info_entity| snapshot_info_entity.snapshot_status == 0)
-                        .map(|snapshot_info_entity| {
-                            let cluster_name = &snapshot_info_entity.cluster_name;
-                            let create_timestamp = &snapshot_info_entity.snapshot_ts;
-                            let snapshot_path = &snapshot_info_entity.snapshot_path;
-                            let dest_host = &snapshot_info_entity.dest_host;
-                            let dest_user = &snapshot_info_entity.dest_user;
-                            (
-                                cluster_name,
-                                create_timestamp,
-                                snapshot_path,
-                                dest_host,
-                                dest_user,
-                            )
-                        })
-                        .collect_vec();
-
-                    println!("available snapshots: {:#?}", success_task_vec);
+                SubCommand::Remove { cluster } => {
+                    let n = self.state_mgr.delete_cluster(&cluster).await?;
+                    info!("cluster state cleared rows={n}");
                 }
-                BackupCommand::Remove { .. } => {}
-                BackupCommand::DumpAOF { .. } => {}
-                BackupCommand::DumpRDB { .. } => {}
+                SubCommand::Update {
+                    cluster: Some(cluster),
+                    ..
+                } => {
+                    self.save_deployment_config(&cfg, true).await?;
+                    println!("cluster {cluster} is updated!");
+                }
+                SubCommand::Backup { cluster, command } => match &command {
+                    BackupCommand::Start { .. } => {}
+                    BackupCommand::List {} => {
+                        let success_task_entity =
+                            STATE_MGR.list_snapshots(cluster.to_string()).await?;
+
+                        let success_task_vec = success_task_entity
+                            .iter()
+                            .filter(|snapshot_info_entity| {
+                                snapshot_info_entity.snapshot_status == 0
+                            })
+                            .map(|snapshot_info_entity| {
+                                let cluster_name = &snapshot_info_entity.cluster_name;
+                                let create_timestamp = &snapshot_info_entity.snapshot_ts;
+                                let snapshot_path = &snapshot_info_entity.snapshot_path;
+                                let dest_host = &snapshot_info_entity.dest_host;
+                                let dest_user = &snapshot_info_entity.dest_user;
+                                (
+                                    cluster_name,
+                                    create_timestamp,
+                                    snapshot_path,
+                                    dest_host,
+                                    dest_user,
+                                )
+                            })
+                            .collect_vec();
+
+                        println!("available snapshots: {:#?}", success_task_vec);
+                    }
+                    BackupCommand::Remove { .. } => {}
+                    BackupCommand::DumpAOF { .. } => {}
+                    BackupCommand::DumpRDB { .. } => {}
+                },
+                _ => {}
             },
-            _ => {}
+            Config::Proxy(cfg) => match cmd {
+                SubCommand::Proxy { command } => match &command {
+                    ProxyCommand::Start { .. } => {
+                        println!("Launch proxy finished, Enjoy!");
+                    }
+                    ProxyCommand::Stop { .. } => {
+                        println!("Proxy stopped.");
+                    }
+                    ProxyCommand::Add { cluster_name, .. } => {
+                        println!("Cluster {cluster_name} is added to proxy service.");
+                    }
+                    ProxyCommand::Remove { cluster_name, .. } => {
+                        println!("Cluster {cluster_name} is removed from proxy service.");
+                    }
+                },
+                _ => unreachable!(),
+            },
         }
         Ok(())
     }
@@ -573,7 +727,21 @@ impl CmdExecutor {
         Ok(())
     }
 
-    async fn gen_demo_config(&self, cmd: SubCommand) -> Result<DeployConfig> {
+    pub fn resolve_proxy_version(&self, cnf: &mut ProxyConfig) {
+        let arch = cpu_arch();
+        let os = self.os_vers();
+
+        // Bind the PathBuf to a variable to extend its lifetime
+        let path_buf = PathBuf::from(CDN);
+        let prefix = path_buf.as_path().to_str().unwrap();
+
+        // Rest of your code remains the same
+        let url = format!("{prefix}/eloqkv/tools/{arch}/{os}/eloqkv-proxy");
+        info!("proxy service binary is set: {url}");
+        cnf.proxy_service.bin_download_url = Some(url);
+    }
+
+    async fn gen_demo_config(&self, cmd: SubCommand) -> Result<Config> {
         match cmd {
             SubCommand::Demo {
                 product,
@@ -668,7 +836,7 @@ impl CmdExecutor {
                     deploy.hardware = None;
                 }
                 self.save_deployment_config(&config, false).await?;
-                Ok(config)
+                Ok(Config::Cluster(config))
             }
             _ => unreachable!(),
         }

@@ -1,9 +1,8 @@
 use crate::cli::task::backup_task::BackupTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
-use crate::cli::task::group::{BackupTaskGroup, TaskGroup};
+use crate::cli::task::group::{BackupTaskGroup, Config, TaskGroup};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::{BackupCommand, SubCommand};
-use crate::config::config_base::DeployConfig;
 use crate::config::DeploymentPackage;
 use crate::state::state_mgr::STATE_MGR;
 use chrono::{DateTime, Utc};
@@ -16,8 +15,17 @@ impl TaskGroup for BackupTaskGroup {
     async fn tasks(
         &self,
         cmd: SubCommand,
-        config: DeployConfig,
+        config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Expected ClusterConfig for InstallDBTaskGroup"
+                ))
+            }
+        };
+
         let mut executable = IndexMap::new();
         let mut barrier = vec![];
 
@@ -54,9 +62,10 @@ impl TaskGroup for BackupTaskGroup {
 
                         // Collect host ports from both MonographTx and MonographStandby
                         let mut redis_host_ports =
-                            config.get_host_port_list(DeploymentPackage::MonographTx);
-                        redis_host_ports
-                            .extend(config.get_host_port_list(DeploymentPackage::MonographStandby));
+                            cluster_config.get_host_port_list(DeploymentPackage::MonographTx);
+                        redis_host_ports.extend(
+                            cluster_config.get_host_port_list(DeploymentPackage::MonographStandby),
+                        );
 
                         // Create backup task instance
                         let task_id = TaskId {
@@ -175,7 +184,7 @@ impl TaskGroup for BackupTaskGroup {
                         let mut dump_task: IndexMap<TaskId, TaskInstance> = Default::default();
 
                         // Prepare the command parameters
-                        let tx_srv_home = config.deployment.tx_srv_home();
+                        let tx_srv_home = cluster_config.deployment.tx_srv_home();
                         let thread_count = thread_count.as_deref().unwrap_or("1");
 
                         // Construct the command string
@@ -233,7 +242,7 @@ impl TaskGroup for BackupTaskGroup {
                         let mut dump_task: IndexMap<TaskId, TaskInstance> = Default::default();
 
                         // Prepare the command parameters
-                        let tx_srv_home = config.deployment.tx_srv_home();
+                        let tx_srv_home = cluster_config.deployment.tx_srv_home();
                         let thread_count = thread_count.as_deref().unwrap_or("1");
 
                         // Construct the command string

@@ -1,12 +1,11 @@
 use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
 use crate::cli::task::copy_task::CopyTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
-use crate::cli::task::group::{InstallDBTaskGroup, TaskGroup};
+use crate::cli::task::group::{Config, InstallDBTaskGroup, TaskGroup};
 use crate::cli::task::monograph_bootstrap_task::MonographInstall;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
-use crate::config::config_base::DeployConfig;
 use crate::config::deployment::Product;
 use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
@@ -17,25 +16,35 @@ impl TaskGroup for InstallDBTaskGroup {
     async fn tasks(
         &self,
         cmd_args: SubCommand,
-        config: DeployConfig,
+        config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Expected ClusterConfig for InstallDBTaskGroup"
+                ))
+            }
+        };
+
         let mut barrier = vec![];
         let mut executable = IndexMap::new();
 
         let install_cmd = SubCommand::Install {
-            cluster: config.clone().deployment.cluster_name,
+            cluster: cluster_config.clone().deployment.cluster_name,
         };
-        if let Some(cass) = &config.deployment.storage_service.cassandra {
+        if let Some(cass) = &cluster_config.deployment.storage_service.cassandra {
             if cass.internal().is_some() {
                 let upload_cass_config_task =
                     upload_tasks(UploadTaskBuilderType::CassConf, &config);
                 barrier.push(upload_cass_config_task.len());
                 executable.extend(upload_cass_config_task);
-                if let Some(monitor) = config.deployment.monitor.as_ref() {
+                if let Some(monitor) = cluster_config.deployment.monitor.as_ref() {
                     if let Some(mcac_collector) = &monitor.cassandra_collector {
-                        let install_dir = config.install_dir();
+                        let install_dir = cluster_config.install_dir();
                         let update_http_port_cmd = mcac_collector.update_http_port_cmd(install_dir);
-                        let cassandra_hosts = config.get_host_list(DeploymentPackage::Storage);
+                        let cassandra_hosts =
+                            cluster_config.get_host_list(DeploymentPackage::Storage);
                         let update_http_port_task = ExecCustomCommand::build_task_by_host(
                             update_http_port_cmd,
                             &config,
@@ -46,17 +55,17 @@ impl TaskGroup for InstallDBTaskGroup {
                         executable.extend(update_http_port_task);
                     }
                 }
-                let cassandra_start = CassandraCtlTask::from_config(install_cmd, &config);
+                let cassandra_start = CassandraCtlTask::from_config(install_cmd, &cluster_config);
                 barrier.extend(CassandraCtlTask::start_barrier(cassandra_start.len()));
                 executable.extend(cassandra_start);
             }
         }
 
         // Bootstrap on all leader nodes to make cluster information durable.
-        let conn_user = &config.connection.username;
-        let ssh_port = config.connection.ssh_port();
+        let conn_user = &cluster_config.connection.username;
+        let ssh_port = cluster_config.connection.ssh_port();
 
-        let host_ports = config
+        let host_ports = cluster_config
             .deployment
             .get_host_port_list(DeploymentPackage::MonographTx);
         info!(
@@ -64,8 +73,12 @@ impl TaskGroup for InstallDBTaskGroup {
             host_ports
         );
 
-        let process_only_first_host_port = config.deployment.storage_service.cassandra.is_some()
-            || config.deployment.storage_service.dynamodb.is_some();
+        let process_only_first_host_port = cluster_config
+            .deployment
+            .storage_service
+            .cassandra
+            .is_some()
+            || cluster_config.deployment.storage_service.dynamodb.is_some();
 
         let num_hosts_to_process = if process_only_first_host_port {
             1
@@ -86,8 +99,7 @@ impl TaskGroup for InstallDBTaskGroup {
                     port: ssh_port as usize,
                     host: bootstrap_host,
                 };
-
-                MonographInstall::from_config(&config, install_db_host, bootstrap_port)
+                MonographInstall::from_config(&cluster_config, install_db_host, bootstrap_port)
             })
             .flat_map(|map| map.into_iter())
             .collect();
@@ -95,10 +107,10 @@ impl TaskGroup for InstallDBTaskGroup {
         barrier.push(bootstrap_tasks.len());
         executable.extend(bootstrap_tasks);
 
-        if config.product() == Product::EloqSQL {
-            if config.deployment.tx_service.tx_host_ports.len() > 1 {
+        if cluster_config.product() == Product::EloqSQL {
+            if cluster_config.deployment.tx_service.tx_host_ports.len() > 1 {
                 // download data generated by bootstrap
-                let (fetch_id, fetch_task) = CopyTask::fetch_datafarm(&config);
+                let (fetch_id, fetch_task) = CopyTask::fetch_datafarm(&cluster_config);
                 executable.insert(fetch_id, fetch_task);
                 barrier.push(1);
                 // dispatch data generated by bootstrap
@@ -107,7 +119,7 @@ impl TaskGroup for InstallDBTaskGroup {
                 executable.extend(upload_data_dir_task);
             }
             // rm -rf cc_ng/ tx_log/
-            let txsrv_home = config.deployment.tx_srv_home();
+            let txsrv_home = cluster_config.deployment.tx_srv_home();
             let rm_log_data_cmd =
                 format!("rm -rf {txsrv_home}/datafarm/cc_ng {txsrv_home}/datafarm/tx_log",);
             let rm_log_data_task_instance =
@@ -116,7 +128,7 @@ impl TaskGroup for InstallDBTaskGroup {
             executable.extend(rm_log_data_task_instance);
         }
 
-        if config.deployment.codis.is_some() {
+        if cluster_config.deployment.codis.is_some() {
             let upload_codis_task = upload_tasks(UploadTaskBuilderType::Codis, &config);
             barrier.push(upload_codis_task.len());
             executable.extend(upload_codis_task);

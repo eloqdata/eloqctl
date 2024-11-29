@@ -162,6 +162,11 @@ impl CheckTask {
         }
         Ok(None)
     }
+
+    async fn check_proxy(&self, host: TaskHost) -> Result<Option<ExecutionValue>> {
+        // TODO(ZX) later, check proxy
+        Ok(None)
+    }
 }
 
 #[async_trait::async_trait]
@@ -188,6 +193,7 @@ impl TaskExecutor for CheckTask {
             DeploymentPackage::Grafana => self.check_grafana(host).await,
             DeploymentPackage::MonographLog => self.check_log_sv(host).await,
             DeploymentPackage::Codis => self.check_codis(host).await,
+            DeploymentPackage::Proxy => self.check_proxy(host).await,
         }
     }
 }

@@ -1326,6 +1326,7 @@ impl Deployment {
                     vec![]
                 }
             }
+            DeploymentPackage::Proxy => unreachable!(),
         }
     }
 
@@ -1357,6 +1358,7 @@ impl Deployment {
             DeploymentPackage::Prometheus => vec![],
             DeploymentPackage::Grafana => vec![],
             DeploymentPackage::Codis => vec![],
+            DeploymentPackage::Proxy => unreachable!(),
         }
     }
 

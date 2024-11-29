@@ -47,3 +47,11 @@ create table if not exists t_snapshot_info
     dest_user           varchar(100) not null,
     primary key (cluster_name, snapshot_ts)
 );
+create table if not exists t_proxy
+(
+    proxy_name        varchar(200) not null primary key,
+    proxy_config      text         not null,
+    proxy_host_list   text         not null,
+    create_timestamp  timestamp    not null DEFAULT CURRENT_TIMESTAMP,
+    update_timestamp  timestamp    not null DEFAULT CURRENT_TIMESTAMP
+);

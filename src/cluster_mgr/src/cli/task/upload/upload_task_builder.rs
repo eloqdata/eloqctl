@@ -1,13 +1,15 @@
+use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{TaskArgValue, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::upload::cass_conf_upload_builder::CassConfUploadBuilder;
 use crate::cli::task::upload::codis_upload::CodisUpload;
 use crate::cli::task::upload::data_dir_upload_builder::DataDirUploadBuilder;
 use crate::cli::task::upload::monitor_upload_builder::*;
 use crate::cli::task::upload::monograph_upload_builder::{EloqUpload, MonographUploadBuilder};
+use crate::cli::task::upload::proxy_upload_builder::ProxyUploadBuilder;
 use crate::cli::task::upload::tx_conf_upload_builder::TxConfUpload;
 use crate::cli::task::upload::upload_task::UploadTask;
 use crate::cli::{create_upload_cluster_dir, upload_dir};
-use crate::config::config_base::{DeployConfig, UploadFile};
+use crate::config::config_base::UploadFile;
 use crate::config::connection::Connection;
 use crate::config::deployment::{Deployment, Product};
 use crate::config::{CREATE_MONITOR_USER_SQL_FILE, MONOGRAPH_INSTALL_SCRIPT};
@@ -28,7 +30,7 @@ pub trait UploadTaskBuilder {
     /// 3. Uploading the Monitor component, including (NodeExporter, MySQLExporter, Prometheus, Grafana, Cassandra Monitor)
     ///    and configuration files for all components.
     /// 4. Modifying and uploading the configuration files for Cassandra config (cassandra.yml, jvm11-server.options).
-    fn build(&self, config: &DeployConfig) -> IndexMap<TaskId, TaskInstance>;
+    fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance>;
 }
 
 pub(crate) const SCP_COMMAND: &str = "_scp_cmd_";
@@ -65,6 +67,7 @@ pub enum UploadTaskBuilderType {
     Codis,
     EloqImage,
     CassImage,
+    Proxy,
 }
 
 #[macro_export]
@@ -76,7 +79,7 @@ macro_rules! build_upload_tasks {
 
 pub fn upload_tasks(
     builder_type: UploadTaskBuilderType,
-    conf: &DeployConfig,
+    conf: &Config,
 ) -> IndexMap<TaskId, TaskInstance> {
     match builder_type {
         UploadTaskBuilderType::CassConf => CassConfUploadBuilder {}.build(conf),
@@ -85,18 +88,31 @@ pub fn upload_tasks(
         UploadTaskBuilderType::MonitorConf => MonitorInfraConfUploadBuilder {}.build(conf),
         UploadTaskBuilderType::TxConf => TxConfUpload {}.build(conf),
         UploadTaskBuilderType::Codis => CodisUpload {}.build(conf),
-        UploadTaskBuilderType::EloqImage => EloqUpload::build_tasks(
-            conf,
-            "update",
-            "upload_eloq_image",
-            EloqUpload::eloq_image_upload(&conf.deployment),
-        ),
-        UploadTaskBuilderType::CassImage => EloqUpload::build_tasks(
-            conf,
-            "update",
-            "upload_cass_image",
-            EloqUpload::cassandra_image_upload(&conf.deployment),
-        ),
+        UploadTaskBuilderType::EloqImage => {
+            let cluster_config = match conf {
+                Config::Cluster(cfg) => cfg,
+                _ => panic!("Expected ClusterConfig for TxConfUpload"),
+            };
+            EloqUpload::build_tasks(
+                conf,
+                "update",
+                "upload_eloq_image",
+                EloqUpload::eloq_image_upload(&cluster_config.deployment),
+            )
+        }
+        UploadTaskBuilderType::CassImage => {
+            let cluster_config = match conf {
+                Config::Cluster(cfg) => cfg,
+                _ => panic!("Expected ClusterConfig for TxConfUpload"),
+            };
+            EloqUpload::build_tasks(
+                conf,
+                "update",
+                "upload_cass_image",
+                EloqUpload::cassandra_image_upload(&cluster_config.deployment),
+            )
+        }
+        UploadTaskBuilderType::Proxy => ProxyUploadBuilder {}.build(conf),
     }
 }
 
@@ -148,7 +164,7 @@ pub(crate) fn list_files_by_host(host: &str, config: &Deployment) -> Vec<String>
 pub(crate) fn build_task_instance(
     source_host: String,
     upload_file: UploadFile,
-    config: &DeployConfig,
+    config: &Config,
     cmd: &str,
     task_name: &str,
 ) -> (TaskId, TaskInstance) {
@@ -159,9 +175,9 @@ pub(crate) fn build_task_instance(
         host: host.to_string(),
     };
 
-    let conn = &config.connection;
+    let conn = config.conn_ref();
     let scp_cmd = scp(&upload_file, conn.clone());
-    let upload_task = UploadTask::new(config.clone(), task_id.clone());
+    let upload_task = UploadTask::new(config, task_id.clone());
     (
         task_id,
         TaskInstance {

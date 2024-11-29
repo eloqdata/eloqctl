@@ -18,12 +18,16 @@ pub mod deployment;
 #[allow(dead_code)]
 pub mod log_service;
 pub mod monitor;
+pub mod proxy_config_base;
+pub mod proxy_service;
 pub mod storage_service_config;
 
 pub const ELOQSQL_TEMPLATE_INI: &str = "EloqSql.ini";
 pub const ELOQSQL_DYNAMO_TEMPLATE_INI: &str = "EloqSqlDynamo.ini";
 pub const ELOQSQL_CLIENT_PORT: u16 = 3316;
 pub const ELOQKV_TEMPLATE_INI: &str = "EloqKv.ini";
+pub const PROXY_CONF_TEMPLATE: &str = "eloqproxy.ini";
+pub const PROXY_BIN: &str = "eloqkv-proxy";
 pub const ELOQKV_INI: &str = "EloqKv-tx";
 pub const ELOQKV_STANDBY_INI: &str = "EloqKv-standby";
 pub const ELOQKV_VOTER_INI: &str = "EloqKv-voter";
@@ -80,6 +84,20 @@ macro_rules! gen_db_misc_files {
     }};
 }
 
+#[macro_export]
+macro_rules! all_hosts_merge {
+    ($config_ref:expr, $($pkg_name:ident $(,)?)*) => {{
+        let mut all_hosts = vec![];
+        $(
+           let host_vec = $config_ref.get_host_list(DeploymentPackage::$pkg_name);
+           if !host_vec.is_empty(){
+               all_hosts.extend(host_vec.into_iter());
+           }
+        )*
+        all_hosts
+    }};
+}
+
 #[derive(PartialEq, Eq, Clone, Error, Debug)]
 pub enum ConfigErr {
     #[error("MonographDB storage provider config error [{0}].For now only support Cassandra or DynamoDB, \
@@ -99,6 +117,7 @@ pub const SECTION_LOCAL: &str = "local";
 pub const SECTION_CLUSTER: &str = "cluster";
 pub const SECTION_STORE: &str = "store";
 pub const SECTION_METRIC: &str = "metrics";
+pub const SECTION_PROXY: &str = "proxy";
 
 #[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display, clap::ValueEnum)]
 pub enum TopoFormat {
@@ -204,6 +223,8 @@ pub enum DeploymentPackage {
     MonographStandby,
     #[strum(serialize = "monograph_voter")]
     MonographVoter,
+    #[strum(serialize = "proxy")]
+    Proxy,
 }
 
 pub fn config_path_string(path: Option<String>) -> anyhow::Result<String> {

@@ -1,4 +1,5 @@
-use crate::cli::{create_upload_cluster_dir, upload_dir, HOME_DIR};
+use crate::all_hosts_merge;
+use crate::cli::{create_upload_cluster_dir, ssh, upload_dir, HOME_DIR};
 use crate::config::connection::Connection;
 use crate::config::deployment::{Codis, Deployment, Product, Version};
 use crate::config::log_service::LogProcessKey;
@@ -34,19 +35,6 @@ pub const ASAN_OPTIONS: &str = "abort_on_error=0:disable_coredump=0:halt_on_erro
 
 pub fn export_asan(log: &str) -> String {
     format!("export ASAN_OPTIONS={ASAN_OPTIONS}:log_path={log}")
-}
-
-macro_rules! all_hosts_merge {
-    ($config_ref:expr, $($pkg_name:ident $(,)?)*) => {{
-        let mut all_hosts = vec![];
-        $(
-           let host_vec = $config_ref.get_host_list(DeploymentPackage::$pkg_name);
-           if !host_vec.is_empty(){
-               all_hosts.extend(host_vec.into_iter());
-           }
-        )*
-        all_hosts
-    }};
 }
 
 macro_rules! extract_monitor_link {
@@ -156,6 +144,7 @@ impl DeployConfig {
                         let link = DownloadUrl::from_url_str(&Codis::download_url()).unwrap();
                         unpack_files.push(link);
                     }
+                    DeploymentPackage::Proxy => unreachable!(),
                 }
 
                 (pkg.clone(), unpack_files)

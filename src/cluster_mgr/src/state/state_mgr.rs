@@ -1,7 +1,9 @@
 use crate::cli::HOME_DIR;
 use crate::config::config_base::DeployConfig;
+use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::CONFIG_PATH_DIR;
 use crate::state::deployment_operation::DeploymentOperation;
+use crate::state::proxy_operation::ProxyOperation;
 use crate::state::service_status_operation::{ServiceInstanceEntity, ServiceInstanceOperation};
 use crate::state::snapshot_info_operation::{SnapshotEntity, SnapshotOperation};
 use crate::state::state_base::{QueryCondition, StateOperation, StateOperationAny};
@@ -22,6 +24,7 @@ use std::{env, fs};
 use tracing::{error, info};
 
 pub const DEPLOYMENT_STATE: &str = "Deployment";
+pub const PROXY_STATE: &str = "Proxy";
 pub const TASK_STATUS_STATE: &str = "TaskStatus";
 pub const SERVICE_STATUS_STATE: &str = "ServiceStatus";
 pub const SNAPSHOT_STATUS_STATE: &str = "SnapshotStatus";
@@ -177,6 +180,27 @@ impl StateMgr {
         if let Some(deployment_entity) = deployment_entity_vec.first() {
             let config_content = &deployment_entity.deployment_config;
             let config = DeployConfig::load_from_string(config_content.to_string())?;
+            Ok(Some(config))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn load_proxy_from_state(&self, proxy_name: &String) -> Result<Option<ProxyConfig>> {
+        println!("load_proxy_from_state for ProxyConfig");
+        let proxy_state = self.get_state_operation::<ProxyOperation>(PROXY_STATE);
+        let proxy_entity_vec = proxy_state
+            .load(|| -> Option<QueryCondition> {
+                Some(QueryCondition {
+                    cond_text: "proxy_name = $1".to_string(),
+                    bind_values: vec![StateValue::Varchar(proxy_name.clone())],
+                })
+            })
+            .await?;
+
+        if let Some(proxy_entity) = proxy_entity_vec.first() {
+            let config_content = &proxy_entity.proxy_config;
+            let config = ProxyConfig::load_from_string(config_content.to_string())?;
             Ok(Some(config))
         } else {
             Ok(None)
@@ -361,6 +385,9 @@ impl StateMgr {
             let snapshot_status_opt_ref =
                 Box::leak(SnapshotOperation::boxed(db_conn_pool.clone())) as &dyn StateOperationAny;
 
+            let proxy_opt_ref =
+                Box::leak(ProxyOperation::boxed(db_conn_pool.clone())) as &dyn StateOperationAny;
+
             let state_map: HashMap<String, Arc<&'static dyn StateOperationAny>> = HashMap::from([
                 (DEPLOYMENT_STATE.to_string(), Arc::new(deployment_opt_ref)),
                 (TASK_STATUS_STATE.to_string(), Arc::new(task_status_opt_ref)),
@@ -372,6 +399,7 @@ impl StateMgr {
                     SNAPSHOT_STATUS_STATE.to_string(),
                     Arc::new(snapshot_status_opt_ref),
                 ),
+                (PROXY_STATE.to_string(), Arc::new(proxy_opt_ref)),
             ]);
             info!("Create StateMgr instance success.");
             Ok(Self {
@@ -431,6 +459,7 @@ mod tests {
                 "t_service_instance",
                 "t_service_config",
                 "t_snapshot_info"
+                "t_proxy",
             ]
         );
     }

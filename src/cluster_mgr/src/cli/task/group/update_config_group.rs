@@ -1,10 +1,10 @@
+use crate::cli::task::group::Config;
 use crate::cli::task::group::{TaskGroup, UpdateConfigTaskGroup};
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
 use crate::cli::task::task_base::TaskExecutionContext;
 use crate::cli::task::task_utils::stop_with_hot_standby;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
-use crate::config::config_base::DeployConfig;
 use indexmap::IndexMap;
 
 #[async_trait::async_trait]
@@ -12,9 +12,18 @@ impl TaskGroup for UpdateConfigTaskGroup {
     async fn tasks(
         &self,
         cmd_arg: SubCommand,
-        config: DeployConfig,
+        config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let cluster_name = &config.deployment.cluster_name;
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Expected ClusterConfig for UpdateConfigTaskGroup"
+                ))
+            }
+        };
+
+        let cluster_name = &cluster_config.deployment.cluster_name;
         let need_restart = match cmd_arg {
             SubCommand::UpdateConf { restart, .. } => restart,
             _ => unreachable!(),
@@ -26,7 +35,12 @@ impl TaskGroup for UpdateConfigTaskGroup {
 
         if need_restart {
             // stop order: (standby-server -> voter-server ->) tx-server -> log-server -> kv-store
-            if config.deployment.tx_service.standby_host_ports.is_some() {
+            if cluster_config
+                .deployment
+                .tx_service
+                .standby_host_ports
+                .is_some()
+            {
                 stop_with_hot_standby(
                     SubCommand::Stop {
                         cluster: cluster_name.clone(),
@@ -38,7 +52,7 @@ impl TaskGroup for UpdateConfigTaskGroup {
                         all: false,
                         password: None,
                     },
-                    &config,
+                    &cluster_config,
                     &mut barrier,
                     &mut executable,
                 );
@@ -54,7 +68,7 @@ impl TaskGroup for UpdateConfigTaskGroup {
                         all: false,
                         password: None,
                     },
-                    &config,
+                    &cluster_config,
                     ServerType::Tx,
                 );
                 barrier.push(stop_tx_task.len());
@@ -66,32 +80,42 @@ impl TaskGroup for UpdateConfigTaskGroup {
                     cluster: cluster_name.to_string(),
                     nodes: Vec::new(),
                 },
-                &config,
+                &cluster_config,
                 ServerType::Tx,
             );
             barrier.push(start_tx_task.len());
             executable.extend(start_tx_task);
 
-            if config.deployment.tx_service.standby_host_ports.is_some() {
+            if cluster_config
+                .deployment
+                .tx_service
+                .standby_host_ports
+                .is_some()
+            {
                 let start_standby = MonographTxCtlTask::from_config(
                     SubCommand::Start {
                         cluster: cluster_name.to_string(),
                         nodes: Vec::new(),
                     },
-                    &config,
+                    &cluster_config,
                     ServerType::Standby,
                 );
                 barrier.push(start_standby.len());
                 executable.extend(start_standby);
             }
 
-            if config.deployment.tx_service.voter_host_ports.is_some() {
+            if cluster_config
+                .deployment
+                .tx_service
+                .voter_host_ports
+                .is_some()
+            {
                 let start_voter = MonographTxCtlTask::from_config(
                     SubCommand::Start {
                         cluster: cluster_name.to_string(),
                         nodes: Vec::new(),
                     },
-                    &config,
+                    &cluster_config,
                     ServerType::Voter,
                 );
                 barrier.push(start_voter.len());

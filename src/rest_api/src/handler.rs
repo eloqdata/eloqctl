@@ -2,6 +2,7 @@ use crate::global_handler::GlobalCommandHandler;
 use crate::{MonographConnInfo, RequestPayload, ResponseData, WebHandleError};
 use actix_web::{get, post, web, HttpResponse, Responder};
 use anyhow::anyhow;
+use cluster_mgr::cli::task::group::Config;
 use cluster_mgr::cli::task::task_base::TaskId;
 use cluster_mgr::cli::SubCommand;
 use cluster_mgr::config::config_base::{DeployConfig, DEPLOYMENT_CHECK_SUCCESS_TASK};
@@ -182,7 +183,7 @@ pub async fn check_cmd_status(
         let cmd_args = build_command_from_str(command.as_str(), Some(cluster.clone()));
         let task_context = cmd_executor
             .task_mgr()
-            .task_context(cmd_args, &deployment_config)
+            .task_context(cmd_args, &Config::Cluster(deployment_config))
             .await?;
 
         let task_ids = task_context.list_task_ids();

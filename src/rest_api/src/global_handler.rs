@@ -1,5 +1,5 @@
 use crate::{listen_exit_signal, RequestPayload};
-use cluster_mgr::cli::cmd_base::CmdExecutor;
+use cluster_mgr::cli::{cmd_base::CmdExecutor, task::group::Config};
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -58,7 +58,10 @@ impl GlobalCommandHandler {
             match cmd.as_ref() {
                 "deploy" | "run-deps" | "launch" => {
                     let config = payload.config;
-                    if let Err(err) = cmd_executor.run(cmd, config, false).await {
+                    if let Err(err) = cmd_executor
+                        .run(cmd, Some(Config::Cluster(config.unwrap())), false)
+                        .await
+                    {
                         error!("command {cmd_str} failed: {err}");
                     }
                 }

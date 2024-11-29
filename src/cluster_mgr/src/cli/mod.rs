@@ -58,7 +58,12 @@ pub enum SubCommand {
     #[command(long_about = "Check whether cluster can be deployed")]
     #[strum(serialize = "check")]
     Check { topology_file: String },
-
+    #[command(long_about = "Operations on the proxy service")]
+    #[strum(serialize = "proxy")]
+    Proxy {
+        #[command(subcommand)]
+        command: ProxyCommand,
+    },
     #[command(long_about = "Launch a cluster quickly")]
     #[strum(serialize = "launch")]
     Launch {
@@ -74,7 +79,6 @@ pub enum SubCommand {
         #[arg(long)]
         nodes: Vec<String>,
     },
-
     #[command(long_about = "Stop cluster components")]
     #[strum(serialize = "stop")]
     Stop {
@@ -308,6 +312,35 @@ pub enum BackupCommand {
         output_file_dir: String,
         #[arg(long)]
         thread_count: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Clone, Debug, Hash, PartialEq, Eq, AsRefStr)]
+#[command(next_line_help = true)]
+pub enum ProxyCommand {
+    #[strum(serialize = "start")]
+    Start {
+        #[arg(long)]
+        config: String,
+    },
+    #[strum(serialize = "stop")]
+    Stop {
+        #[arg(long)]
+        proxy_name: String,
+    },
+    #[strum(serialize = "add")]
+    Add {
+        #[arg(long)]
+        proxy_name: String,
+        #[arg(long)]
+        cluster_name: String,
+    },
+    #[strum(serialize = "remove")]
+    Remove {
+        #[arg(long)]
+        proxy_name: String,
+        #[arg(long)]
+        cluster_name: String,
     },
 }
 

@@ -1,6 +1,6 @@
+use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{init_finish_signal, TaskExecutionContext};
 use crate::cli::task::task_base::{TaskInstance, TaskResultEnum, TaskResultPair};
-use crate::config::config_base::DeployConfig;
 use crate::post_task_execute;
 use crate::state::task_status_operation::TaskStatusEntity;
 use anyhow::bail;
@@ -94,18 +94,22 @@ impl TaskController {
         &'static self,
         task_group: String,
         splits: &'static [TaskInstance],
-        config: DeployConfig,
+        config: Config,
     ) -> anyhow::Result<Vec<TaskResultPair>> {
         let mut joins = vec![];
 
-        // let task_group_arc = Arc::new(task_group);
+        let name = match config {
+            Config::Cluster(cfg) => cfg.deployment.cluster_name.clone(),
+            Config::Proxy(cfg) => cfg.proxy_service.proxy_name.clone(),
+        };
+
         splits
             .iter()
             //.enumerate()
             .for_each(|execution_context| {
                 let tx_arc = Arc::new(&self.tx);
-                let cluster_name = config.deployment.cluster_name.clone();
                 let task_group_arc = Arc::new(task_group.clone());
+                let name = name.clone();
                 let join = tokio::task::spawn(async move {
                     let task = &execution_context.task;
                     let task_input = execution_context.task_input.clone();
@@ -119,7 +123,7 @@ impl TaskController {
                     //let task_group_copy = Arc::clone(&task_group_arc.clone());
                     let post_execute_rs = post_task_execute!(
                         execution_rs,
-                        cluster_name,
+                        name,
                         task_id.as_json_string(),
                         task_group_arc.as_str(),
                         conn_tuple.2
@@ -164,7 +168,7 @@ impl TaskController {
     pub async fn run_all_tasks(
         &'static self,
         task_execution_context: TaskExecutionContext,
-        config: DeployConfig,
+        config: Config,
         err_brk: bool,
     ) -> anyhow::Result<Vec<TaskResultPair>> {
         let task_group_string = task_execution_context.clone().task_group;

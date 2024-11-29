@@ -1,7 +1,7 @@
 use super::MonitorCtlTaskGroup;
 use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
 use crate::cli::task::codis_task::{self, CodisTask};
-use crate::cli::task::group::{CtrlDBTaskGroup, TaskGroup};
+use crate::cli::task::group::{Config, CtrlDBTaskGroup, TaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
@@ -14,13 +14,23 @@ use indexmap::IndexMap;
 
 #[async_trait::async_trait]
 impl TaskGroup for CtrlDBTaskGroup {
-    async fn tasks(&self, cmd: SubCommand, config: DeployConfig) -> Result<TaskExecutionContext> {
+    async fn tasks(&self, cmd: SubCommand, config: &Config) -> Result<TaskExecutionContext> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Expected ClusterConfig for CtrlDBTaskGroup"
+                ))
+            }
+        };
+
         let cmd_str = cmd.as_ref().to_owned();
         let (barrier, executable) = match cmd.clone() {
             SubCommand::Remove { cluster } => {
                 let (cluster, tx, log, store, monitor) = (cluster, true, true, true, true);
-                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config, true);
-                if monitor && config.deployment.monitor.is_some() {
+                let (mut barrier, mut tasks) =
+                    self.stop_tasks(tx, log, store, cmd, &cluster_config, true);
+                if monitor && cluster_config.deployment.monitor.is_some() {
                     let stop_moni = SubCommand::Monitor {
                         cluster: cluster.clone(),
                         command: "stop".to_string(),
@@ -29,7 +39,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                         task_group: _,
                         barrier: ba,
                         executable,
-                    } = MonitorCtlTaskGroup.tasks(stop_moni, config.clone()).await?;
+                    } = MonitorCtlTaskGroup.tasks(stop_moni, config).await?;
                     if let Some(ba) = ba {
                         barrier.extend(ba);
                     } else {
@@ -51,17 +61,17 @@ impl TaskGroup for CtrlDBTaskGroup {
                     password: None,
                 };
                 let (mut barrier, mut executable) =
-                    self.stop_tasks(true, true, false, stop_cmd, &config, false);
+                    self.stop_tasks(true, true, false, stop_cmd, &cluster_config, false);
                 let start_cmd = SubCommand::Start {
                     cluster,
                     nodes: Vec::new(),
                 };
-                let (b, exe) = self.start_tasks(start_cmd, &config);
+                let (b, exe) = self.start_tasks(start_cmd, &cluster_config);
                 barrier.extend(b);
                 executable.extend(exe);
                 (barrier, executable)
             }
-            SubCommand::Start { .. } => self.start_tasks(cmd, &config),
+            SubCommand::Start { .. } => self.start_tasks(cmd, &cluster_config),
             SubCommand::Stop {
                 cluster,
                 tx,
@@ -77,8 +87,9 @@ impl TaskGroup for CtrlDBTaskGroup {
                 } else {
                     (cluster, tx.unwrap_or(true), log, store, monitor)
                 };
-                let (mut barrier, mut tasks) = self.stop_tasks(tx, log, store, cmd, &config, false);
-                if monitor && config.deployment.monitor.is_some() {
+                let (mut barrier, mut tasks) =
+                    self.stop_tasks(tx, log, store, cmd, &cluster_config, false);
+                if monitor && cluster_config.deployment.monitor.is_some() {
                     let stop_moni = SubCommand::Monitor {
                         cluster: cluster.clone(),
                         command: "stop".to_string(),
@@ -87,7 +98,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                         task_group: _,
                         barrier: ba,
                         executable,
-                    } = MonitorCtlTaskGroup.tasks(stop_moni, config.clone()).await?;
+                    } = MonitorCtlTaskGroup.tasks(stop_moni, config).await?;
                     if let Some(ba) = ba {
                         barrier.extend(ba);
                     } else {
@@ -98,7 +109,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                 (barrier, tasks)
             }
             SubCommand::Status { .. } => {
-                let tasks = self.status_tasks(cmd, &config);
+                let tasks = self.status_tasks(cmd, &cluster_config);
                 (vec![tasks.len()], tasks)
             }
             _ => unreachable!(),

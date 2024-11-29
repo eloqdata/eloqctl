@@ -1,3 +1,4 @@
+use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, UploadTaskBuilder,
@@ -198,13 +199,18 @@ impl MonitorInfraConfUploadBuilder {
 }
 
 impl UploadTaskBuilder for MonitorInfraConfUploadBuilder {
-    fn build(&self, config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
-        let monitor_opt = config.deployment.monitor.as_ref();
+    fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => panic!("Expected ClusterConfig for MonitorInfraConfUploadBuilder"),
+        };
+
+        let monitor_opt = cluster_config.deployment.monitor.as_ref();
         let source_host = get_source_host(None);
         if let Some(monitor) = monitor_opt {
-            let mut all_upload_files = self.monitor_config_upload_files(monitor, config);
+            let mut all_upload_files = self.monitor_config_upload_files(monitor, cluster_config);
             if monitor.grafana.is_some() {
-                if let Some(upload_dashboard_file) = self.dashboard_upload_files(config) {
+                if let Some(upload_dashboard_file) = self.dashboard_upload_files(cluster_config) {
                     all_upload_files.push(upload_dashboard_file);
                 }
             }

@@ -1,3 +1,4 @@
+use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, list_files_by_host, UploadTaskBuilder,
@@ -137,18 +138,23 @@ impl MonographUploadBuilder {
 impl UploadTaskBuilder for MonographUploadBuilder {
     /// Upload installation package, MonographDB configuration file,
     /// MonographDB install script, install config to remote host.
-    fn build(&self, config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
+    fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => panic!("Expected ClusterConfig for TxConfUpload"),
+        };
+
         // copy EloqKv.ini from ~/.eloqctl/config to ~/.eloqctl/upload/{cluster_name}
         let config_template_file_path =
             config_template(ELOQKV_TEMPLATE_INI).expect("get config template error");
         let env_sh = upload_dir()
-            .join(config.deployment.cluster_name.clone())
+            .join(cluster_config.deployment.cluster_name.clone())
             .join(ELOQKV_TEMPLATE_INI);
-        create_upload_cluster_dir(&config.deployment.cluster_name);
+        create_upload_cluster_dir(&cluster_config.deployment.cluster_name);
         fs::copy(&config_template_file_path, &env_sh).expect("copy config template error");
 
-        let mut upload_files = self.build_monograph_misc_upload_file(config);
-        let upload_tar_files = self.monograph_tar_upload_file(config);
+        let mut upload_files = self.build_monograph_misc_upload_file(cluster_config);
+        let upload_tar_files = self.monograph_tar_upload_file(cluster_config);
 
         upload_files.extend(upload_tar_files);
 
@@ -260,7 +266,7 @@ impl EloqUpload {
     }
 
     pub fn build_tasks(
-        config: &DeployConfig,
+        config: &Config,
         cmd: &str,
         task: &str,
         uploads: Vec<UploadFile>,

@@ -1,9 +1,9 @@
 use crate::cli::ssh::SSHCommandOption::CollectOutput;
+use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
 use crate::cli::{ssh, SubCommand, CMD_OUTPUT};
-use crate::config::config_base::DeployConfig;
 use crate::task_return_value;
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -14,35 +14,34 @@ use tracing::{debug, info};
 pub struct ExecCustomCommand {
     cmd: String,
     task_id: TaskId,
-    config: DeployConfig,
+    config: Config,
 }
 
 impl ExecCustomCommand {
     pub fn build_task_by_host(
         cmd_string: String,
-        config: &DeployConfig,
+        config: &Config,
         hosts: Vec<String>,
         task_name: Option<String>,
     ) -> IndexMap<TaskId, TaskInstance> {
-        let conn_user = &config.connection.username;
-        let ssh_port = config.connection.ssh_port();
+        let conn_user = config.conn_user();
+        let ssh_port = config.ssh_port();
+
         hosts
             .iter()
             .map(|host| {
                 let task_host = TaskHost::Remote {
-                    user: conn_user.clone(),
+                    user: conn_user.to_string(),
                     port: ssh_port as usize,
                     host: host.clone(),
                 };
-                let task = if let Some(input_task_name) = &task_name {
-                    input_task_name.to_string()
-                } else {
-                    format!("exec_cmd_in_{host}")
-                };
+                let task = task_name
+                    .clone()
+                    .unwrap_or_else(|| format!("exec_cmd_in_{host}"));
                 let task_id = TaskId {
                     cmd: "exec_cmd_by_hosts".to_string(),
                     task,
-                    host: host.to_string(),
+                    host: host.clone(),
                 };
 
                 (
@@ -65,16 +64,17 @@ impl ExecCustomCommand {
         cmd: &SubCommand,
         task: &str,
         content: String,
-        config: &DeployConfig,
+        config: &Config,
     ) -> IndexMap<TaskId, TaskInstance> {
+        let conn_user = config.conn_user();
+        let ssh_port = config.ssh_port();
         let all_hosts = config.get_unique_host_list();
-        let conn_user = &config.connection.username;
-        let ssh_port = config.connection.ssh_port();
+
         all_hosts
             .iter()
             .map(|host_val| {
                 let task_host = TaskHost::Remote {
-                    user: conn_user.clone(),
+                    user: conn_user.to_string(),
                     port: ssh_port as usize,
                     host: host_val.clone(),
                 };
@@ -103,19 +103,19 @@ impl ExecCustomCommand {
         cmd: &SubCommand,
         task: String,
         content: String,
-        config: &DeployConfig,
+        config: &Config,
         dest_host: &Option<String>,
         dest_user: &Option<String>,
     ) -> (TaskId, TaskInstance) {
-        let conn_user = &config.connection.username;
+        let conn_user = &config.conn_user();
         let (user, host) =
             if let (Some(dest_user), Some(dest_host)) = (dest_user.clone(), dest_host.clone()) {
                 (dest_user, dest_host)
             } else {
-                (conn_user.clone(), "localhost".to_string())
+                (conn_user.to_string(), "localhost".to_string())
             };
 
-        let ssh_port = config.connection.ssh_port() as usize;
+        let ssh_port = config.ssh_port() as usize;
         let task_host = TaskHost::Remote {
             user: user,
             port: ssh_port,
@@ -141,7 +141,7 @@ impl ExecCustomCommand {
         )
     }
 
-    pub fn new(cmd: String, task_id: TaskId, config: DeployConfig) -> Self {
+    pub fn new(cmd: String, task_id: TaskId, config: Config) -> Self {
         Self {
             cmd,
             task_id,
@@ -162,11 +162,9 @@ impl TaskExecutor for ExecCustomCommand {
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         info!("execute {}", self.task_id.format_string());
-        let ssh_session = ssh::SSHSession::from_task_host(
-            task_host,
-            self.config.connection.ssh_auth_key().unwrap(),
-        )
-        .await?;
+
+        let auth_key = self.config.conn_ssh_auth_key();
+        let ssh_session = ssh::SSHSession::from_task_host(task_host, auth_key).await?;
         let (host, _) = ssh_session.ssh_conn_info();
         let exec_cmd_rs = ssh_session
             .command(self.cmd.clone().as_str(), CollectOutput)

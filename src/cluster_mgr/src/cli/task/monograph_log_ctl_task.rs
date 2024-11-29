@@ -363,7 +363,6 @@ impl TaskExecutor for MonographLogCtlTask {
                     let pid = TaskArgValue::into_inner_value::<String>(
                         execution_value.get(PROCESS_PID).unwrap().clone(),
                     );
-                    // Q? monograph_log_status
                     debug!("MonographLogCtlTask found pid={pid}, command={cmd_string} {key:#?}");
                     if cmd_string.eq("stop") || cmd_string.eq("remove") {
                         //stop and There are still log process alive

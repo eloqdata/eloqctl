@@ -1,19 +1,25 @@
+use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, UploadTaskBuilder,
 };
 use crate::cli::upload_dir;
-use crate::config::config_base::{DeployConfig, UploadFile};
+use crate::config::config_base::UploadFile;
 use indexmap::IndexMap;
 
 pub struct DataDirUploadBuilder;
 
 impl UploadTaskBuilder for DataDirUploadBuilder {
     /// Upload the MonographDB data_dir to the remote host.
-    fn build(&self, config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
-        let deployment_ref = &config.deployment;
+    fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => panic!("Expected ClusterConfig for TxConfUpload"),
+        };
+
+        let deployment_ref = &cluster_config.deployment;
         let local = get_source_host(None);
-        let txsrv_home = config.deployment.tx_srv_home();
+        let txsrv_home = cluster_config.deployment.tx_srv_home();
         let datafarm = upload_dir().join("datafarm").to_string_lossy().to_string();
 
         // Proceed to iterate over the merged hosts list

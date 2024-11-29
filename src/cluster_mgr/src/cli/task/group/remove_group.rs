@@ -2,10 +2,9 @@ use std::collections::HashMap;
 
 use crate::cli::task::cassandra_op_task::CassandraOpTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
-use crate::cli::task::group::{CtrlDBTaskGroup, RemoveTaskGroup, TaskGroup};
+use crate::cli::task::group::{Config, CtrlDBTaskGroup, RemoveTaskGroup, TaskGroup};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::SubCommand;
-use crate::config::config_base::DeployConfig;
 use crate::config::StorageProvider;
 use anyhow::bail;
 use indexmap::IndexMap;
@@ -16,8 +15,17 @@ impl TaskGroup for RemoveTaskGroup {
     async fn tasks(
         &self,
         cmd_arg: SubCommand,
-        config: DeployConfig,
+        config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
+        let cluster_config = match config {
+            Config::Cluster(cfg) => cfg,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Expected ClusterConfig for RemoveTaskGroup"
+                ))
+            }
+        };
+
         let cluster = match cmd_arg.clone() {
             SubCommand::Remove { cluster } => cluster,
             _ => {
@@ -28,7 +36,7 @@ impl TaskGroup for RemoveTaskGroup {
         let mut executable;
         // terminate all process
         let remove_stop = CtrlDBTaskGroup
-            .tasks(SubCommand::Remove { cluster }, config.clone())
+            .tasks(SubCommand::Remove { cluster }, config)
             .await?;
         if let Some(ba) = remove_stop.barrier {
             barrier.extend(ba);
@@ -37,10 +45,10 @@ impl TaskGroup for RemoveTaskGroup {
         }
         executable = remove_stop.executable;
 
-        if let Some(logsv) = &config.deployment.log_service {
+        if let Some(logsv) = &cluster_config.deployment.log_service {
             // clean log service data
-            let conn_user = &config.connection.username;
-            let ssh_port = config.connection.ssh_port();
+            let conn_user = &cluster_config.connection.username;
+            let ssh_port = cluster_config.connection.ssh_port();
             let clean_tasks = logsv
                 .log_directories()
                 .into_iter()
@@ -81,13 +89,13 @@ impl TaskGroup for RemoveTaskGroup {
         let clean_tasks = ExecCustomCommand::from_config(
             &cmd_arg,
             "clean",
-            format!("rm -r {}", config.install_dir()),
+            format!("rm -r {}", cluster_config.install_dir()),
             &config,
         );
         barrier.push(clean_tasks.len());
         executable.extend(clean_tasks);
         // remove keyspace in external cassandra/scylla/dynamo
-        let store = &config.deployment.storage_service;
+        let store = &cluster_config.deployment.storage_service;
         match store.provider().unwrap() {
             StorageProvider::Cassandra => {
                 let cass = store.cassandra.as_ref().unwrap();
@@ -98,7 +106,10 @@ impl TaskGroup for RemoveTaskGroup {
                         task: "drop-keyspace".to_string(),
                         host: "_local".to_string(),
                     };
-                    let cql = format!("DROP KEYSPACE {}", config.deployment.get_keyspace()?);
+                    let cql = format!(
+                        "DROP KEYSPACE {}",
+                        cluster_config.deployment.get_keyspace()?
+                    );
                     let task =
                         CassandraOpTask::new(task_id.clone(), host, cass.client_port()?, cql);
                     let inst = TaskInstance {
