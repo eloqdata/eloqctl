@@ -77,7 +77,7 @@ impl TaskExecutor for LocalCopyTask {
     ) -> anyhow::Result<Option<ExecutionValue>> {
         let source_dir_op = task_arg.get(SOURCE_DIR);
         assert!(source_dir_op.is_some());
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         let source_dir_string =
             TaskArgValue::into_inner_value::<String>(source_dir_op.unwrap().clone());
         let source_path = PathBuf::from(source_dir_string.as_str());

@@ -31,7 +31,7 @@ impl TaskExecutor for UploadTask {
         _task_host: TaskHost,
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         let scp_command_opt = task_arg.get(SCP_COMMAND);
         assert!(scp_command_opt.is_some());
         let scp_command_value = scp_command_opt.unwrap();

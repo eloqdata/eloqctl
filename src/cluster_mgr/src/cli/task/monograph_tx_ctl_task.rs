@@ -6,7 +6,7 @@ use crate::cli::task::task_base::{
     TaskInstance,
 };
 use crate::cli::task::task_utils::{
-    check_pid, ctl_action_wait_complete, parse_process_pid, PROCESS_PID,
+    check_pid, ctl_action_wait_complete, parse_process_pid, PID_NOT_FOUND, PROCESS_PID,
 };
 use crate::cli::{SubCommand, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::DeployConfig;
@@ -103,7 +103,7 @@ macro_rules! tx_ctl {
                Ok($mono_process_status?)
             }
         } else {
-                        error!(
+            error!(
                 "MonographCtlTask process status failed. check_status_cmd={:?}",
                 $mono_process_status
             );
@@ -569,7 +569,7 @@ impl TaskExecutor for MonographTxCtlTask {
         task_host: TaskHost,
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
 
         let mut master_host_ports = Vec::new();
         let mut standby_host_ports = Vec::new();
@@ -677,7 +677,8 @@ impl TaskExecutor for MonographTxCtlTask {
                     Product::EloqKV => {
                         if wait_secs >= 0 {
                             let cs_port: u16 = port.parse().unwrap();
-                            RedisProbe::new(host_value, cs_port).probe(wait_secs).await
+                            let _ = RedisProbe::new(host_value, cs_port).probe(wait_secs).await;
+                            check_process_status
                         } else {
                             check_process_status
                         }
@@ -742,16 +743,17 @@ impl TaskExecutor for MonographTxCtlTask {
                     )
                 } else {
                     debug!("No matching ports found for the given host.");
-                    tx_ctl!(self, check_process_status, {!=, "NONE"}, async || -> anyhow::Result<ExecutionValue> {
+                    tx_ctl!(self, check_process_status, {!=, PID_NOT_FOUND}, async || -> anyhow::Result<ExecutionValue> {
                         wait_command_complete!(stop_cmd, check_status_cmd, ssh_session.clone(), is_none)
                     })
                 }
             }
             "start" => {
                 let start_cmd = self.ctl_cmd.cmd_value();
-                tx_ctl!(self, check_process_status, {==, "NONE"}, async || -> anyhow::Result<ExecutionValue> {
+                let rs = tx_ctl!(self, check_process_status, {==, PID_NOT_FOUND}, async || -> anyhow::Result<ExecutionValue> {
                     wait_command_complete!(start_cmd, check_status_cmd, ssh_session.clone(), is_some)
-                })
+                });
+                rs
             }
             _ => {
                 unreachable!()
@@ -759,7 +761,24 @@ impl TaskExecutor for MonographTxCtlTask {
         };
 
         ssh_session.close().await?;
-        let ctl_rtn_value = mono_ctl_rs?;
+        let mut ctl_rtn_value = mono_ctl_rs?;
+        match ctl_cmd_ref {
+            "status" => {
+                if ctl_rtn_value.get(PROCESS_PID).is_some() {
+                    let pid = TaskArgValue::into_inner_value::<String>(
+                        ctl_rtn_value.get(PROCESS_PID).unwrap().clone(),
+                    );
+                    if pid == PID_NOT_FOUND {
+                        let output = format!("\neloqkv service is down.");
+                        ctl_rtn_value.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(output));
+                    } else {
+                        let output = format!("\neloqkv service is running, pid: {}.", pid);
+                        ctl_rtn_value.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(output));
+                    }
+                }
+            }
+            _ => {}
+        }
         let exec_cmd = if let Some(cmd) = ctl_rtn_value.get(CMD) {
             cmd.clone().into_inner_value()
         } else {

@@ -52,7 +52,7 @@ impl BackupTask {
         }
     }
 
-    pub fn pretty_string(current_date_time: DateTime<Utc>) -> String {
+    pub fn format_string(current_date_time: DateTime<Utc>) -> String {
         current_date_time.format("%Y-%m-%d-%H-%M-%S").to_string()
     }
 
@@ -77,7 +77,7 @@ impl BackupTask {
                     "{}/{}/{}",
                     self.path.clone(),
                     self.cluster_name.clone(),
-                    Self::pretty_string(current_date_time)
+                    Self::format_string(current_date_time)
                 ),
                 dest_host: dest_host,
                 dest_user: dest_user,
@@ -294,9 +294,9 @@ impl TaskExecutor for BackupTask {
                     let backup_name = format!(
                         "snapshot-{}-{}:{}-{}",
                         self.cluster_name.clone(),
-                        node_ip,
-                        node_port,
-                        Self::pretty_string(self.snapshot_ts)
+                        node.ip,
+                        node.port,
+                        Self::format_string(self.snapshot_ts)
                     );
 
                     // Create the async task
@@ -316,7 +316,7 @@ impl TaskExecutor for BackupTask {
                                     "{}/{}/{}",
                                     self.path.clone(),
                                     self.cluster_name.clone(),
-                                    Self::pretty_string(self.snapshot_ts)
+                                    Self::format_string(self.snapshot_ts)
                                 ),
                             )
                             .await

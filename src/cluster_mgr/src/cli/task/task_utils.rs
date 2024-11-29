@@ -35,6 +35,7 @@ macro_rules! wait_command_complete {
     }};
 }
 
+pub(crate) const PID_NOT_FOUND: &str = "NONE";
 pub(crate) const PROCESS_PID: &str = "_process_pid_";
 pub(crate) const PROCESS_PID_LIST: &str = "_process_pid_list_";
 
@@ -125,7 +126,7 @@ where
     } else {
         cmd_exec_rs.insert(
             PROCESS_PID.to_string(),
-            TaskArgValue::Str("NONE".to_string()),
+            TaskArgValue::Str(PID_NOT_FOUND.to_string()),
         );
         cmd_exec_rs.insert(PROCESS_PID_LIST.to_string(), TaskArgValue::List(vec![]));
     }

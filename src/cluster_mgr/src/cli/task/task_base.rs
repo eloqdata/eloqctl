@@ -261,10 +261,6 @@ impl TaskId {
         format!("host={},cmd={},task={}", self.host, self.cmd, self.task)
     }
 
-    pub fn pretty_string(&self) -> String {
-        self.format_string()
-    }
-
     pub fn as_json_string(&self) -> String {
         let task_id_string = serde_json::to_string(self);
         task_id_string.unwrap()

@@ -89,7 +89,7 @@ impl TaskExecutor for MonographInstall {
         task_host: TaskHost,
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         let keyspace_exists = match self.config.get_monograph_storage()? {
             StorageProvider::Cassandra => self.monograph_keyspace_exists().await?,
             _ => false,

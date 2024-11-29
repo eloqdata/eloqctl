@@ -240,7 +240,7 @@ impl TaskExecutor for MonographLogProbeTask {
         _task_host: TaskHost,
         _task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         let time_out = self.readiness.timeout_sec;
         let timeout_duration = Duration::from_secs(time_out);
         let action_result = timeout(timeout_duration, self.action()).await;

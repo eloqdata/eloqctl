@@ -38,7 +38,7 @@ impl TaskGroup for BackupTaskGroup {
                             "{}/{}/{}",
                             path,
                             cluster,
-                            BackupTask::pretty_string(snapshot_ts)
+                            BackupTask::format_string(snapshot_ts)
                         );
                         let (id, instance) = ExecCustomCommand::from_path(
                             &cmd,

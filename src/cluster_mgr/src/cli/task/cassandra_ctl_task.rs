@@ -5,7 +5,7 @@ use crate::cli::task::task_base::{
     CmdErr::CassandraCtlErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId,
     TaskInstance,
 };
-use crate::cli::task::task_utils::{check_pid, PROCESS_PID};
+use crate::cli::task::task_utils::{check_pid, PID_NOT_FOUND, PROCESS_PID};
 use crate::cli::{SubCommand, CMD_STATUS};
 use crate::config::config_base::DeployConfig;
 use crate::config::storage_service_config::Cassandra;
@@ -70,7 +70,7 @@ macro_rules! cassandra_ctl {
                     let pid_rs_value = cmd_exec_rs.get(PROCESS_PID).unwrap();
                     let cassandra_pid =
                         TaskArgValue::into_inner_value::<String>(pid_rs_value.clone());
-                    let pid_opt = if cassandra_pid == "NONE" {
+                    let pid_opt = if cassandra_pid == PID_NOT_FOUND {
                         None
                     } else {
                         Some(cassandra_pid)
@@ -329,7 +329,7 @@ impl TaskExecutor for CassandraCtlTask {
             self.config.connection.ssh_auth_key().unwrap(),
         )
         .await?;
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         // TODO(zhanghao): notify user wait
         let cmd_str = TaskArgValue::into_inner_value::<String>(
             task_arg.get(CASSANDRA_CMD_STR).unwrap().clone(),
@@ -353,7 +353,7 @@ impl TaskExecutor for CassandraCtlTask {
         let cassandra_pid = TaskArgValue::into_inner_value::<String>(pid_rs_value.clone());
         let exec_rs = match cass_cmd.clone() {
             CassandraCmd::Start(cmd) => {
-                if cassandra_pid == "NONE" {
+                if cassandra_pid == PID_NOT_FOUND {
                     self.cassandra_start(cmd, &ssh_session).await
                 } else {
                     info!("cassandra has already started");
@@ -361,7 +361,7 @@ impl TaskExecutor for CassandraCtlTask {
                 }
             }
             CassandraCmd::Stop(cmd) => {
-                if cassandra_pid == "NONE" {
+                if cassandra_pid == PID_NOT_FOUND {
                     info!("cassandra is not running");
                     Ok(exec_rs)
                 } else {
@@ -373,7 +373,7 @@ impl TaskExecutor for CassandraCtlTask {
                         let pid = TaskArgValue::into_inner_value::<String>(
                             ret.get(PROCESS_PID).unwrap().clone(),
                         );
-                        if pid == "NONE" {
+                        if pid == PID_NOT_FOUND {
                             break;
                         } else {
                             info!("cassandra process ({pid}) still exist");

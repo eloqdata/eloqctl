@@ -200,7 +200,7 @@ impl TaskExecutor for UnpackFileTask {
         task_host: TaskHost,
         _task_input: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         let ssh_session = SSHSession::from_task_host(
             task_host,
             self.config.connection.ssh_auth_key().unwrap().to_string(),

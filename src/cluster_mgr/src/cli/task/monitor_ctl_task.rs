@@ -5,7 +5,7 @@ use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
 use crate::cli::task::task_utils::{
-    check_pid, ctl_action_wait_complete, parse_process_pid, PROCESS_PID,
+    check_pid, ctl_action_wait_complete, parse_process_pid, PID_NOT_FOUND, PROCESS_PID,
 };
 use crate::cli::SubCommand;
 use crate::config::config_base::{
@@ -305,7 +305,7 @@ impl TaskExecutor for MonitorCtlTask {
         task_host: TaskHost,
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         let ssh_session =
             SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
                 .await?;
@@ -330,7 +330,7 @@ impl TaskExecutor for MonitorCtlTask {
 
         let monitor_ctl_cmd_result = match cmd_str.as_str() {
             "start" => {
-                if monitor_component_pid.eq("NONE") {
+                if monitor_component_pid.eq(PID_NOT_FOUND) {
                     if let Some(start_cmd) = self.monitor_ctl.start(monitor_ref) {
                         debug!(r#"MonitorCtlTask start_cmd={start_cmd:?}"#);
                         wait_command_complete!(
@@ -348,7 +348,7 @@ impl TaskExecutor for MonitorCtlTask {
                 }
             }
             "stop" => {
-                if !monitor_component_pid.eq("NONE") {
+                if !monitor_component_pid.eq(PID_NOT_FOUND) {
                     let stop_cmd = self.monitor_ctl.stop(monitor_component_pid);
                     wait_command_complete!(
                         stop_cmd.clone(),

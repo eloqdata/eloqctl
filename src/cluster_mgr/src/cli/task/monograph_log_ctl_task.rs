@@ -4,9 +4,9 @@ use crate::cli::task::task_base::CmdErr;
 use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::cli::task::task_utils::{check_pid, parse_process_pid, PROCESS_PID};
-use crate::cli::SubCommand;
+use crate::cli::task::task_utils::{check_pid, parse_process_pid, PID_NOT_FOUND, PROCESS_PID};
 use crate::cli::CMD_STATUS;
+use crate::cli::{SubCommand, CMD_OUTPUT};
 use crate::config::config_base::DeployConfig;
 use crate::config::log_service::LogProcessKey;
 use crate::{get_ctl_cmd_string, task_return_value};
@@ -333,12 +333,26 @@ impl TaskExecutor for MonographLogCtlTask {
     ) -> anyhow::Result<Option<ExecutionValue>> {
         let cluster_mgr_cmd = task_arg.get(CLUSTER_COMMAND_STR).unwrap();
         let cmd_string = cluster_mgr_cmd.clone().into_inner_value::<String>();
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         let ssh_session =
             SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
                 .await?;
-        let pid_cmd_value = self.log_service_pid(&ssh_session).await?;
+        let mut pid_cmd_value = self.log_service_pid(&ssh_session).await?;
         let cmd_execution_result = if cmd_string.eq("status") {
+            self.log_cmd.iter().for_each(|(key, _ctrl_cmd)| {
+                let execution_value = pid_cmd_value.get_mut(key).unwrap();
+                let pid = TaskArgValue::into_inner_value::<String>(
+                    execution_value.get(PROCESS_PID).unwrap().clone(),
+                );
+                if pid == PID_NOT_FOUND {
+                    let output = format!("\nlog service is down.");
+                    execution_value.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(output));
+                } else {
+                    let output = format!("\nlog service is running, pid: {}.", pid);
+                    execution_value.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(output));
+                };
+            });
+
             self.merge_execution_value(pid_cmd_value)
         } else {
             let execution_cmd_vec = self
@@ -349,13 +363,14 @@ impl TaskExecutor for MonographLogCtlTask {
                     let pid = TaskArgValue::into_inner_value::<String>(
                         execution_value.get(PROCESS_PID).unwrap().clone(),
                     );
+                    // Q? monograph_log_status
                     debug!("MonographLogCtlTask found pid={pid}, command={cmd_string} {key:#?}");
                     if cmd_string.eq("stop") || cmd_string.eq("remove") {
                         //stop and There are still log process alive
-                        !pid.eq("NONE")
+                        !pid.eq(PID_NOT_FOUND)
                     } else if cmd_string.eq("start") {
                         //start and There are still unstarted log processes
-                        pid.eq("NONE")
+                        pid.eq(PID_NOT_FOUND)
                     } else {
                         unreachable!()
                     }

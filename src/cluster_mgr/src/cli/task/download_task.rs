@@ -127,7 +127,7 @@ impl TaskExecutor for DownloadTask {
         _task_host: TaskHost,
         _task_input: HashMap<String, TaskArgValue>,
     ) -> Result<Option<ExecutionValue>> {
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         let url = &self.url;
         let save_dir = &self.dir;
 

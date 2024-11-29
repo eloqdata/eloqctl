@@ -252,7 +252,6 @@ pub enum BackupCommand {
         path: String,
         #[arg(long, value_name = "cluster password")]
         password: Option<String>,
-        // Q? where to check the validity of the flag?
         #[arg(long, value_name = "destination host")]
         dest_host: Option<String>,
         #[arg(long, value_name = "destination username")]

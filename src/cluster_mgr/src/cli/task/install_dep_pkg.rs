@@ -133,7 +133,7 @@ impl TaskExecutor for DepPkgTask {
         task_host: TaskHost,
         _task_arg: HashMap<String, TaskArgValue>,
     ) -> Result<Option<ExecutionValue>> {
-        info!("execute {}", self.task_id.pretty_string());
+        info!("execute {}", self.task_id.format_string());
         let (_, _, host) = task_host.ssh_conn_tuple();
         let session = SSHSession::from_task_host(
             task_host.clone(),
