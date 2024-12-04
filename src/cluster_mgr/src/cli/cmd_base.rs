@@ -201,7 +201,14 @@ impl CmdExecutor {
         if !proxy_entity.is_empty() && !upsert {
             bail!("Proxy {proxy_name} already exists");
         }
-        let all_hosts = config.proxy_service.proxy_hosts.join(";");
+        // Extract and concatenate hosts
+        let all_hosts = config
+            .proxy_service
+            .proxy_addrs
+            .iter()
+            .map(|addr| addr.split(':').next().unwrap())
+            .collect::<Vec<&str>>()
+            .join(";");
         let config_string = config.to_yaml();
         info!("ProxyConfig saved: proxy_name={proxy_name} @ {all_hosts}");
         let default_timestamp = chrono::DateTime::default();
@@ -330,9 +337,17 @@ impl CmdExecutor {
                     ProxyCommand::Stop { proxy_name } => {
                         let proxy_config = self
                             .state_mgr
-                            .load_proxy_from_state(proxy_name)
+                            .load_proxy_from_state(Some(proxy_name.clone()))
                             .await?
                             .ok_or(anyhow!("proxy config not found"))?;
+                        Ok(Config::Proxy(proxy_config))
+                    }
+                    ProxyCommand::List { proxy_name } => {
+                        let proxy_config = self
+                            .state_mgr
+                            .load_proxy_from_state(proxy_name.clone())
+                            .await?
+                            .ok_or_else(|| anyhow!("proxy config not found"))?;
                         Ok(Config::Proxy(proxy_config))
                     }
                     ProxyCommand::Add {
@@ -343,12 +358,7 @@ impl CmdExecutor {
                         proxy_name,
                         cluster_name,
                     } => {
-                        let proxy_config = self
-                            .state_mgr
-                            .load_proxy_from_state(proxy_name)
-                            .await?
-                            .ok_or(anyhow!("proxy config not found"))?;
-                        Ok(Config::Proxy(proxy_config))
+                        todo!()
                     }
                 }
             }
@@ -614,6 +624,37 @@ impl CmdExecutor {
                     }
                     ProxyCommand::Stop { .. } => {
                         println!("Proxy stopped.");
+                    }
+                    ProxyCommand::List { proxy_name } => {
+                        let success_task_entity = STATE_MGR.list_proxy(proxy_name).await?;
+
+                        let success_task_vec = success_task_entity
+                            .iter()
+                            .map(|proxy_info_entity| {
+                                let proxy_name = &proxy_info_entity.proxy_name;
+                                let proxy_config = &proxy_info_entity.proxy_config;
+                                (proxy_name, proxy_config)
+                            })
+                            .collect_vec();
+
+                        // Iterate over each proxy configuration
+                        for (proxy_name, proxy_config) in success_task_vec {
+                            // Parse the proxy_config string as YAML
+                            let proxy_config: ProxyConfig = serde_yaml::from_str(proxy_config)
+                                .map_err(|e| {
+                                    anyhow!(
+                                        "Failed to parse proxy_config for '{}': {}",
+                                        proxy_name,
+                                        e
+                                    )
+                                })?;
+
+                            // Extract eloqkv_cluster_addr
+                            println!(
+                                "Proxy Name: {}\neloqkv_cluster_addr: {:#?}\n",
+                                proxy_name, proxy_config.proxy_service.eloqkv_cluster_addr
+                            );
+                        }
                     }
                     ProxyCommand::Add { cluster_name, .. } => {
                         println!("Cluster {cluster_name} is added to proxy service.");

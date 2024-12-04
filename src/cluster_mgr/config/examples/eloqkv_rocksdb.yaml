@@ -10,14 +10,9 @@ deployment:
   install_dir: "/home/${USER}"
   tx_service:
     tx_host_ports: [127.0.0.1:6389]
+    # enable_cache_replacement: on
+    # requirepass: "asd"
     # client_port: 6389
-  log_service:
-    nodes:
-      - host: 127.0.0.1
-        port: 9000
-        data_dir:
-          - "/home/${USER}/eloqkv-cluster/wal_eloqkv"
-    replica: 1
   storage_service:
     rocksdb: !LOCAL
       # path: /tmp

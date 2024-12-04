@@ -23,6 +23,8 @@ use std::sync::{Arc, LazyLock};
 use std::{env, fs};
 use tracing::{error, info};
 
+use super::proxy_operation::ProxyEntity;
+
 pub const DEPLOYMENT_STATE: &str = "Deployment";
 pub const PROXY_STATE: &str = "Proxy";
 pub const TASK_STATUS_STATE: &str = "TaskStatus";
@@ -186,14 +188,16 @@ impl StateMgr {
         }
     }
 
-    pub async fn load_proxy_from_state(&self, proxy_name: &String) -> Result<Option<ProxyConfig>> {
-        println!("load_proxy_from_state for ProxyConfig");
+    pub async fn load_proxy_from_state(
+        &self,
+        proxy_name: Option<String>,
+    ) -> Result<Option<ProxyConfig>> {
         let proxy_state = self.get_state_operation::<ProxyOperation>(PROXY_STATE);
         let proxy_entity_vec = proxy_state
             .load(|| -> Option<QueryCondition> {
-                Some(QueryCondition {
+                proxy_name.as_ref().map(|name| QueryCondition {
                     cond_text: "proxy_name = $1".to_string(),
-                    bind_values: vec![StateValue::Varchar(proxy_name.clone())],
+                    bind_values: vec![StateValue::Varchar(name.clone())],
                 })
             })
             .await?;
@@ -205,6 +209,20 @@ impl StateMgr {
         } else {
             Ok(None)
         }
+    }
+
+    pub async fn list_proxy(&self, proxy_name: &Option<String>) -> Result<Vec<ProxyEntity>> {
+        let proxy_info_operation = self.get_state_operation::<ProxyOperation>(PROXY_STATE);
+
+        let proxy_status_entity = proxy_info_operation
+            .load(|| -> Option<QueryCondition> {
+                proxy_name.as_ref().map(|name| QueryCondition {
+                    cond_text: "proxy_name = $1".to_string(),
+                    bind_values: vec![StateValue::Varchar(name.clone())],
+                })
+            })
+            .await?;
+        Ok(proxy_status_entity)
     }
 
     pub async fn delete_cluster(&self, cluster: &str) -> Result<u64> {
@@ -458,7 +476,7 @@ mod tests {
                 "t_task_status",
                 "t_service_instance",
                 "t_service_config",
-                "t_snapshot_info"
+                "t_snapshot_info",
                 "t_proxy",
             ]
         );

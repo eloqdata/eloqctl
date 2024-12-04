@@ -20,7 +20,11 @@ pub struct ProxyConfig {
 
 impl ProxyConfig {
     pub fn get_host_list(&self, _service: DeploymentPackage) -> Vec<String> {
-        self.proxy_service.proxy_hosts.clone()
+        self.proxy_service
+            .proxy_addrs
+            .iter()
+            .filter_map(|addr| addr.split(':').next().map(|s| s.to_string()))
+            .collect::<Vec<String>>()
     }
 
     pub fn get_unique_host_list(&self) -> Vec<String> {
@@ -33,20 +37,7 @@ impl ProxyConfig {
         let mut proxy_ini =
             ini::Ini::load_from_file(&cnf_path).expect("can not load proxy config template");
 
-        let proxy_addr_list = self
-            .proxy_service
-            .proxy_hosts
-            .iter()
-            .zip(&self.proxy_service.proxy_ports) // Pair each host with its ports
-            .flat_map(|(host, ports)| {
-                ports
-                    .split(',') // Split ports by comma
-                    .map(str::trim) // Trim whitespace
-                    .filter(|port| !port.is_empty()) // Optional: filter out empty ports
-                    .map(move |port| format!(":{}", port)) // Combine host and port
-            })
-            .collect::<Vec<String>>() // Collect into a vector
-            .join(","); // Join with commas
+        let proxy_addr_list = self.proxy_service.proxy_addrs.join(",");
         proxy_ini.set_to::<String>(None, "proxy_addr".to_string(), proxy_addr_list);
 
         let web_service_port_list = self
