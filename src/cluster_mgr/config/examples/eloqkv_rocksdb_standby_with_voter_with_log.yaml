@@ -12,6 +12,13 @@ deployment:
     tx_host_ports: [127.0.0.1:6379]
     standby_host_ports: [127.0.0.1:6389]
     voter_host_ports: [127.0.0.1:6399]
+  log_service:
+    nodes:
+      - host: 127.0.0.1
+        port: 9000
+        data_dir:
+          - "/home/${USER}/eloqkv_with_hot_standby_and_voter/wal_eloqkv"
+    replica: 1
   storage_service:
     rocksdb: !LOCAL
       # path: /tmp

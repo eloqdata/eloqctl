@@ -78,14 +78,17 @@ impl ProxyCtlTask {
                     task.task_instance(&mut all_tasks);
                 }
             }
+            ProxyCommand::List { proxy_name } => {
+                todo!()
+            }
             ProxyCommand::Add { cluster_name, .. } => {
-                unimplemented!()
+                todo!()
                 // let task =
                 //     Self::add_cluster(ssh_key.clone(), proxy_hosts.clone(), &cluster_name, args);
                 // task.task_instance(&mut all_tasks);
             }
             ProxyCommand::Remove { cluster_name, .. } => {
-                unimplemented!()
+                todo!()
                 // let task =
                 //     Self::remove_cluster(ssh_key.clone(), proxy_hosts.clone(), &cluster_name, args);
                 // task.task_instance(&mut all_tasks);

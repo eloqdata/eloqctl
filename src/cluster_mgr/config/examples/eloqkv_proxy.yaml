@@ -3,25 +3,11 @@ connection:
   auth_type: "keypair"
   auth:
     keypair: "/home/${USER}/.ssh/id_rsa"
-# when the cluster launches, it should:
-# 1. check if there are existing proxy services
-# 2. if the target proxy does not exist, start proxy service;
-#    if the target proxy exists, try to join the target one;
-
 proxy_service:
   proxy_name: "proxy-1"
-  proxy_hosts: [127.0.0.1]
-  proxy_ports: [6000]
+  proxy_addrs: [127.0.0.1:6000]
   web_service_ports: [8080]
   install_dir: "/home/${USER}"
   eloqkv_cluster_addr: [127.0.0.1:6379]
   eloqkv_cluster_token: [""]
   eloqkv_cluster_password: [""]
-
-# OR, proxy should have a separate config yaml file in that 
-# the proxy service is not part of the eloqkv-cluster component, 
-# and it should have its own set of commands, like
-# eloqctl proxy start --config=proxy.yaml 
-# eloqctl proxy stop --proxy_addr=host:port 
-# eloqctl proxy add --cluster_name=
-# eloqctl proxy remove --cluster_name=

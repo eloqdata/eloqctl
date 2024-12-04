@@ -11,8 +11,7 @@ use std::str::FromStr;
 pub struct ProxyService {
     pub proxy_name: String,
     pub bin_download_url: Option<String>,
-    pub proxy_hosts: Vec<String>,
-    pub proxy_ports: Vec<String>,
+    pub proxy_addrs: Vec<String>,
     pub web_service_ports: Vec<String>,
     pub install_dir: String,
     pub eloqkv_cluster_addr: Vec<String>,

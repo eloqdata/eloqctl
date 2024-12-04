@@ -53,7 +53,14 @@ impl TaskGroup for ProxyTaskGroup {
                         executable.extend(proxy_upload_task);
 
                         // start proxy
-                        let host = proxy_config.proxy_service.proxy_hosts.clone();
+
+                        // Extract and concatenate hosts with error handling
+                        let hosts = proxy_config
+                            .proxy_service
+                            .proxy_addrs
+                            .iter()
+                            .filter_map(|addr| addr.split(':').next().map(|s| s.to_string()))
+                            .collect::<Vec<String>>();
 
                         let mut args = HashMap::new();
                         args.insert(
@@ -104,7 +111,7 @@ impl TaskGroup for ProxyTaskGroup {
                             ssh_key.unwrap(),
                             user,
                             ssh_port,
-                            host,
+                            hosts,
                             &args,
                             proxy_config,
                         );
@@ -114,7 +121,12 @@ impl TaskGroup for ProxyTaskGroup {
                     }
                     ProxyCommand::Stop { .. } => {
                         // kill proxy process
-                        let host = proxy_config.proxy_service.proxy_hosts.clone();
+                        let hosts = proxy_config
+                            .proxy_service
+                            .proxy_addrs
+                            .iter()
+                            .filter_map(|addr| addr.split(':').next().map(|s| s.to_string()))
+                            .collect::<Vec<String>>();
                         let proxy_name = proxy_config.proxy_service.proxy_name.clone();
 
                         let mut args = HashMap::new();
@@ -126,7 +138,7 @@ impl TaskGroup for ProxyTaskGroup {
                             ssh_key.unwrap(),
                             user,
                             ssh_port,
-                            host,
+                            hosts,
                             &args,
                             proxy_config,
                         );
@@ -134,11 +146,14 @@ impl TaskGroup for ProxyTaskGroup {
                         barrier.push(stop_proxy_task.len());
                         executable.extend(stop_proxy_task);
                     }
+                    ProxyCommand::List { proxy_name } => {
+                        //
+                    }
                     ProxyCommand::Add {
                         cluster_name,
                         proxy_name,
                     } => {
-                        unimplemented!()
+                        todo!()
 
                         // // kill proxy process
                         // let host = proxy_config.proxy_service.proxy_hosts.clone();
@@ -167,7 +182,7 @@ impl TaskGroup for ProxyTaskGroup {
                         // executable.extend(proxy_upload_task);
                     }
                     ProxyCommand::Remove { cluster_name, .. } => {
-                        unimplemented!()
+                        todo!()
                     }
                 }
             }

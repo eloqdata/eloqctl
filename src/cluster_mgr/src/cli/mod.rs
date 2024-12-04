@@ -328,6 +328,15 @@ pub enum ProxyCommand {
         #[arg(long)]
         proxy_name: String,
     },
+    #[command(
+        long_about = "List displays all proxy names and all clusters behind each of them.\n\
+                      If --proxy-name is provided, it displays all clusters behind the specified proxy."
+    )]
+    #[strum(serialize = "list")]
+    List {
+        #[arg(long)]
+        proxy_name: Option<String>,
+    },
     #[strum(serialize = "add")]
     Add {
         #[arg(long)]

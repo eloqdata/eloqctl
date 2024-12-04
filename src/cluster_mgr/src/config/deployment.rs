@@ -125,6 +125,7 @@ pub struct MonographService {
     pub standby_host_ports: Option<Vec<String>>,
     pub voter_host_ports: Option<Vec<String>>,
     pub requirepass: Option<String>,
+    pub enable_cache_replacement: Option<String>,
     pub client_port: Option<u16>, // only used in mysql
 }
 
@@ -245,6 +246,12 @@ pub enum Version {
     Debug,
     Tag([u32; 3]),
     Devel(String),
+}
+
+pub enum NodeType {
+    Tx,
+    Standby,
+    Voter,
 }
 
 #[serde_with::skip_serializing_none]
@@ -453,7 +460,7 @@ impl Deployment {
     pub fn get_redis_keyspace(&self) -> anyhow::Result<String> {
         let my_local = upload_dir().join("redis_local.ini");
         if !my_local.exists() {
-            self.gen_eloqkv_tx_config(None, None, None)?;
+            self.gen_eloqkv_node_config(NodeType::Tx, None, None)?;
         }
         let mut my_ini_local = Ini::new();
         let _config_map_rs = my_ini_local.load(my_local).unwrap();
@@ -715,12 +722,7 @@ impl Deployment {
         Ok(cnf_path)
     }
 
-    pub fn build_eloqkv_config(
-        &self,
-        set_ip_list: bool,
-        port: String,
-        requirepass: Option<String>,
-    ) -> anyhow::Result<Ini> {
+    pub fn build_eloqkv_config(&self, set_ip_list: bool, port: String) -> anyhow::Result<Ini> {
         let mut ini = Ini::new();
         // config template does not have port suffix
         ini.load(cluster_config_template(
@@ -735,8 +737,26 @@ impl Deployment {
             Some(format!("{}/data", self.tx_srv_home())),
         );
 
-        if requirepass.is_some() {
-            ini.set(SECTION_LOCAL, "requirepass", requirepass);
+        if self.tx_service.requirepass.is_some() {
+            ini.set(
+                SECTION_LOCAL,
+                "requirepass",
+                self.tx_service.requirepass.clone(),
+            );
+        }
+
+        if self.tx_service.enable_cache_replacement.is_some() {
+            ini.set(
+                SECTION_LOCAL,
+                "enable_cache_replacement",
+                self.tx_service.enable_cache_replacement.clone(),
+            );
+        } else {
+            ini.set(
+                SECTION_LOCAL,
+                "enable_cache_replacement",
+                Some("on".to_string()),
+            );
         }
 
         match self.storage_service.provider().unwrap() {
@@ -973,215 +993,91 @@ impl Deployment {
             .map_or(false, |value| value == "${OVERRIDE}")
     }
 
-    pub fn gen_eloqkv_tx_config(
+    pub fn gen_eloqkv_node_config(
         &self,
+        node_type: NodeType,
         host: Option<String>,
         port: Option<String>,
-        requirepass: Option<String>,
-    ) -> anyhow::Result<PathBuf> {
-        let mut cnf_path = upload_dir().join("redis_local.ini");
+    ) -> Result<PathBuf> {
+        let ini_name = match node_type {
+            NodeType::Tx => ELOQKV_INI,
+            NodeType::Standby => ELOQKV_STANDBY_INI,
+            NodeType::Voter => ELOQKV_VOTER_INI,
+        };
 
-        let is_host = host.is_some();
-        let port_str = port.clone().map_or("".to_string(), |p| p);
-        let mut ini = self.build_eloqkv_config(is_host, port_str, requirepass)?;
+        let cnf_path;
+        let mut ini;
 
-        // Use pattern matching to handle the presence of both host and port
-        let (host_get, port_get) = if let (Some(host_some), Some(port_some)) = (host, port) {
-            // Construct the configuration path for the host
-            let dir = format!("{}/{}", self.cluster_name, host_some);
+        if let (Some(host_get), Some(port_get)) = (host.clone(), port.clone()) {
+            let dir = format!("{}/{}", self.cluster_name, host_get);
             cnf_path = create_upload_cluster_dir(&dir)
-                .join(format!("{}-{}.{}", ELOQKV_INI, port_some, "ini"));
-            (host_some.clone(), port_some.clone())
+                .join(format!("{}-{}.{}", ini_name, port_get, "ini"));
+
+            ini = self.build_eloqkv_config(true, port_get.clone())?;
+
+            if self.log_service.is_some() {
+                self.build_log_config()
+                    .into_iter()
+                    .for_each(|(key, conf_val)| {
+                        ini.set(SECTION_CLUSTER, &key, Some(conf_val));
+                    });
+            }
+
+            ini.set(SECTION_LOCAL, "ip", Some(host_get.clone()));
+            ini.set(SECTION_LOCAL, "port", Some(port_get.clone()));
+
+            if let Some(hw) = self.get_hardware(&host_get) {
+                let key = "core_number";
+                let mut core_tx = 1; // minimal value
+                if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
+                    core_tx = val;
+                } else {
+                    assert!(hw.cpu > 0);
+                    core_tx = match hw.cpu {
+                        1 | 2 => 1,
+                        3 | 4 => 2,
+                        _ => core_tx.max((hw.cpu * 4) / 5),
+                    };
+                    ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
+                }
+
+                let key = "event_dispatcher_num";
+                let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
+                if val.is_none() {
+                    let core_io = (core_tx + 7) / 8;
+                    ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
+                }
+
+                let union_cass = self
+                    .topology()
+                    .get(&host_get)
+                    .unwrap()
+                    .contains(&DeploymentPackage::Storage);
+                let key = "node_memory_limit_mb";
+                let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
+                if val.is_none() {
+                    let mut limit = hw.memory * 4 / 5;
+                    if union_cass {
+                        limit /= 2;
+                    }
+                    assert!(limit > 0);
+                    ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+                }
+            }
+
+            ini.write(cnf_path.as_path())?;
+            Ok(cnf_path)
         } else {
+            // Handle the local case
+            cnf_path = upload_dir().join("redis_local.ini");
+            ini = self.build_eloqkv_config(false, "".to_string())?;
+
             ini.set(SECTION_LOCAL, "ip", Some("127.0.0.1".to_owned()));
             ini.set(SECTION_LOCAL, "port", Some("6379".to_owned()));
+
             ini.write(cnf_path.as_path())?;
-            return Ok(cnf_path);
-        };
-        if self.log_service.is_some() {
-            self.build_log_config()
-                .into_iter()
-                .for_each(|(key, conf_val)| {
-                    ini.set(SECTION_CLUSTER, &key, Some(conf_val));
-                });
+            Ok(cnf_path)
         }
-        ini.set(SECTION_LOCAL, "ip", Some(host_get.clone()));
-        ini.set(SECTION_LOCAL, "port", Some(port_get.clone()));
-
-        if let Some(hw) = self.get_hardware(&host_get) {
-            let key = "core_number";
-            let mut core_tx = 1; // minimal value
-            if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
-                core_tx = val;
-            } else {
-                assert!(hw.cpu > 0);
-                core_tx = match hw.cpu {
-                    1 | 2 => 1, // Set core_tx to 1 if hw.cpu is 1 or 2
-                    3 | 4 => 2, // Set core_tx to 2 if hw.cpu is 3 or 4
-                    _ => core_tx.max((hw.cpu * 4) / 5),
-                };
-
-                ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
-            }
-
-            let key = "event_dispatcher_num";
-            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
-            if val.is_none() {
-                let core_io = (core_tx + 7) / 8;
-                ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
-            }
-
-            let union_cass = self
-                .topology()
-                .get(&host_get)
-                .unwrap()
-                .contains(&DeploymentPackage::Storage);
-            let key = "node_memory_limit_mb";
-            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
-            if val.is_none() {
-                let mut limit = hw.memory * 4 / 5;
-                if union_cass {
-                    limit /= 2;
-                }
-                assert!(limit > 0);
-                ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
-            }
-        }
-
-        ini.write(cnf_path.as_path())?;
-        Ok(cnf_path)
-    }
-
-    pub fn gen_eloqkv_standby_config(
-        &self,
-        host: String,
-        port: String,
-        requirepass: Option<String>,
-    ) -> anyhow::Result<PathBuf> {
-        let dir = format!("{}/{}", self.cluster_name, host);
-        let cnf_path = create_upload_cluster_dir(&dir)
-            .join(format!("{}-{}.{}", ELOQKV_STANDBY_INI, port, "ini"));
-
-        let mut ini = self.build_eloqkv_config(true, port.clone(), requirepass)?;
-        if self.log_service.is_some() {
-            self.build_log_config()
-                .into_iter()
-                .for_each(|(key, conf_val)| {
-                    ini.set(SECTION_CLUSTER, &key, Some(conf_val));
-                });
-        }
-
-        ini.set(SECTION_LOCAL, "ip", Some(host.clone()));
-        ini.set(SECTION_LOCAL, "port", Some(port.clone()));
-
-        if let Some(hw) = self.get_hardware(&host) {
-            let key = "core_number";
-            let mut core_tx = 1; // minimal value
-            if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
-                core_tx = val;
-            } else {
-                assert!(hw.cpu > 0);
-                core_tx = match hw.cpu {
-                    1 | 2 => 1, // Set core_tx to 1 if hw.cpu is 1 or 2
-                    3 | 4 => 2, // Set core_tx to 2 if hw.cpu is 3 or 4
-                    _ => core_tx.max((hw.cpu * 4) / 5),
-                };
-
-                ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
-            }
-
-            let key = "event_dispatcher_num";
-            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
-            if val.is_none() {
-                let core_io = (core_tx + 7) / 8;
-                ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
-            }
-
-            let union_cass = self
-                .topology()
-                .get(&host)
-                .unwrap()
-                .contains(&DeploymentPackage::Storage);
-            let key = "node_memory_limit_mb";
-            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
-            if val.is_none() {
-                let mut limit = hw.memory * 4 / 5;
-                if union_cass {
-                    limit /= 2;
-                }
-                assert!(limit > 0);
-                ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
-            }
-        }
-
-        ini.write(cnf_path.as_path())?;
-        Ok(cnf_path)
-    }
-
-    pub fn gen_eloqkv_voter_config(
-        &self,
-        host: String,
-        port: String,
-        requirepass: Option<String>,
-    ) -> anyhow::Result<PathBuf> {
-        let dir = format!("{}/{}", self.cluster_name, host);
-        let cnf_path = create_upload_cluster_dir(&dir)
-            .join(format!("{}-{}.{}", ELOQKV_VOTER_INI, port, "ini"));
-
-        let mut ini = self.build_eloqkv_config(true, port.clone(), requirepass)?;
-        if self.log_service.is_some() {
-            self.build_log_config()
-                .into_iter()
-                .for_each(|(key, conf_val)| {
-                    ini.set(SECTION_CLUSTER, &key, Some(conf_val));
-                });
-        }
-
-        ini.set(SECTION_LOCAL, "ip", Some(host.clone()));
-        ini.set(SECTION_LOCAL, "port", Some(port.clone()));
-
-        if let Some(hw) = self.get_hardware(&host) {
-            let key = "core_number";
-            let mut core_tx = 1; // minimal value
-            if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
-                core_tx = val;
-            } else {
-                assert!(hw.cpu > 0);
-                core_tx = match hw.cpu {
-                    1 | 2 => 1, // Set core_tx to 1 if hw.cpu is 1 or 2
-                    3 | 4 => 2, // Set core_tx to 2 if hw.cpu is 3 or 4
-                    _ => core_tx.max((hw.cpu * 4) / 5),
-                };
-
-                ini.set(SECTION_LOCAL, key, Some(core_tx.to_string()));
-            }
-
-            let key = "event_dispatcher_num";
-            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
-            if val.is_none() {
-                let core_io = (core_tx + 7) / 8;
-                ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
-            }
-
-            let union_cass = self
-                .topology()
-                .get(&host)
-                .unwrap()
-                .contains(&DeploymentPackage::Storage);
-            let key = "node_memory_limit_mb";
-            let val = set_by_user!(ini.get(SECTION_LOCAL, key), u32);
-            if val.is_none() {
-                let mut limit = hw.memory * 4 / 5;
-                if union_cass {
-                    limit /= 2;
-                }
-                assert!(limit > 0);
-                ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
-            }
-        }
-
-        ini.write(cnf_path.as_path())?;
-        Ok(cnf_path)
     }
 
     // generate proxy config file

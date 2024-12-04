@@ -36,8 +36,9 @@ impl UploadTaskBuilder for ProxyUploadBuilder {
 
         proxy_config
             .proxy_service
-            .proxy_hosts
+            .proxy_addrs
             .iter()
+            .filter_map(|addr| addr.split(':').next().map(|s| s.to_string()))
             .for_each(|host| {
                 let upload_cnf_file = UploadFile {
                     source: conf_path.clone(),
