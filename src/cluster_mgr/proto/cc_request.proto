@@ -42,9 +42,15 @@ message ClusterBackupResponse{
     repeated BackupInfo backup_infos = 3;
 }
 
+enum ShutdownStatus{
+    ShutdownTriggered = 0;
+    ShutdownOngoing = 1;
+    ShutdownFailed = 2;
+}
+
 message NotifyShutdownCkptRequest {}
 message NotifyShutdownCkptResponse {
-    bool error = 1;
+    ShutdownStatus status = 1;
     uint64 trigger_ckpt_ts = 2;
 }
 

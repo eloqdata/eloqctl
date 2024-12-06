@@ -56,10 +56,9 @@ bash tests/update.sh
 bash tests/control.sh
 
 
-# TODO(ZX) open this after merge related mono_redis and tx_service pr
-# bash tests/launch_with_hot_standby.sh
-# bash tests/launch_with_hot_standby_and_voter.sh
-# bash tests/test_start_nodes.sh
+bash tests/launch_with_hot_standby.sh
+bash tests/launch_with_hot_standby_and_voter.sh
+bash tests/test_start_nodes.sh
 
 
 if [[ ! "$(python3 --version)" =~ "Python 3.12" ]]; then

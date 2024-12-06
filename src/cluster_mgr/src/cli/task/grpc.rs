@@ -6,7 +6,7 @@ use crate::cli::task::grpc::cc_request::{
     CreateClusterBackupRequest, FetchClusterBackupRequest, NotifyShutdownCkptRequest,
     NotifyShutdownCkptResponse,
 };
-use cc_request::{cc_rpc_service_client::CcRpcServiceClient, CkptStatus};
+use cc_request::{cc_rpc_service_client::CcRpcServiceClient, CkptStatus, ShutdownStatus};
 use tonic::transport::Channel;
 
 pub struct GrpcClient {
@@ -74,12 +74,15 @@ impl GrpcClient {
 
         let response_inner = response.into_inner();
 
-        if response_inner.error {
-            Err(tonic::Status::unknown(
-                "An error occurred during shutdown checkpoint",
-            ))
-        } else {
-            Ok(response_inner)
+        match ShutdownStatus::from_i32(response_inner.status) {
+            None => unreachable!(),
+            Some(ShutdownStatus::ShutdownOngoing) => Err(tonic::Status::unknown(
+                "Error: The shutdown process has already begun.",
+            )),
+            Some(ShutdownStatus::ShutdownFailed) => {
+                Err(tonic::Status::unknown("Error: Leader transfered."))
+            }
+            Some(ShutdownStatus::ShutdownTriggered) => Ok(response_inner),
         }
     }
 
@@ -94,6 +97,7 @@ impl GrpcClient {
         let response_inner = response.into_inner();
 
         match CkptStatus::from_i32(response_inner.status) {
+            None => unreachable!(),
             Some(CkptStatus::CkptFailed) => Err(tonic::Status::unknown(
                 "An error occurred during shutdown checkpoint",
             )),
