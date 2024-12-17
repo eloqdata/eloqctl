@@ -18,6 +18,7 @@ use crate::config::{
     SECTION_LOCAL, SECTION_MARIADB, SECTION_METRIC, SECTION_STORE,
 };
 use anyhow::{anyhow, Result};
+use chrono::Local;
 use configparser::ini::Ini;
 use core::panic;
 use indexmap::IndexMap;
@@ -1409,6 +1410,11 @@ impl Deployment {
             "; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH"
         ));
 
+        // Get the current datetime
+        let now = Local::now();
+        // Format the datetime as "YYYYMMDD-HHMMSS.microseconds"
+        let datetime = now.format("%Y%m%d-%H%M%S.%6f").to_string();
+
         match self.product() {
             Product::EloqSQL => {
                 let mut logout = "/dev/null".to_owned();
@@ -1423,7 +1429,7 @@ impl Deployment {
             }
             Product::EloqKV => {
                 format!(
-                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={ini_file} --graceful_quit_on_sigterm=true > logs/std-out-{port} 2>&1 &"
+                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={ini_file} --graceful_quit_on_sigterm=true > logs/std-output/std-out-{port}-{datetime} 2>&1 & ; cd logs/std-output ; ln -sf std-out-{port}-{datetime} std-out-{port} "
                 )
             }
         }

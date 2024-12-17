@@ -132,7 +132,7 @@ impl TaskExecutor for MonographInstall {
                             format!("export LD_PRELOAD={txsv_dir}/lib/libmimalloc.so.2")
                         };
                         format!(
-                            r#"cd {txsv_dir}; mkdir logs; export LD_LIBRARY_PATH={txsv_dir}/lib:$LD_LIBRARY_PATH; \
+                            r#"cd {txsv_dir}; mkdir -p logs/std-output; export LD_LIBRARY_PATH={txsv_dir}/lib:$LD_LIBRARY_PATH; \
                             {head}; bin/eloqkv --config={tx_ini} --bootstrap > logs/bootstrap-{port}.log 2>&1 "#
                         )
                     }
