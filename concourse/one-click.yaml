@@ -19,5 +19,7 @@ run:
       curl "${ADDRESS}/api/v1/cli?arch=amd64&platform=linux" -o "fly"
       chmod +x fly
       sudo mv fly /usr/local/bin/
+      set +x
       fly --target ${TARGET} login --concourse-url ${ADDRESS} --username mono --password cz123321Cz
+      set -x
       bash monograph_waiter/concourse/one-click.sh
