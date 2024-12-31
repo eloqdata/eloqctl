@@ -1429,7 +1429,7 @@ impl Deployment {
             }
             Product::EloqKV => {
                 format!(
-                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={ini_file} --graceful_quit_on_sigterm=true > logs/std-output/std-out-{port}-{datetime} 2>&1 & ; cd logs/std-output ; ln -sf std-out-{port}-{datetime} std-out-{port} "
+                    "cd {tx_dir}; {glog}; {ld_lib} ; {tx_bin} --config={ini_file} --graceful_quit_on_sigterm=true > logs/std-output/std-out-{port}-{datetime} 2>&1 & cd logs/std-output ; ln -sf std-out-{port}-{datetime} std-out-{port} "
                 )
             }
         }
