@@ -123,9 +123,8 @@ pub enum SubCommand {
         cassandra: Option<String>,
         #[arg(long, value_name = "url")]
         cass_mirror: Option<String>,
-        // TODO(ZX) add password to update cluster command
-        // #[arg(long, value_name = "password for graceful shutdown")]
-        // password: Option<String>,
+        #[arg(long, value_name = "password for graceful shutdown")]
+        password: Option<String>,
     },
 
     #[command(
