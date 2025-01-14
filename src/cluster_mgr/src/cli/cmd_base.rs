@@ -287,6 +287,7 @@ impl CmdExecutor {
                 version,
                 cassandra,
                 cass_mirror,
+                ..
             } => {
                 let mut config = self
                     .state_mgr

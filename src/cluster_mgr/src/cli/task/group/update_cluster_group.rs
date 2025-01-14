@@ -27,10 +27,13 @@ impl TaskGroup for UpdateClusterTaskGroup {
             }
         };
 
-        let (update_eloq, update_cass) = match &cmd_arg {
+        let (update_eloq, update_cass, password) = match &cmd_arg {
             SubCommand::Update {
-                version, cassandra, ..
-            } => (version.is_some(), cassandra.is_some()),
+                version,
+                cassandra,
+                password,
+                ..
+            } => (version.is_some(), cassandra.is_some(), password),
             _ => unreachable!(),
         };
         if !update_eloq && !update_cass {
@@ -71,7 +74,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
             monitor: false,
             force: false,
             all: false,
-            password: None,
+            password: password.clone(),
         };
 
         if cluster_config
