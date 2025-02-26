@@ -113,11 +113,33 @@ impl UnpackFileTask {
             .tx_host_ports
             .iter()
             .map(|host_port| {
-                //
                 let host = host_port.split(':').next().unwrap();
                 Self::make_task_pair(config, host, image, &tx_home, vec![])
             })
             .collect::<IndexMap<TaskId, TaskInstance>>();
+
+        if let Some(standby_host_ports) = &deploy_ref.tx_service.standby_host_ports {
+            let ret = standby_host_ports
+                .iter()
+                .map(|host_port| {
+                    let host = host_port.split(':').next().unwrap();
+                    Self::make_task_pair(config, host, image, &tx_home, vec![])
+                })
+                .collect::<IndexMap<TaskId, TaskInstance>>();
+            tasks.extend(ret);
+        }
+
+        if let Some(voter_host_ports) = &deploy_ref.tx_service.voter_host_ports {
+            let ret = voter_host_ports
+                .iter()
+                .map(|host_port| {
+                    let host = host_port.split(':').next().unwrap();
+                    Self::make_task_pair(config, host, image, &tx_home, vec![])
+                })
+                .collect::<IndexMap<TaskId, TaskInstance>>();
+            tasks.extend(ret);
+        }
+
         if let Some(srv) = &deploy_ref.log_service {
             let image = srv.image.as_ref().unwrap().split('/').last().unwrap();
             let ret = srv

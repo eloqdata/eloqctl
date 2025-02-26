@@ -1,5 +1,6 @@
 use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
 use crate::cli::task::download_task::DownloadTask;
+use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{Config, TaskGroup, UpdateClusterTaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
@@ -163,6 +164,18 @@ impl TaskGroup for UpdateClusterTaskGroup {
             barrier.push(start_voter.len());
             executable.extend(start_voter);
         }
+
+        let check_version_tasks = ExecCustomCommand::build_task_by_host(
+            format!(
+                "{}/EloqKV/bin/eloqkv --version",
+                cluster_config.install_dir()
+            ),
+            &config,
+            cluster_config.deployment.tx_service.merge_hosts(),
+            Some("check_eloqkv_version".to_string()),
+        );
+        barrier.push(check_version_tasks.len());
+        executable.extend(check_version_tasks);
 
         Ok(TaskExecutionContext {
             task_group: cmd_arg.as_ref().to_string(),

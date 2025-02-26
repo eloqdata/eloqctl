@@ -234,6 +234,40 @@ impl EloqUpload {
             })
             .collect_vec();
 
+        if let Some(standby_host_ports) = &config.tx_service.standby_host_ports {
+            let ups = standby_host_ports
+                .iter()
+                .map(|host_port| {
+                    let host = host_port.split(':').next().unwrap();
+                    UploadFile {
+                        source: img_src.clone(),
+                        dest: install_dir.clone(),
+                        extension: "gz".to_string(),
+                        host: host.to_string(),
+                        copy_dir: false,
+                    }
+                })
+                .collect_vec();
+            uploads.extend(ups);
+        }
+
+        if let Some(voter_host_ports) = &config.tx_service.voter_host_ports {
+            let ups = voter_host_ports
+                .iter()
+                .map(|host_port| {
+                    let host = host_port.split(':').next().unwrap();
+                    UploadFile {
+                        source: img_src.clone(),
+                        dest: install_dir.clone(),
+                        extension: "gz".to_string(),
+                        host: host.to_string(),
+                        copy_dir: false,
+                    }
+                })
+                .collect_vec();
+            uploads.extend(ups);
+        }
+
         if let Some(srv) = &config.log_service {
             let img = srv.image.as_ref().unwrap();
             let url = DownloadUrl::from_url_str(img).unwrap();
