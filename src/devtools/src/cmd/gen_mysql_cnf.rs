@@ -25,14 +25,14 @@ impl CmdV2 for GenMySQLConf {
     fn exec(&self, context: &mut CmdContext<impl Write>) -> Vec<(CmdDef, CmdStatus<()>)> {
         let mut mysql_cnf = extract_config_value!("mysql", MySQL, "".to_string()).clone();
 
-        let local_ip = mysql_cnf.get(MARIADB_SECTION, "monograph_local_ip");
+        let local_ip = mysql_cnf.get(MARIADB_SECTION, "eloq_local_ip");
         if local_ip.is_none() {
             let err_msg = "not found config key monograph_local_ip";
             context.logging(err_msg.to_string());
             return self.error_status(err_msg);
         }
 
-        println!("monograph_local_ip = {local_ip:?}");
+        println!("eloq_local_ip = {local_ip:?}");
         let local_ip_rs = local_ip
             .unwrap()
             .split(':')
@@ -40,7 +40,7 @@ impl CmdV2 for GenMySQLConf {
             .unwrap()
             .parse::<usize>();
         if local_ip_rs.is_err() {
-            let err_msg = "monograph_local_ip value illegal. The format must be IP:PORT";
+            let err_msg = "eloq_local_ip value illegal. The format must be IP:PORT";
             context.logging(err_msg.to_string());
             return self.error_status(err_msg);
         }
@@ -89,13 +89,13 @@ impl CmdV2 for GenMySQLConf {
 
             mysql_cnf.set(
                 MARIADB_SECTION,
-                "monograph_local_ip",
+                "eloq_local_ip",
                 Some(format!("127.0.0.1:{}", local_ip_port + (idx * 10))),
             );
 
             mysql_cnf.set(
                 MARIADB_SECTION,
-                "monograph_ip_list",
+                "eloq_ip_list",
                 Some(monograph_ip_list.clone()),
             );
             let cnf_location =

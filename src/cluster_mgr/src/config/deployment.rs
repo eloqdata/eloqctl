@@ -451,7 +451,7 @@ impl Deployment {
         }
         let mut my_ini_local = Ini::new();
         let _config_map_rs = my_ini_local.load(my_local).unwrap();
-        if let Some(keyspace) = my_ini_local.get(SECTION_MARIADB, "monograph_keyspace_name") {
+        if let Some(keyspace) = my_ini_local.get(SECTION_MARIADB, "eloq_keyspace_name") {
             Ok(keyspace)
         } else {
             Ok("mono".to_string())
@@ -495,11 +495,11 @@ impl Deployment {
             .into_iter()
             .join(",");
         let key_list = match self.product() {
-            Product::EloqSQL => "monograph_txlog_service_list".to_string(),
+            Product::EloqSQL => "eloq_txlog_service_list".to_string(),
             Product::EloqKV => "txlog_service_list".to_string(),
         };
         let key_replica = match self.product() {
-            Product::EloqSQL => "monograph_txlog_group_replica_num".to_string(),
+            Product::EloqSQL => "eloq_txlog_group_replica_num".to_string(),
             Product::EloqKV => "txlog_group_replica_num".to_string(),
         };
         HashMap::from([
@@ -522,19 +522,15 @@ impl Deployment {
                 .load(config_template(ELOQSQL_TEMPLATE_INI)?.as_path())
                 .unwrap();
             let hosts = cass.host.join(",");
-            my_ini.set(SECTION_MARIADB, "monograph_cass_hosts", Some(hosts));
+            my_ini.set(SECTION_MARIADB, "eloq_cass_hosts", Some(hosts));
             let port = cass.client_port()?;
-            my_ini.set(
-                SECTION_MARIADB,
-                "monograph_cass_port",
-                Some(port.to_string()),
-            );
+            my_ini.set(SECTION_MARIADB, "eloq_cass_port", Some(port.to_string()));
             if let Some(conn) = cass.external() {
                 if let Some(user) = conn.user.clone() {
-                    my_ini.set(SECTION_MARIADB, "monograph_cass_user", Some(user));
+                    my_ini.set(SECTION_MARIADB, "eloq_cass_user", Some(user));
                 }
                 if let Some(pwd) = conn.password.clone() {
-                    my_ini.set(SECTION_MARIADB, "monograph_cass_password", Some(pwd));
+                    my_ini.set(SECTION_MARIADB, "eloq_cass_password", Some(pwd));
                 }
             }
         } else {
@@ -545,28 +541,28 @@ impl Deployment {
             let dynamodb = self.storage_service.dynamodb.as_ref().unwrap();
             my_ini.set(
                 SECTION_MARIADB,
-                "monograph_aws_access_key_id",
+                "eloq_aws_access_key_id",
                 Some(dynamodb.clone().access_key_id),
             );
             my_ini.set(
                 SECTION_MARIADB,
-                "monograph_aws_secret_key",
+                "eloq_aws_secret_key",
                 Some(dynamodb.clone().secret_key),
             );
             my_ini.set(
                 SECTION_MARIADB,
-                "monograph_dynamodb_region",
+                "eloq_dynamodb_region",
                 Some(dynamodb.clone().region),
             );
             my_ini.set(
                 SECTION_MARIADB,
-                "monograph_dynamodb_endpoint",
+                "eloq_dynamodb_endpoint",
                 Some(dynamodb.clone().endpoint),
             );
         }
         // mysql_ini.set(
         //     CONFIG_MARIADB_SECTION,
-        //     "monograph_keyspace_name",
+        //     "eloq_keyspace_name",
         //     Some(self.cluster_name.clone()),
         // );
 
@@ -603,11 +599,11 @@ impl Deployment {
                 .iter()
                 .map(|host_port| host_port.clone().to_string())
                 .join(",");
-            my_ini.set(SECTION_MARIADB, "monograph_ip_list", Some(ip_list));
+            my_ini.set(SECTION_MARIADB, "eloq_ip_list", Some(ip_list));
         } else {
             my_ini.set(
                 SECTION_MARIADB,
-                "monograph_ip_list",
+                "eloq_ip_list",
                 Some(format!("{}:{}", "127.0.0.1", "8000")),
             );
         }
@@ -619,7 +615,7 @@ impl Deployment {
         };
         my_ini.set(
             SECTION_MARIADB,
-            "monograph_enable_metrics",
+            "eloq_enable_metrics",
             Some(enable_metric.to_string()),
         );
         Ok(my_ini.clone())
@@ -641,14 +637,14 @@ impl Deployment {
         } else {
             my_ini.set(
                 SECTION_MARIADB,
-                "monograph_local_ip",
+                "eloq_local_ip",
                 Some("127.0.0.1:8000".to_string()),
             );
             my_ini.set(SECTION_MARIADB, "thread_pool_size", Some("1".to_owned()));
-            my_ini.set(SECTION_MARIADB, "monograph_core_num", Some("1".to_owned()));
+            my_ini.set(SECTION_MARIADB, "eloq_core_num", Some("1".to_owned()));
             my_ini.set(
                 SECTION_MARIADB,
-                "monograph_node_memory_limit_mb",
+                "eloq_node_memory_limit_mb",
                 Some("512".to_owned()),
             );
             let cnf_path = upload_dir().join("my_local.cnf");
@@ -665,7 +661,7 @@ impl Deployment {
         }
         my_ini.set(
             SECTION_MARIADB,
-            "monograph_local_ip",
+            "eloq_local_ip",
             Some(format!("{}:{}", host, port)),
         );
         let opt_hw = self.get_hardware(&host);
@@ -695,13 +691,13 @@ impl Deployment {
         if val.is_none() {
             my_ini.set(SECTION_MARIADB, key, Some(core.to_string()));
         }
-        let key = "monograph_core_num";
+        let key = "eloq_core_num";
         let val = set_by_user!(my_ini.get(SECTION_MARIADB, key), u16);
         if val.is_none() {
             my_ini.set(SECTION_MARIADB, key, Some(core.to_string()));
         }
         if self.tx_service.tx_host_ports.len() > 1 {
-            let key = "monograph_bthread_worker_num";
+            let key = "eloq_bthread_worker_num";
             let val = set_by_user!(my_ini.get(SECTION_MARIADB, key), u16);
             if val.is_none() {
                 let n = std::cmp::max(1, core / 3);
@@ -709,7 +705,7 @@ impl Deployment {
             }
         }
 
-        let key = "monograph_node_memory_limit_mb";
+        let key = "eloq_node_memory_limit_mb";
         let val = set_by_user!(my_ini.get(SECTION_MARIADB, key), u32);
         if val.is_none() {
             let mut limit = opt_hw.map(|hw| (hw.memory * 3) / 5).unwrap_or(GB);
