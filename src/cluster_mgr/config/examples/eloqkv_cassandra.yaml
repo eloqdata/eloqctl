@@ -23,7 +23,6 @@ deployment:
       host: [127.0.0.1]
       kind: !Internal
         mirror: "https://download.eloqdata.com"
-        # mirror: "https://mirrors.aliyun.com/apache"
         version: "4.1.3"
   monitor:
     data_dir: ""
