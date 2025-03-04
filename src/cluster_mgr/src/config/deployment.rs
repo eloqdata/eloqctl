@@ -509,9 +509,8 @@ impl Deployment {
     }
 
     pub fn bootstrap_host(&self) -> String {
-        let mut all_hosts = self.tx_service.tx_host_ports.clone();
+        let all_hosts = self.tx_service.merge_hosts();
         assert!(!all_hosts.is_empty());
-        all_hosts.sort();
         all_hosts.first().unwrap().to_string()
     }
 
@@ -695,14 +694,6 @@ impl Deployment {
         let val = set_by_user!(my_ini.get(SECTION_MARIADB, key), u16);
         if val.is_none() {
             my_ini.set(SECTION_MARIADB, key, Some(core.to_string()));
-        }
-        if self.tx_service.tx_host_ports.len() > 1 {
-            let key = "eloq_bthread_worker_num";
-            let val = set_by_user!(my_ini.get(SECTION_MARIADB, key), u16);
-            if val.is_none() {
-                let n = std::cmp::max(1, core / 3);
-                my_ini.set(SECTION_MARIADB, key, Some(n.to_string()));
-            }
         }
 
         let key = "eloq_node_memory_limit_mb";
@@ -1090,7 +1081,9 @@ impl Deployment {
             .tx_service
             .tx_host_ports
             .iter()
-            .map(|host| {
+            .map(|host_port| {
+                let parts: Vec<&str> = host_port.split(':').collect();
+                let host = parts[0];
                 if let Some(hw) = self.get_hardware(host) {
                     hw.cpu
                 } else {
