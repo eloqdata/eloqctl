@@ -12,7 +12,7 @@ use crate::gen_db_misc_files;
 use anyhow::{anyhow, Result};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -521,6 +521,19 @@ impl DeployConfig {
         self.deployment.get_host_port_list(service)
     }
 
+    pub fn merge_and_deduplicate(&self, mut vec1: Vec<String>, vec2: Vec<String>) -> Vec<String> {
+        let mut seen = HashSet::new();
+        // Remove duplicates from vec1 in place, keeping the first occurrence
+        vec1.retain(|s| seen.insert(s.clone()));
+        // Append unique elements from vec2 that aren't already in vec1
+        for s in vec2 {
+            if seen.insert(s.clone()) {
+                vec1.push(s);
+            }
+        }
+        vec1
+    }
+
     pub fn load_from_string(config_content: String) -> anyhow::Result<Self> {
         let deployment_config_rs = serde_yaml::from_str::<DeployConfig>(config_content.as_str());
         if let Ok(deployment_config) = deployment_config_rs {
@@ -641,7 +654,7 @@ pub struct VersionRow {
 #[cfg(test)]
 mod tests {
     use crate::config::config_base::DeployConfig;
-    use crate::config::monitor::MONOGRAPH_TX_JOB_NAME;
+    use crate::config::monitor::MONITOR_JOB_NAME;
     use crate::config::{DeploymentPackage, CONFIG_PATH_DIR};
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -666,7 +679,7 @@ mod tests {
         let mono_host_list = config.get_host_list(DeploymentPackage::MonographTx);
         let monitor = monitor.unwrap();
         let pro_rs = monitor.gen_prometheus_config(HashMap::from([(
-            MONOGRAPH_TX_JOB_NAME.to_string(),
+            MONITOR_JOB_NAME.to_string(),
             mono_host_list,
         )]));
         println!("pro_rs={pro_rs:#?}")

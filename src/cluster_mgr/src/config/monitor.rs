@@ -29,7 +29,8 @@ pub const PROMETHEUS_CONFIG_DIR: &str = "prometheus";
 
 pub const MYSQL_EXPORTER_JOB_NAME: &str = "monograph-myslqd";
 pub const NODE_EXPORTER_JOB_NAME: &str = "monograph-node";
-pub const MONOGRAPH_TX_JOB_NAME: &str = "monograph-tx";
+
+pub const MONITOR_JOB_NAME: &str = "eloq-monitor";
 
 #[macro_export]
 macro_rules! monitor_component_config_dir {
@@ -264,7 +265,7 @@ impl Monitor {
             let mut target_hosts: Vec<String> = vec![];
             let mut url = None;
             hosts.iter().for_each(|host| match job_name.as_str() {
-                MONOGRAPH_TX_JOB_NAME => {
+                MONITOR_JOB_NAME => {
                     if let Some(monograph_metrics) = monograph_metrics_opt {
                         let port = &monograph_metrics.port;
                         target_hosts.push(format!("{host}:{port}"));
@@ -298,7 +299,7 @@ impl Monitor {
         // if !monograph_targets.is_empty() {
         //     let monograph_scrap_job_value = Monitor::build_prometheus_target_value(
         //         "monograph-service".to_string(),
-        //         Some("/mono_metrics".to_string()),
+        //         Some("/eloq_metrics".to_string()),
         //         monograph_targets,
         //     );
         //     scrape_configs.push(monograph_scrap_job_value);

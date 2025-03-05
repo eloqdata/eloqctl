@@ -244,14 +244,17 @@ impl MonitorCtlTask {
                 matches!(
                     pkg,
                     DeploymentPackage::MonographTx
+                        | DeploymentPackage::MonographStandby
                         | DeploymentPackage::MonographLog
                         | DeploymentPackage::Storage
                 )
             })
             .flat_map(|(pkg, hosts)| {
-                let mysql_expt = pkg == &DeploymentPackage::MonographTx
+                let mysql_expt = (pkg == &DeploymentPackage::MonographTx
+                    || pkg == &DeploymentPackage::MonographStandby)
                     && config.product() == Product::EloqSQL
                     && monitor.mysql_exporter.is_some();
+
                 hosts
                     .iter()
                     .unique()

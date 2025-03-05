@@ -6,7 +6,7 @@ use crate::cli::task::upload::upload_task_builder::{
 use crate::config::config_base::{DeployConfig, UploadFile};
 use crate::config::monitor::{
     Monitor, GRAFANA_CONFIG_DIR, GRAFANA_DASHBOARD_CONFIG_DIR, GRAFANA_DATASOURCE_CONFIG_DIR,
-    MONOGRAPH_TX_JOB_NAME, MYSQL_EXPORTER_JOB_NAME, NODE_EXPORTER_JOB_NAME, PROMETHEUS_CONFIG_DIR,
+    MONITOR_JOB_NAME, MYSQL_EXPORTER_JOB_NAME, NODE_EXPORTER_JOB_NAME, PROMETHEUS_CONFIG_DIR,
 };
 use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
@@ -77,14 +77,23 @@ impl MonitorInfraConfUploadBuilder {
         let mut upload_files = Vec::new();
         let all_host = config.get_host_as_map();
         let install_dir = config.install_dir();
-        let monograph_tx_hosts_ref = all_host.get(&DeploymentPackage::MonographTx).unwrap();
-        let monograph_tx_hosts = monograph_tx_hosts_ref.clone();
+        let monograph_tx_hosts = all_host
+            .get(&DeploymentPackage::MonographTx)
+            .unwrap()
+            .clone();
+        let monograph_standby_hosts = all_host
+            .get(&DeploymentPackage::MonographStandby)
+            .unwrap()
+            .clone();
+
+        let merged_tx_standby_hosts =
+            config.merge_and_deduplicate(monograph_tx_hosts, monograph_standby_hosts);
 
         // Generate the create_user_script
         let create_user_script = monitor.gen_monitor_user_sql_file().unwrap();
 
         // Prepare upload files for the create_user_script
-        let upload_create_user_files = monograph_tx_hosts
+        let upload_create_user_files = merged_tx_standby_hosts
             .iter()
             .map(|host| UploadFile {
                 source: MonitorInfraConfUploadBuilder::path_string(create_user_script.clone()),
@@ -110,13 +119,13 @@ impl MonitorInfraConfUploadBuilder {
             let log_hosts = all_host.get(&DeploymentPackage::MonographLog).unwrap();
             let mut jobs = HashMap::from([
                 (
-                    MONOGRAPH_TX_JOB_NAME.to_string(),
-                    monograph_tx_hosts.clone(),
+                    MONITOR_JOB_NAME.to_string(),
+                    merged_tx_standby_hosts.clone(),
                 ),
                 (
                     NODE_EXPORTER_JOB_NAME.to_string(),
                     [
-                        &monograph_tx_hosts[..],
+                        &merged_tx_standby_hosts[..],
                         &log_hosts.clone()[..],
                         &cass_config_hosts[..],
                     ]
@@ -127,7 +136,7 @@ impl MonitorInfraConfUploadBuilder {
             if monitor.mysql_exporter.is_some() {
                 jobs.insert(
                     MYSQL_EXPORTER_JOB_NAME.to_owned(),
-                    monograph_tx_hosts.clone(),
+                    merged_tx_standby_hosts.clone(),
                 );
             }
 
