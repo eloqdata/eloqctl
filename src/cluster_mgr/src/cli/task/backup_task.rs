@@ -1,3 +1,4 @@
+use super::redis_op_task::parse_cluster_nodes;
 use crate::cli::task::grpc::GrpcClient;
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
@@ -8,7 +9,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use local_ip_address::local_ip;
 use redis::cluster::ClusterClient;
-use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, Value};
+use redis::Value;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -119,86 +120,6 @@ pub struct ClusterNodes {
     pub replicas: Vec<NodeInfo>,
 }
 
-fn parse_node_info(value: &Value) -> RedisResult<NodeInfo> {
-    // Node info is an array
-    let node_info = match value {
-        Value::Bulk(node_info) => node_info,
-        _ => {
-            return Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Expected bulk array in node info",
-            )))
-        }
-    };
-
-    if node_info.len() < 2 {
-        return Err(RedisError::from((
-            ErrorKind::TypeError,
-            "Node info array too short",
-        )));
-    }
-
-    let ip = String::from_redis_value(&node_info[0])?;
-    let port = u16::from_redis_value(&node_info[1])?;
-    let node_info = NodeInfo { ip, port };
-
-    Ok(node_info)
-}
-
-fn parse_cluster_slots(value: Value) -> RedisResult<Vec<ClusterNodes>> {
-    // Ensure the top-level value is an array
-    let slots_array = match value {
-        Value::Bulk(slots) => slots,
-        _ => {
-            return Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Expected bulk array for slots",
-            )))
-        }
-    };
-
-    let mut cluster_slots = Vec::new();
-
-    for slot_value in slots_array {
-        // Each slot is an array
-        let slot_info = match slot_value {
-            Value::Bulk(slot_info) => slot_info,
-            _ => {
-                return Err(RedisError::from((
-                    ErrorKind::TypeError,
-                    "Expected bulk array in slot info",
-                )))
-            }
-        };
-
-        // Extract start_slot, end_slot, master, replicas
-        if slot_info.len() < 3 {
-            return Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Slot info array too short",
-            )));
-        }
-
-        // Master node info
-        let mut masters = Vec::new();
-        let master_node_info = parse_node_info(&slot_info[2])?;
-        masters.push(master_node_info);
-
-        // Replicas node info
-        let mut replicas = Vec::new();
-        for replica_value in &slot_info[3..] {
-            let replica_node_info = parse_node_info(replica_value)?;
-            replicas.push(replica_node_info);
-        }
-
-        let cluster_slot = ClusterNodes { masters, replicas };
-
-        cluster_slots.push(cluster_slot);
-    }
-
-    Ok(cluster_slots)
-}
-
 #[async_trait]
 impl TaskExecutor for BackupTask {
     fn identifier(&self) -> TaskId {
@@ -251,12 +172,12 @@ impl TaskExecutor for BackupTask {
             }
         };
 
-        let result = redis::cmd("CLUSTER").arg("SLOTS").query::<Value>(&mut con);
+        let result = redis::cmd("CLUSTER").arg("NODES").query::<Value>(&mut con);
         drop(con); // Close connection
 
         match result {
             Ok(value) => {
-                let cluster_nodes = parse_cluster_slots(value)?;
+                let cluster_nodes = parse_cluster_nodes(value)?;
                 let mut masters = HashSet::new();
                 for slot in &cluster_nodes {
                     for master in &slot.masters {

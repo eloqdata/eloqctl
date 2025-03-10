@@ -602,7 +602,7 @@ impl TaskExecutor for MonographTxCtlTask {
                     let redis_cmd_result = HashMap::from([
                         (
                             CMD.to_string(),
-                            TaskArgValue::Str("cluster slots".to_string()),
+                            TaskArgValue::Str("cluster nodes".to_string()),
                         ),
                         (CMD_STATUS.to_string(), TaskArgValue::Number(1)),
                         (
@@ -614,7 +614,7 @@ impl TaskExecutor for MonographTxCtlTask {
                         redis_cmd_result,
                         |status_code: i32| -> CmdErr {
                             CmdErr::RedisOpErr(
-                                "timeout, fail to receive cluster slots response".to_string(),
+                                "timeout, fail to receive cluster nodes response".to_string(),
                                 status_code.to_string(),
                             )
                         },

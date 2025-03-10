@@ -241,7 +241,7 @@ pub fn stop_with_hot_standby(
         host: "_local".to_string(),
     };
 
-    let redis_cmd = "cluster info".to_string();
+    let redis_cmd = "cluster nodes".to_string();
 
     // Use a channel to pass the result of RedisOpTask to MonographTxCtlTask
     let (tx_channel, rx_standby) = watch::channel::<ClusterNodes>(ClusterNodes {
