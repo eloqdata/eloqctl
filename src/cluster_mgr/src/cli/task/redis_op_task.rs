@@ -11,7 +11,7 @@ use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use futures::future::join_all;
 use redis::cluster::ClusterClient;
-use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, Value};
+use redis::{ErrorKind, RedisError, RedisResult, Value};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -74,85 +74,6 @@ impl Hash for NodeInfo {
 pub struct ClusterNodes {
     pub masters: Vec<NodeInfo>,
     pub replicas: Vec<NodeInfo>,
-}
-
-fn parse_node_info(value: &Value) -> RedisResult<NodeInfo> {
-    let node_info = match value {
-        Value::Bulk(node_info) => node_info,
-        _ => {
-            return Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Expected bulk array in node info",
-            )))
-        }
-    };
-
-    if node_info.len() < 2 {
-        return Err(RedisError::from((
-            ErrorKind::TypeError,
-            "Node info array too short",
-        )));
-    }
-
-    let ip = String::from_redis_value(&node_info[0])?;
-    let port = u16::from_redis_value(&node_info[1])?;
-    let node_info = NodeInfo { ip, port };
-
-    Ok(node_info)
-}
-
-fn parse_cluster_slots(value: Value) -> RedisResult<Vec<ClusterNodes>> {
-    // Ensure the top-level value is an array
-    let slots_array = match value {
-        Value::Bulk(slots) => slots,
-        _ => {
-            return Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Expected bulk array for slots",
-            )))
-        }
-    };
-
-    let mut cluster_slots = Vec::new();
-
-    for slot_value in slots_array {
-        // Each slot is an array
-        let slot_info = match slot_value {
-            Value::Bulk(slot_info) => slot_info,
-            _ => {
-                return Err(RedisError::from((
-                    ErrorKind::TypeError,
-                    "Expected bulk array in slot info",
-                )))
-            }
-        };
-
-        // Extract start_slot, end_slot, master, replicas
-        if slot_info.len() < 3 {
-            return Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Slot info array too short",
-            )));
-        }
-
-        // Master node info
-        let mut masters = Vec::new();
-        let master_node_info = parse_node_info(&slot_info[2])?;
-        masters.push(master_node_info);
-
-        // Replicas node info
-        let mut replicas = Vec::new();
-        for replica_value in &slot_info[3..] {
-            let replica_node_info = parse_node_info(replica_value)?;
-            replicas.push(replica_node_info);
-        }
-
-        let cluster_slot = ClusterNodes { masters, replicas };
-
-        cluster_slots.push(cluster_slot);
-    }
-
-    Ok(cluster_slots)
 }
 
 const MAX_RETRIES: usize = 500;
@@ -219,6 +140,83 @@ async fn query_ckpt_status_with_retry(
     }
 }
 
+pub fn parse_cluster_nodes(value: Value) -> RedisResult<Vec<ClusterNodes>> {
+    // Extract the cluster nodes string from the value
+    let nodes_str = match value {
+        Value::Data(bytes) => {
+            // Extract the actual string data (handle quoted strings)
+            let raw_str = String::from_utf8_lossy(&bytes).to_string();
+            if raw_str.starts_with('"') && raw_str.ends_with('"') {
+                // Remove the surrounding quotes
+                raw_str[1..raw_str.len() - 1].to_string()
+            } else {
+                raw_str
+            }
+        }
+        _ => {
+            return Err(RedisError::from((
+                ErrorKind::TypeError,
+                "Unexpected format for CLUSTER NODES",
+                format!("{:?}", value),
+            )))
+        }
+    };
+
+    let mut cluster_nodes_list = Vec::new();
+    let mut masters = Vec::new();
+    let mut replicas = Vec::new();
+
+    // Parse each line of the CLUSTER NODES output
+    for line in nodes_str.lines() {
+        if line.trim().is_empty() {
+            continue; // Skip empty lines
+        }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 8 {
+            continue; // Skip malformed lines
+        }
+
+        // Parse IP and port from the ip:port@cport format
+        let ip_port = parts[1];
+        let ip_port_parts: Vec<&str> = if ip_port.contains('@') {
+            ip_port.split([':', '@']).collect()
+        } else {
+            ip_port.split(':').collect()
+        };
+
+        if ip_port_parts.len() < 2 {
+            continue; // Skip malformed IP:port
+        }
+
+        let ip = ip_port_parts[0].to_string();
+        let port = match ip_port_parts[1].parse::<u16>() {
+            Ok(p) => p,
+            Err(_) => continue, // Skip if port is not a valid u16
+        };
+
+        // Check if node is master or replica
+        let flags = parts[2];
+        let is_master = !flags.contains("slave");
+
+        // Add node to appropriate list
+        let node_info = NodeInfo { ip, port };
+
+        if is_master {
+            masters.push(node_info);
+        } else {
+            replicas.push(node_info);
+        }
+    }
+
+    // Group all masters and replicas into one ClusterNodes
+    if !masters.is_empty() || !replicas.is_empty() {
+        cluster_nodes_list.push(ClusterNodes { masters, replicas });
+    }
+
+    Ok(cluster_nodes_list)
+}
+
 #[async_trait]
 impl TaskExecutor for RedisOpTask {
     fn identifier(&self) -> TaskId {
@@ -274,7 +272,7 @@ impl TaskExecutor for RedisOpTask {
         let cmd_lower = self.task_id.cmd.to_lowercase();
         let result = match cmd_lower.as_str() {
             "topology" => {
-                let query_result = redis::cmd("CLUSTER").arg("SLOTS").query::<Value>(&mut con);
+                let query_result = redis::cmd("CLUSTER").arg("NODES").query::<Value>(&mut con);
 
                 // Closing connection explicitly if successful or failed
                 drop(con); // Manually close connection
@@ -294,8 +292,7 @@ impl TaskExecutor for RedisOpTask {
         // Processing the result
         match result {
             Ok(value) => {
-                let cluster_nodes = parse_cluster_slots(value)?;
-
+                let cluster_nodes = parse_cluster_nodes(value)?;
                 let mut unique_masters = HashSet::new();
                 let mut unique_replicas = HashSet::new();
 
