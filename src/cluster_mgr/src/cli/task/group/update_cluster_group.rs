@@ -28,13 +28,14 @@ impl TaskGroup for UpdateClusterTaskGroup {
             }
         };
 
-        let (update_eloq, update_cass, password) = match &cmd_arg {
+        let (update_eloq, update_cass, password, force) = match &cmd_arg {
             SubCommand::Update {
                 version,
                 cassandra,
                 password,
+                force,
                 ..
-            } => (version.is_some(), cassandra.is_some(), password),
+            } => (version.is_some(), cassandra.is_some(), password, force),
             _ => unreachable!(),
         };
         if !update_eloq && !update_cass {
@@ -73,7 +74,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
             log: true,
             store: update_cass,
             monitor: false,
-            force: false,
+            force: force.clone(),
             all: false,
             password: password.clone(),
         };
@@ -84,6 +85,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
             .standby_host_ports
             .is_some()
         {
+            // this will succeed only if the tx-server is running properly. we can not trigger this action if the tx-server is down.
             stop_with_hot_standby(
                 stop_cmd.clone(),
                 &cluster_config,
@@ -91,6 +93,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
                 &mut executable,
             );
         } else {
+            // this means it will succeed even if the tx-server is not running. this is idempotent in that the result is the same whether the tx-server is running or not.
             let stop_tx =
                 MonographTxCtlTask::from_config(stop_cmd.clone(), &cluster_config, ServerType::Tx);
             barrier.push(stop_tx.len());

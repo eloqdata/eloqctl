@@ -42,8 +42,17 @@ RUN set -ex; \
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# install cargo make(fail in centos7 for ring crate)
-# RUN cargo install cargo-make
+# Install devtoolset-11
+RUN yum install -y centos-release-scl && \
+    yum install -y devtoolset-11-gcc devtoolset-11-gcc-c++ devtoolset-11-binutils
+
+# Activate devtoolset-11 and set environment variables
+RUN source /opt/rh/devtoolset-11/enable
+ENV CC=/opt/rh/devtoolset-11/root/usr/bin/gcc
+ENV CFLAGS=-march=haswell
+
+# Install cargo-make
+RUN cargo install cargo-make
 
 # Compile protobuf from source code.  Protobuf version need be compatibility
 # with both brpc and grpc. It cannot be too high or too low.
@@ -61,4 +70,4 @@ RUN source scl_source enable devtoolset-11 && \
     cmake --build cmake-out --target install -- -j ${NCPU:-4} && \
     ldconfig && \
     cd ../ && rm -rf protobuf
-    cd ../ && rm -rf protobuf
+

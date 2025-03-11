@@ -125,6 +125,13 @@ pub enum SubCommand {
         cass_mirror: Option<String>,
         #[arg(long, value_name = "password for graceful shutdown")]
         password: Option<String>,
+        #[arg(
+            short,
+            long,
+            value_name = "enable this when cluster cannot perform graceful shutdown or is already down",
+            default_value_t = false
+        )]
+        force: bool,
     },
 
     #[command(

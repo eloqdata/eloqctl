@@ -230,76 +230,112 @@ pub fn stop_with_hot_standby(
     barrier: &mut Vec<usize>,
     executable: &mut IndexMap<TaskId, TaskInstance>,
 ) {
-    // Check topology
-    let mut redis_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
-    let standby_host_ports = config.get_host_port_list(DeploymentPackage::MonographStandby);
-    redis_host_ports.extend(standby_host_ports);
-
-    let task_id = TaskId {
-        cmd: "topology".to_string(),
-        task: "check-topology".to_string(),
-        host: "_local".to_string(),
-    };
-
-    let redis_cmd = "cluster nodes".to_string();
-
-    // Use a channel to pass the result of RedisOpTask to MonographTxCtlTask
-    let (tx_channel, rx_standby) = watch::channel::<ClusterNodes>(ClusterNodes {
-        masters: Vec::new(),
-        replicas: Vec::new(),
-    });
-    let rx_tx = tx_channel.subscribe();
-
+    let mut is_force_stop = false;
     let mut redis_op_password: Option<String> = None;
-    if let SubCommand::Stop { password, .. } = &cmd {
+    if let SubCommand::Stop {
+        password, force, ..
+    } = &cmd
+    {
         redis_op_password = password.clone();
+        is_force_stop = *force;
     }
 
-    let topology_task = RedisOpTask::new(
-        task_id.clone(),
-        redis_host_ports,
-        redis_cmd,
-        tx_channel,
-        redis_op_password,
-    );
+    if is_force_stop {
+        // Set up standby tasks
+        let stop_standby = MonographTxCtlTask::from_config_with_channel(
+            cmd.clone(),
+            config,
+            ServerType::Standby,
+            None,
+        )
+        .expect("stop standby error");
 
-    let task_instance = TaskInstance {
-        task_input: HashMap::default(),
-        task: Box::new(topology_task),
-        task_host: TaskHost::Local,
-    };
+        barrier.push(stop_standby.len());
+        executable.extend(stop_standby);
 
-    barrier.push(1);
-    executable.insert(task_id, task_instance);
+        // Set up voter tasks if applicable
+        if config.deployment.tx_service.voter_host_ports.is_some() {
+            let stop_voter =
+                MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
+            barrier.push(stop_voter.len());
+            executable.extend(stop_voter);
+        }
 
-    // Set up standby tasks
-    let stop_standby = MonographTxCtlTask::from_config_with_channel(
-        cmd.clone(),
-        config,
-        ServerType::Standby,
-        Some(rx_standby),
-    )
-    .expect("stop standby error");
+        // Set up transaction tasks
+        let stop_tx =
+            MonographTxCtlTask::from_config_with_channel(cmd.clone(), config, ServerType::Tx, None)
+                .expect("stop tx error");
 
-    barrier.push(stop_standby.len());
-    executable.extend(stop_standby);
+        barrier.push(stop_tx.len());
+        executable.extend(stop_tx);
+    } else {
+        // Check topology
+        let mut redis_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
+        let standby_host_ports = config.get_host_port_list(DeploymentPackage::MonographStandby);
+        redis_host_ports.extend(standby_host_ports);
 
-    // Set up voter tasks if applicable
-    if config.deployment.tx_service.voter_host_ports.is_some() {
-        let stop_voter = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
-        barrier.push(stop_voter.len());
-        executable.extend(stop_voter);
+        let task_id = TaskId {
+            cmd: "topology".to_string(),
+            task: "check-topology".to_string(),
+            host: "_local".to_string(),
+        };
+
+        let redis_cmd = "cluster nodes".to_string();
+
+        // Use a channel to pass the result of RedisOpTask to MonographTxCtlTask
+        let (tx_channel, rx_standby) = watch::channel::<ClusterNodes>(ClusterNodes {
+            masters: Vec::new(),
+            replicas: Vec::new(),
+        });
+        let rx_tx = tx_channel.subscribe();
+
+        let topology_task = RedisOpTask::new(
+            task_id.clone(),
+            redis_host_ports,
+            redis_cmd,
+            tx_channel,
+            redis_op_password,
+        );
+
+        let task_instance = TaskInstance {
+            task_input: HashMap::default(),
+            task: Box::new(topology_task),
+            task_host: TaskHost::Local,
+        };
+
+        barrier.push(1);
+        executable.insert(task_id, task_instance);
+
+        // Set up standby tasks
+        let stop_standby = MonographTxCtlTask::from_config_with_channel(
+            cmd.clone(),
+            config,
+            ServerType::Standby,
+            Some(rx_standby),
+        )
+        .expect("stop standby error");
+
+        barrier.push(stop_standby.len());
+        executable.extend(stop_standby);
+
+        // Set up voter tasks if applicable
+        if config.deployment.tx_service.voter_host_ports.is_some() {
+            let stop_voter =
+                MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
+            barrier.push(stop_voter.len());
+            executable.extend(stop_voter);
+        }
+
+        // Set up transaction tasks
+        let stop_tx = MonographTxCtlTask::from_config_with_channel(
+            cmd.clone(),
+            config,
+            ServerType::Tx,
+            Some(rx_tx),
+        )
+        .expect("stop tx error");
+
+        barrier.push(stop_tx.len());
+        executable.extend(stop_tx);
     }
-
-    // Set up transaction tasks
-    let stop_tx = MonographTxCtlTask::from_config_with_channel(
-        cmd.clone(),
-        config,
-        ServerType::Tx,
-        Some(rx_tx),
-    )
-    .expect("stop tx error");
-
-    barrier.push(stop_tx.len());
-    executable.extend(stop_tx);
 }
