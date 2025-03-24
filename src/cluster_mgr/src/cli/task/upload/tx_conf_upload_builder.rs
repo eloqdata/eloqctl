@@ -25,6 +25,7 @@ impl UploadTaskBuilder for TxConfUpload {
               cluster_config.deployment.cluster_name);
 
         let remote_dest = cluster_config.deployment.tx_srv_home();
+        // TODO(ZX) support log-server, kv-store and monitor-server config update
         let mut all_hosts = cluster_config.get_host_list(DeploymentPackage::MonographTx);
         all_hosts.extend(cluster_config.get_host_list(DeploymentPackage::MonographStandby));
         all_hosts.extend(cluster_config.get_host_list(DeploymentPackage::MonographVoter));

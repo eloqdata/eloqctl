@@ -1306,7 +1306,7 @@ impl Deployment {
         // cassandra.yaml config object
         let mut cass_conf_map = load_yaml_config_template(CASSANDRA_CONF_TEMPLATE)?;
         let storage_cluster = if let Some(cassdp) = cass.internal() {
-            cassdp.cluster_name.clone().unwrap_or(cluster_name)
+            cassdp.cluster_name.clone().unwrap_or(cluster_name.clone())
         } else {
             unreachable!()
         };
@@ -1334,7 +1334,10 @@ impl Deployment {
                 );
                 cass_conf_map.insert(String::from("broadcast_rpc_address"), host_value.clone());
                 cass_conf_map.insert(String::from("broadcast_address"), host_value);
-                let config_path = create_upload_cluster_dir(host).join("cassandra.yaml");
+                // Store cassandra.yaml inside .eloqctl/upload/${cluster_name}/${host}/cassandra.yaml
+                let cluster_host_path = format!("{}/{}", cluster_name, host);
+                let config_path =
+                    create_upload_cluster_dir(&cluster_host_path).join("cassandra.yaml");
                 let new_config_file = File::create(config_path.as_path()).unwrap();
                 let gen_config_write = serde_yaml::to_writer(new_config_file, &cass_conf_map);
                 assert!(gen_config_write.is_ok());
@@ -1365,7 +1368,9 @@ impl Deployment {
                 } else {
                     jvm_temp.clone()
                 };
-                let opt_path = create_upload_cluster_dir(host).join(CASSANDRA_JVM_OPTION);
+                // Store jvm11-server.options inside .eloqctl/upload/${cluster_name}/${host}/jvm11-server.options
+                let opt_path =
+                    create_upload_cluster_dir(&cluster_host_path).join(CASSANDRA_JVM_OPTION);
                 File::create(opt_path.as_path())
                     .unwrap()
                     .write_all(jvm_opt.as_bytes())

@@ -443,12 +443,7 @@ impl CmdExecutor {
                 return self.list_versions(product.clone(), store.clone()).await
             }
             SubCommand::Update { cluster: None, .. } => return self.update().await,
-            SubCommand::Launch { .. }
-            | SubCommand::Demo { .. }
-            | SubCommand::Deploy { .. }
-            | SubCommand::Update {
-                cluster: Some(_), ..
-            } => {
+            SubCommand::Launch { .. } | SubCommand::Demo { .. } | SubCommand::Deploy { .. } => {
                 std::fs::remove_dir_all(upload_dir())?;
                 std::fs::create_dir(upload_dir())?;
             }
