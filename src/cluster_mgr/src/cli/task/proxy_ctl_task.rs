@@ -7,6 +7,7 @@ use super::task_base::{
 use crate::cli::ssh::{SSHCommandOption, SSHSession};
 use crate::cli::ProxyCommand;
 use crate::config::proxy_config_base::ProxyConfig;
+use crate::config::PROXY_CONF_TEMPLATE;
 use indexmap::IndexMap;
 use reqwest;
 
@@ -50,32 +51,36 @@ impl ProxyCtlTask {
         let mut all_tasks = IndexMap::default();
 
         match command {
-            ProxyCommand::Start {
-                config: config_path,
-            } => {
+            ProxyCommand::Start { .. } => {
                 for host in &proxy_hosts {
-                    let task = Self::start_proxy(
-                        ssh_key.clone(),
-                        user.clone(),
-                        port,
-                        host.clone(),
-                        args,
-                        proxy_config,
-                    );
+                    for (idx, _) in proxy_config.proxy_service.proxy_addrs.iter().enumerate() {
+                        let task = Self::start_proxy(
+                            ssh_key.clone(),
+                            user.clone(),
+                            port,
+                            host.clone(),
+                            args,
+                            proxy_config,
+                            idx,
+                        );
 
-                    task.task_instance(&mut all_tasks);
+                        task.task_instance(&mut all_tasks);
+                    }
                 }
             }
             ProxyCommand::Stop { .. } => {
                 for host in &proxy_hosts {
-                    let task = Self::stop_proxy(
-                        ssh_key.clone(),
-                        user.clone(),
-                        port,
-                        host.clone(),
-                        proxy_config,
-                    );
-                    task.task_instance(&mut all_tasks);
+                    for (idx, _) in proxy_config.proxy_service.proxy_addrs.iter().enumerate() {
+                        let task = Self::stop_proxy(
+                            ssh_key.clone(),
+                            user.clone(),
+                            port,
+                            host.clone(),
+                            proxy_config,
+                            idx,
+                        );
+                        task.task_instance(&mut all_tasks);
+                    }
                 }
             }
             ProxyCommand::List { proxy_name } => {
@@ -104,16 +109,37 @@ impl ProxyCtlTask {
         host: String,
         args: &HashMap<String, String>,
         proxy_config: &ProxyConfig,
+        idx: usize,
     ) -> Self {
         let bin_path = args.get("proxy_bin").expect("proxy_bin is required");
 
-        let config_file = proxy_config.proxy_service.proxy_conf_path();
-        let log_path = format!("{}/proxy.log", proxy_config.proxy_service.install_dir());
-        let pid_path = format!("{}/proxy.pid", proxy_config.proxy_service.install_dir());
+        let template_base = PROXY_CONF_TEMPLATE.trim_end_matches(".ini");
+        let config_file = format!(
+            "{}/{}_{}.ini",
+            proxy_config.proxy_service.install_dir(),
+            template_base,
+            idx
+        );
+        let log_path = format!(
+            "{}/proxy_{}.log",
+            proxy_config.proxy_service.install_dir(),
+            idx
+        );
+        let pid_path = format!(
+            "{}/proxy_{}.pid",
+            proxy_config.proxy_service.install_dir(),
+            idx
+        );
 
         let command = format!(
-            "chmod +x {}; nohup {} --config={} > {} 2>&1 & echo $! > {}",
-            bin_path, bin_path, config_file, log_path, pid_path
+            "chmod +x {}; nohup {} --config={} --proxy_addr={} --web_service_addr=:{} > {} 2>&1 & echo $! > {}",
+            bin_path,
+            bin_path,
+            config_file,
+            proxy_config.proxy_service.proxy_addrs[idx],
+            proxy_config.proxy_service.web_service_ports[idx],
+            log_path,
+            pid_path
         );
 
         Self {
@@ -131,8 +157,13 @@ impl ProxyCtlTask {
         port: usize,
         host: String,
         proxy_config: &ProxyConfig,
+        idx: usize,
     ) -> Self {
-        let pid_path = format!("{}/proxy.pid", proxy_config.proxy_service.install_dir());
+        let pid_path = format!(
+            "{}/proxy_{}.pid",
+            proxy_config.proxy_service.install_dir(),
+            idx
+        );
 
         let command = format!("kill $(cat {})", pid_path);
 
