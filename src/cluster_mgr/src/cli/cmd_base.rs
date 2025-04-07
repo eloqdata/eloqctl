@@ -279,6 +279,7 @@ impl CmdExecutor {
             | SubCommand::Remove { cluster }
             | SubCommand::Connect { cluster }
             | SubCommand::Backup { cluster, .. }
+            | SubCommand::Failover { cluster, .. }
             | SubCommand::Scale {
                 cluster,
                 add_tx_node: _,
@@ -705,7 +706,7 @@ impl CmdExecutor {
                 },
                 _ => {}
             },
-            Config::Proxy(cfg) => match cmd {
+            Config::Proxy(..) => match cmd {
                 SubCommand::Proxy { command } => match &command {
                     ProxyCommand::Start { .. } => {
                         println!("Launch proxy finished, Enjoy!");

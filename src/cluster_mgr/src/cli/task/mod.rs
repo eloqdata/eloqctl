@@ -6,6 +6,8 @@ mod codis_task;
 pub mod copy_task;
 mod download_task;
 mod exec_custom_cmd;
+pub mod failover_op_task;
+pub mod failover_task_group;
 pub mod group;
 mod grpc;
 mod install_dep_pkg;

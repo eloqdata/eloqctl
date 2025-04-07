@@ -216,6 +216,19 @@ pub enum SubCommand {
         #[command(subcommand)]
         command: BackupCommand,
     },
+
+    #[strum(serialize = "failover")]
+    Failover {
+        cluster: String,
+        #[arg(long)]
+        old_leader_host: String,
+        #[arg(long)]
+        old_leader_port: u16,
+        #[arg(long)]
+        new_leader_host: String,
+        #[arg(long)]
+        new_leader_port: u16,
+    },
 }
 
 fn parse_duration(s: &str) -> Result<Duration, String> {

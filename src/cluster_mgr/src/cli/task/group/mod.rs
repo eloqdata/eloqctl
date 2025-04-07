@@ -4,6 +4,7 @@ mod check_group;
 mod custom_cmd_group;
 mod db_cluster_ctrl_group;
 mod deployment_group;
+mod failover_group;
 mod install_dep_pkg;
 mod launch_group;
 mod log_srv_ctl_group;
@@ -109,7 +110,8 @@ task_group_boxed! {
     {LaunchTaskGroup},
     {RemoveTaskGroup},
     {CheckTaskGroup},
-    {BackupTaskGroup}
+    {BackupTaskGroup},
+    {FailoverTaskGroup}
 }
 
 pub static TASK_GROUP: OnceCell<HashMap<String, Box<dyn TaskGroup>>> = OnceCell::new();
@@ -135,6 +137,7 @@ pub fn init_task_group() -> &'static HashMap<String, Box<dyn TaskGroup>> {
             ("demo".to_string(), LaunchTaskGroup::boxed()),
             ("check".to_string(), CheckTaskGroup::boxed()),
             ("backup".to_string(), BackupTaskGroup::boxed()),
+            ("failover".to_string(), FailoverTaskGroup::boxed()),
         ])
     })
 }

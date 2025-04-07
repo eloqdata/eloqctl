@@ -18,7 +18,7 @@ use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time::sleep;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 // only used in stop cluster with standby
 #[derive(Clone, Debug)]
@@ -65,6 +65,11 @@ impl RedisOpTask {
             password,
             skip_checkpoint,
         }
+    }
+
+    // Helper method to check if the sender has any receivers
+    fn has_receivers(&self) -> bool {
+        self.sender.receiver_count() > 0
     }
 }
 
@@ -444,11 +449,15 @@ impl TaskExecutor for RedisOpTask {
                 task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
                 task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(response_str));
 
-                // Send the cluster_nodes to the receiver
-                if let Err(err) = self.sender.send(cluster_nodes) {
-                    error!("Failed to send cluster nodes result to channel: {}", err);
-                    task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
-                    task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(err.to_string()));
+                // Send the cluster_nodes to the receiver only if there are active receivers
+                if self.has_receivers() {
+                    if let Err(err) = self.sender.send(cluster_nodes) {
+                        error!("Failed to send cluster nodes result to channel: {}", err);
+                        // Don't treat this as a task failure since we already have the data we need
+                        warn!("Channel error, but continuing with task execution");
+                    }
+                } else {
+                    info!("No active receivers for cluster node data, skipping channel send");
                 }
             }
             Err(err) => {
