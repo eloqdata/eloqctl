@@ -82,6 +82,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
             force: force.clone(),
             all: false,
             password: password.clone(),
+            nodes: Vec::new(),
         };
 
         if cluster_config

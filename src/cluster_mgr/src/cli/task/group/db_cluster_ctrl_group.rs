@@ -6,7 +6,7 @@ use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskId, TaskInstance};
-use crate::cli::task::task_utils::stop_with_hot_standby;
+use crate::cli::task::task_utils::{stop_with_failover, stop_with_hot_standby};
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
 use anyhow::Result;
@@ -59,6 +59,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                     force: false,
                     all: false,
                     password: None,
+                    nodes: Vec::new(),
                 };
                 let (mut barrier, mut executable) =
                     self.stop_tasks(true, true, false, stop_cmd, &cluster_config, false);
@@ -148,11 +149,23 @@ impl CtrlDBTaskGroup {
         // stop order: (standby-server -> voter-server ->) tx-server -> log-server -> kv-store
         if tx {
             let mut is_force_stop = false;
-            if let SubCommand::Stop { force, .. } = cmd.clone() {
-                is_force_stop = force
+            let mut has_nodes = false;
+
+            if let SubCommand::Stop {
+                force,
+                nodes: node_list,
+                ..
+            } = cmd.clone()
+            {
+                is_force_stop = force;
+                if !node_list.is_empty() {
+                    has_nodes = true;
+                }
             };
 
-            if is_from_remove || is_force_stop {
+            if has_nodes {
+                stop_with_failover(cmd.clone(), config, &mut barrier, &mut executable);
+            } else if is_from_remove || is_force_stop {
                 // Enter this branch when:
                 // - The user explicitly requests to remove or force-stop the cluster.
                 // - The cluster is already in a stopped state.

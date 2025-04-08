@@ -295,7 +295,7 @@ pub fn stop_with_hot_standby(
         let rx_tx = tx_channel.subscribe();
 
         // Add flag to specify if checkpoint tasks should be skipped
-        let topology_task = RedisOpTask::new_with_skip_checkpoint(
+        let topology_task = RedisOpTask::new_and_skip_checkpoint(
             task_id.clone(),
             redis_host_ports,
             redis_cmd,
@@ -345,6 +345,118 @@ pub fn stop_with_hot_standby(
         barrier.push(stop_tx.len());
         executable.extend(stop_tx);
     }
+}
+
+pub fn stop_with_failover(
+    cmd: SubCommand,
+    config: &DeployConfig,
+    barrier: &mut Vec<usize>,
+    executable: &mut IndexMap<TaskId, TaskInstance>,
+) {
+    let mut redis_op_password: Option<String> = None;
+    let mut nodes_to_stop: Vec<String> = Vec::new();
+    if let SubCommand::Stop {
+        password, nodes, ..
+    } = &cmd
+    {
+        redis_op_password = password.clone();
+        nodes_to_stop = nodes.clone();
+    }
+
+    // Check if any node configuration has enable_data_store set to false. if so, skip the checkpoint tasks
+    let skip_checkpoint = check_whether_to_skip_checkpoint(&config.deployment.cluster_name);
+
+    // Set up topology task to get cluster information
+    let topology_task_id = TaskId {
+        cmd: "topology".to_string(),
+        task: "check-topology".to_string(),
+        host: "_local".to_string(),
+    };
+
+    let redis_cmd = "cluster nodes".to_string();
+
+    let (topology_tx, failover_rx) = watch::channel::<ClusterNodes>(ClusterNodes {
+        masters: Vec::new(),
+        replicas: Vec::new(),
+    });
+
+    // Create additional receivers that will get the same data
+    let stop_nodes_rx = failover_rx.clone();
+
+    // Create the topology task to get cluster information
+    let topology_task = RedisOpTask::new_and_skip_checkpoint(
+        topology_task_id.clone(),
+        nodes_to_stop.clone(),
+        redis_cmd,
+        topology_tx,
+        redis_op_password.clone(),
+        skip_checkpoint,
+    );
+
+    let topology_instance = TaskInstance {
+        task_input: HashMap::default(),
+        task: Box::new(topology_task),
+        task_host: TaskHost::Local,
+    };
+
+    barrier.push(1);
+    executable.insert(topology_task_id, topology_instance);
+
+    // Add failover tasks for leader nodes
+    // We'll create one failover task for each potential leader node in the nodes_to_stop list
+    // These tasks will initiate failover if needed
+    let mut failover_task_ids = Vec::new();
+
+    // Use the same ReceiverOpTask for all failover tasks to get cluster info
+    for node_addr in &nodes_to_stop {
+        if let Some((host, port_str)) = node_addr.split_once(':') {
+            if let Ok(port) = port_str.parse::<u16>() {
+                let failover_task_id = TaskId {
+                    cmd: "failover".to_string(),
+                    task: format!("failover-check-{}", port_str),
+                    host: host.to_string(),
+                };
+
+                // We will create a dummy replica address for now - the actual FailoverOpTask will
+                // determine if this node is a leader, and if so, choose an appropriate replica
+                // The task will be a no-op if this node is not a leader
+                let failover_task = crate::cli::task::failover_op_task::FailoverOpTask::new(
+                    failover_task_id.clone(),
+                    host.to_string(),
+                    port,
+                    // These values will be dynamically determined by the task itself based on cluster info
+                    "".to_string(), // Will be filled by the task if needed
+                    0,              // Will be filled by the task if needed
+                    failover_rx.clone(),
+                    redis_op_password.clone(),
+                );
+
+                let failover_instance = TaskInstance {
+                    task_input: HashMap::default(),
+                    task: Box::new(failover_task),
+                    task_host: TaskHost::Local, // Failover coordination happens locally
+                };
+
+                failover_task_ids.push(failover_task_id.clone());
+                executable.insert(failover_task_id, failover_instance);
+            }
+        }
+    }
+
+    barrier.push(failover_task_ids.len());
+
+    // Add stop tasks for the nodes
+    // These tasks will execute after the failover tasks have completed
+    let stop_nodes = MonographTxCtlTask::from_config_with_channel(
+        cmd.clone(),
+        config,
+        ServerType::Node,
+        Some(stop_nodes_rx),
+    )
+    .expect("stop nodes error");
+
+    barrier.push(stop_nodes.len());
+    executable.extend(stop_nodes);
 }
 
 fn check_whether_to_skip_checkpoint(cluster_name: &str) -> bool {

@@ -17,7 +17,7 @@ pub const CMD_OUTPUT: &str = "_cmd_output_";
 pub const CMD: &str = "_cmd_";
 
 #[derive(Parser, Default, Debug)]
-#[command(author, version = "0.6.13", about = "EloqData cluster management tool")]
+#[command(author, version = "0.6.14", about = "EloqData cluster management tool")]
 #[command(next_line_help = true)]
 pub struct Command {
     #[arg(long, value_name = "home-dir")]
@@ -96,6 +96,8 @@ pub enum SubCommand {
         all: bool,
         #[arg(long, value_name = "cluster password")]
         password: Option<String>,
+        #[arg(long)]
+        nodes: Vec<String>,
     },
 
     #[command(long_about = "Restart the specified cluster")]

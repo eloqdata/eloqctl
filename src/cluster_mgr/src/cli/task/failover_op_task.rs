@@ -9,15 +9,15 @@ use async_trait::async_trait;
 use redis::cmd;
 use std::collections::HashMap;
 use tokio::sync::watch;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 #[derive(Clone, Debug)]
 pub struct FailoverOpTask {
     task_id: TaskId,
     old_leader_host: String,
     old_leader_port: u16,
-    new_leader_host: String,
-    new_leader_port: u16,
+    new_leader_host: String, // Can be empty, if empty, will be chosen dynamically
+    new_leader_port: u16,    // Can be 0, if 0, will be chosen dynamically
     receiver: watch::Receiver<ClusterNodes>,
     password: Option<String>,
 }
@@ -42,6 +42,33 @@ impl FailoverOpTask {
             password,
         }
     }
+
+    // Helper function to find the best replica for failover
+    fn find_best_replica(&self, cluster_nodes: &ClusterNodes) -> Option<(String, u16)> {
+        // If we have explicit new_leader_host/port set and it's in the replicas list, use it
+        if !self.new_leader_host.is_empty() && self.new_leader_port > 0 {
+            let specified_replica = cluster_nodes
+                .replicas
+                .iter()
+                .find(|r| r.ip == self.new_leader_host && r.port == self.new_leader_port);
+
+            if specified_replica.is_some() {
+                return Some((self.new_leader_host.clone(), self.new_leader_port));
+            }
+
+            info!(
+                "Specified new leader {}:{} not found as replica, will choose another one",
+                self.new_leader_host, self.new_leader_port
+            );
+        }
+
+        // Select first available replica
+        if let Some(replica) = cluster_nodes.replicas.first() {
+            return Some((replica.ip.clone(), replica.port));
+        }
+
+        None
+    }
 }
 
 #[async_trait]
@@ -63,6 +90,11 @@ impl TaskExecutor for FailoverOpTask {
         // Get the current cluster nodes from the receiver
         let cluster_nodes = self.receiver.borrow().clone();
 
+        debug!(
+            "Executing failover check for node {}:{}",
+            self.old_leader_host, self.old_leader_port
+        );
+
         // Check if the specified old leader is actually a leader (master) in the cluster
         let old_leader_found = cluster_nodes
             .masters
@@ -70,15 +102,35 @@ impl TaskExecutor for FailoverOpTask {
             .any(|node| node.ip == self.old_leader_host && node.port == self.old_leader_port);
 
         if !old_leader_found {
+            // Node is not a leader, no need for failover, return success
+            debug!(
+                "Node {}:{} is not a master in the cluster, no failover needed",
+                self.old_leader_host, self.old_leader_port
+            );
+            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
+            task_result.insert(
+                CMD_OUTPUT.to_string(),
+                TaskArgValue::Str(format!(
+                    "Node {}:{} is not a master, no failover needed",
+                    self.old_leader_host, self.old_leader_port
+                )),
+            );
+            return Ok(Some(task_result));
+        }
+
+        // Find the best replica for this leader
+        let new_leader = self.find_best_replica(&cluster_nodes);
+
+        if new_leader.is_none() {
             error!(
-                "Specified old leader {}:{} is not a master in the cluster",
+                "No suitable replica found for master {}:{}. Cannot perform failover.",
                 self.old_leader_host, self.old_leader_port
             );
             task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
             task_result.insert(
                 CMD_OUTPUT.to_string(),
                 TaskArgValue::Str(format!(
-                    "Specified old leader {}:{} is not a master in the cluster",
+                    "No suitable replica found for master {}:{}. Cannot perform failover.",
                     self.old_leader_host, self.old_leader_port
                 )),
             );
@@ -86,7 +138,7 @@ impl TaskExecutor for FailoverOpTask {
                 task_result,
                 |status_code: i32| -> CmdErr {
                     CmdErr::RedisOpErr(
-                        "Old leader validation failed".to_string(),
+                        "No suitable replica found".to_string(),
                         status_code.to_string(),
                     )
                 },
@@ -94,36 +146,12 @@ impl TaskExecutor for FailoverOpTask {
             )
         }
 
-        // Check if the new leader is a replica in the cluster
-        let new_leader_found = cluster_nodes
-            .replicas
-            .iter()
-            .any(|node| node.ip == self.new_leader_host && node.port == self.new_leader_port);
+        let (new_leader_host, new_leader_port) = new_leader.unwrap();
 
-        if !new_leader_found {
-            error!(
-                "Specified new leader {}:{} is not a replica in the cluster",
-                self.new_leader_host, self.new_leader_port
-            );
-            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
-            task_result.insert(
-                CMD_OUTPUT.to_string(),
-                TaskArgValue::Str(format!(
-                    "Specified new leader {}:{} is not a replica in the cluster",
-                    self.new_leader_host, self.new_leader_port
-                )),
-            );
-            task_return_value!(
-                task_result,
-                |status_code: i32| -> CmdErr {
-                    CmdErr::RedisOpErr(
-                        "New leader validation failed".to_string(),
-                        status_code.to_string(),
-                    )
-                },
-                "FailoverOpTask"
-            )
-        }
+        info!(
+            "Found suitable replica {}:{} for master {}:{}. Initiating failover.",
+            new_leader_host, new_leader_port, self.old_leader_host, self.old_leader_port
+        );
 
         // Connect to the old leader (master) to perform the failover operation
         let node_url = if let Some(password) = &self.password {
@@ -161,12 +189,12 @@ impl TaskExecutor for FailoverOpTask {
         // Execute FAILOVER TO command
         info!(
             "Executing FAILOVER TO {}:{} from old leader {}:{}",
-            self.new_leader_host, self.new_leader_port, self.old_leader_host, self.old_leader_port
+            new_leader_host, new_leader_port, self.old_leader_host, self.old_leader_port
         );
 
         let failover_result = cmd("FAILOVER")
             .arg("TO")
-            .arg(format!("{}:{}", self.new_leader_host, self.new_leader_port))
+            .arg(format!("{}:{}", new_leader_host, new_leader_port))
             .query::<String>(&mut con);
 
         match failover_result {
@@ -180,8 +208,8 @@ impl TaskExecutor for FailoverOpTask {
                             "Successfully initiated failover from {}:{} to {}:{}. Response: {}",
                             self.old_leader_host,
                             self.old_leader_port,
-                            self.new_leader_host,
-                            self.new_leader_port,
+                            new_leader_host,
+                            new_leader_port,
                             response
                         )),
                     );

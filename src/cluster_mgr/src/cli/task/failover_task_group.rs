@@ -66,7 +66,7 @@ pub fn failover_task_group(
         host: "_local".to_string(),
     };
 
-    let pre_failover_task = RedisOpTask::new_with_skip_checkpoint(
+    let pre_failover_task = RedisOpTask::new_and_skip_checkpoint(
         pre_failover_task_id.clone(),
         redis_host_ports.clone(),
         "cluster nodes".to_string(),
@@ -117,7 +117,7 @@ pub fn failover_task_group(
         host: "_local".to_string(),
     };
 
-    let post_failover_task = RedisOpTask::new_with_skip_checkpoint(
+    let post_failover_task = RedisOpTask::new_and_skip_checkpoint(
         post_failover_task_id.clone(),
         redis_host_ports,
         "cluster nodes".to_string(),

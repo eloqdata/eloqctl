@@ -70,6 +70,7 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> SubCommand 
             force: false,
             all: false,
             password: None,
+            nodes: Vec::new(),
         },
         "deploy" => SubCommand::Deploy {
             topology_file: "_NONE".to_string(),

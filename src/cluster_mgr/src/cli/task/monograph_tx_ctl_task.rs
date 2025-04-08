@@ -416,10 +416,17 @@ impl MonographTxCtlTask {
             (-1, "_NONE".to_string(), "_NONE".to_string(), false);
 
         match &cmd_arg {
-            SubCommand::Start { nodes, .. } if server_type == ServerType::Node => {
-                node_host_ports = nodes.clone();
+            SubCommand::Start { nodes, .. } => {
+                if server_type == ServerType::Node {
+                    node_host_ports = nodes.clone();
+                }
             }
-            SubCommand::Stop { force, .. } => is_force_stop = *force,
+            SubCommand::Stop { force, .. } => {
+                is_force_stop = *force;
+                if server_type == ServerType::Node {
+                    unreachable!("stop --nodes should not use this function");
+                }
+            }
             SubCommand::Remove { .. } => is_force_stop = true,
             SubCommand::Status {
                 user,
@@ -477,8 +484,15 @@ impl MonographTxCtlTask {
         let (mut wait_secs, mut db_user, mut db_pwd, mut is_force_stop) =
             (-1, "_NONE".to_string(), "_NONE".to_string(), false);
 
+        let mut node_host_ports = Vec::new();
+
         match &cmd_arg {
-            SubCommand::Stop { force, .. } => is_force_stop = *force,
+            SubCommand::Stop { nodes, force, .. } => {
+                is_force_stop = *force;
+                if server_type == ServerType::Node {
+                    node_host_ports = nodes.clone();
+                }
+            }
             SubCommand::Remove { .. } => is_force_stop = true,
             SubCommand::Status {
                 user,
@@ -516,7 +530,7 @@ impl MonographTxCtlTask {
             ServerType::Tx => config.get_host_port_list(DeploymentPackage::MonographTx),
             ServerType::Standby => config.get_host_port_list(DeploymentPackage::MonographStandby),
             ServerType::Voter => config.get_host_port_list(DeploymentPackage::MonographVoter),
-            ServerType::Node => unreachable!(),
+            ServerType::Node => node_host_ports,
         };
 
         Ok(generate_tasks_for_host_ports(
@@ -637,9 +651,11 @@ impl TaskExecutor for MonographTxCtlTask {
         let task_str = self.task_id.task.as_str();
         let (server_type, port) = extract_server_type_and_port(task_str);
 
-        let ssh_session =
-            SSHSession::from_task_host(task_host, self.config.connection.ssh_auth_key().unwrap())
-                .await?;
+        let ssh_session = SSHSession::from_task_host(
+            task_host.clone(),
+            self.config.connection.ssh_auth_key().unwrap(),
+        )
+        .await?;
         let tx_bin = self.config.deployment.tx_srv_bin();
         let (host_value, user) = ssh_session.ssh_conn_info();
         let check_status_cmd =
@@ -716,7 +732,12 @@ impl TaskExecutor for MonographTxCtlTask {
                             .collect();
                     }
                     "voter" => (),
-                    _ => unreachable!(),
+                    "node" => {
+                        matching_ports.push(port.to_string());
+                    }
+                    _ => {
+                        unreachable!("Unknown server type: {}", server_type);
+                    }
                 }
 
                 // Modify stop_cmd to use grep with the matched ports
@@ -756,7 +777,7 @@ impl TaskExecutor for MonographTxCtlTask {
                 rs
             }
             _ => {
-                unreachable!()
+                unreachable!("Unrecognized command: {}", ctl_cmd_ref);
             }
         };
 

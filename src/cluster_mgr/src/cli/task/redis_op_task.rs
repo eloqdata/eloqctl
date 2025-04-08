@@ -49,7 +49,7 @@ impl RedisOpTask {
         }
     }
 
-    pub fn new_with_skip_checkpoint(
+    pub fn new_and_skip_checkpoint(
         task_id: TaskId,
         redis_host_ports: Vec<String>,
         redis_cmd: String,
