@@ -423,14 +423,7 @@ impl CmdExecutor {
                             .ok_or_else(|| anyhow!("proxy config not found"))?;
                         Ok(Config::Proxy(proxy_config))
                     }
-                    ProxyCommand::Add {
-                        proxy_name,
-                        cluster_name,
-                    }
-                    | ProxyCommand::Remove {
-                        proxy_name,
-                        cluster_name,
-                    } => {
+                    ProxyCommand::Add { .. } | ProxyCommand::Remove { .. } => {
                         todo!()
                     }
                 }

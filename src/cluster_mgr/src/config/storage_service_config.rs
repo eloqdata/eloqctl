@@ -158,12 +158,19 @@ impl StorageService {
         name
     }
 
-    pub fn gen_cassandra_env(&self, install_dir: String) -> Result<PathBuf> {
+    pub fn gen_cassandra_env(&self, cluster_name: &str, install_dir: String) -> Result<PathBuf> {
         let mcac_root = format!("MCAC_ROOT={install_dir}/{CASSANDRA_COLLECTOR_AGENT_FILE_KEY}\n",);
         let append_jvm_opts =
             r#"JVM_OPTS="$JVM_OPTS -javaagent:${MCAC_ROOT}/lib/datastax-mcac-agent.jar""#;
         let cass_env_file_path = config_template(CASSANDRA_ENV_TEMPLATE)?;
-        let env_sh = upload_dir().join("cassandra-env.sh");
+
+        let env_sh = upload_dir().join(cluster_name).join("cassandra-env.sh");
+
+        // // Ensure directory exists
+        // if let Some(parent) = env_sh.parent() {
+        //     fs::create_dir_all(parent)?;
+        // }
+
         fs::copy(cass_env_file_path, env_sh.clone())?;
         let mut cass_env_file = File::options().append(true).open(&env_sh)?;
         cass_env_file.write_all(mcac_root.as_bytes())?;

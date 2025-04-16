@@ -1,4 +1,4 @@
-use crate::cli::{create_upload_cluster_dir, upload_dir};
+use crate::cli::upload_dir;
 use crate::config::config_base::{
     CASSANDRA_COLLECTOR_AGENT_FILE_KEY, GRAFANA_FILE_KEY, MYSQL_EXPORTER_FILE_KEY,
     NODE_EXPORTER_FILE_KEY, PROMETHEUS_FILE_KEY,
@@ -7,8 +7,8 @@ use crate::config::{
     config_template, load_yaml_config_template, DownloadUrl, CASS_MCAC_CONF_FILE,
     CREATE_MONITOR_USER_SQL_FILE, GRAFANA_CONFIG_FILE, GRAFANA_CONFIG_TEMPLATE,
     GRAFANA_DASHBOARDS_CONFIG_TEMPLATE, GRAFANA_PROMETHEUS_DS_FILE,
-    MCAC_PROMETHEUS_CONFIG_TEMPLATE, MYSQL_EXPORTER_CLIENT_CONFIG, PROMETHEUS_CONFIG_FILE,
-    PROMETHEUS_CONFIG_TEMPLATE,
+    MCAC_PROMETHEUS_CONFIG_TEMPLATE, MONITOR_DIR, MYSQL_EXPORTER_CLIENT_CONFIG,
+    PROMETHEUS_CONFIG_FILE, PROMETHEUS_CONFIG_TEMPLATE,
 };
 use crate::download_urls;
 use configparser::ini::Ini;
@@ -131,17 +131,27 @@ impl Monitor {
         Ok(links)
     }
 
-    pub fn gen_monitor_user_sql_file(&self) -> anyhow::Result<PathBuf> {
+    pub fn gen_monitor_user_sql_file(&self, cluster_name: &str) -> anyhow::Result<PathBuf> {
         let create_monitor_user = config_template(CREATE_MONITOR_USER_SQL_FILE)?;
         let sql_file_template = fs::read_to_string(create_monitor_user)?;
         let create_sql_script = sql_file_template.replace("_MONITOR_", MONO_MONITOR_USER);
-        let script_path = upload_dir().join(CREATE_MONITOR_USER_SQL_FILE);
+        let script_path = upload_dir()
+            .join(cluster_name)
+            .join(MONITOR_DIR)
+            .join(CREATE_MONITOR_USER_SQL_FILE);
+        if let Some(parent) = script_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(script_path.clone(), create_sql_script)
             .expect("unable write create_monitor_user.sql");
         Ok(script_path)
     }
 
-    pub fn gen_grafana_dashboard_config(&self, path: String) -> anyhow::Result<PathBuf> {
+    pub fn gen_grafana_dashboard_config(
+        &self,
+        cluster_name: &str,
+        path: String,
+    ) -> anyhow::Result<PathBuf> {
         if self.grafana.is_some() {
             let dashboard_conf = load_yaml_config_template(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
             assert!(dashboard_conf.is_ok());
@@ -149,7 +159,13 @@ impl Monitor {
             let mut providers = dashboard.get("providers").unwrap().clone();
             providers[0]["options"]["path"] = Value::String(path);
             dashboard.insert("providers".to_string(), providers);
-            let dashboard_path = upload_dir().join(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
+            let dashboard_path = upload_dir()
+                .join(cluster_name)
+                .join(MONITOR_DIR)
+                .join(GRAFANA_DASHBOARDS_CONFIG_TEMPLATE);
+            if let Some(parent) = dashboard_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
             let dashboard_rs = File::create(dashboard_path.as_path())?;
             serde_yaml::to_writer(dashboard_rs, &dashboard)?;
             Ok(dashboard_path)
@@ -158,7 +174,7 @@ impl Monitor {
         }
     }
 
-    pub fn gen_grafana_config(&self) -> anyhow::Result<PathBuf> {
+    pub fn gen_grafana_config(&self, cluster_name: &str) -> anyhow::Result<PathBuf> {
         if let Some(graf) = &self.grafana {
             let grafana_http_port = graf.port;
             let grafana_config_path = config_template(GRAFANA_CONFIG_TEMPLATE)?;
@@ -169,7 +185,13 @@ impl Monitor {
                 "http_port".to_string(),
                 grafana_http_port.to_string(),
             );
-            let grafana_default_ini = upload_dir().join(GRAFANA_CONFIG_FILE);
+            let grafana_default_ini = upload_dir()
+                .join(cluster_name)
+                .join(MONITOR_DIR)
+                .join(GRAFANA_CONFIG_FILE);
+            if let Some(parent) = grafana_default_ini.parent() {
+                fs::create_dir_all(parent)?;
+            }
             grafana_ini.write_to_file(grafana_default_ini.as_path())?;
             Ok(grafana_default_ini)
         } else {
@@ -179,6 +201,7 @@ impl Monitor {
 
     pub fn gen_mysql_exporter_connect_config(
         &self,
+        cluster_name: &str,
         host: String,
         mysql_port: u16,
     ) -> anyhow::Result<PathBuf> {
@@ -192,8 +215,15 @@ impl Monitor {
         mysql_exporter_conf.set("client", "host", Some(host.clone()));
         mysql_exporter_conf.set("client", "port", Some(mysql_port.to_string()));
 
-        let final_exporter_path =
-            create_upload_cluster_dir(&host).join(format!("mysql_exporter_{host}.cnf"));
+        let final_exporter_path = upload_dir()
+            .join(cluster_name)
+            .join(MONITOR_DIR)
+            .join(format!("mysql_exporter_{host}.cnf"));
+
+        if let Some(parent) = final_exporter_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
         mysql_exporter_conf.write(final_exporter_path.as_path())?;
         Ok(final_exporter_path)
     }
@@ -261,6 +291,7 @@ impl Monitor {
     // node_exporter, mysql_exporter,prometheus,cassandra_metrics(optional)
     pub fn gen_prometheus_config(
         &self,
+        cluster_name: &str,
         job_hosts: HashMap<String, Vec<String>>,
     ) -> anyhow::Result<PathBuf> {
         let node_exporter_port = self.node_exporter.as_ref().unwrap().port;
@@ -334,14 +365,22 @@ impl Monitor {
             "scrape_configs".to_string(),
             Value::Sequence(scrape_configs),
         );
-        let prometheus_config_path = upload_dir().join(PROMETHEUS_CONFIG_FILE);
-        let prometheus_config_file = File::create(prometheus_config_path.as_path()).unwrap();
-        serde_yaml::to_writer(prometheus_config_file, &prometheus_config_map)?;
-        Ok(prometheus_config_path)
+
+        let prometheus_config_file = upload_dir()
+            .join(cluster_name)
+            .join(MONITOR_DIR)
+            .join(PROMETHEUS_CONFIG_FILE);
+        if let Some(parent) = prometheus_config_file.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let file = File::create(&prometheus_config_file)?;
+        serde_yaml::to_writer(file, &prometheus_config_map)?;
+        Ok(prometheus_config_file)
     }
 
     pub fn gen_mcac_file_sd_config(
         &self,
+        cluster_name: &str,
         cassandra_host: Vec<String>,
     ) -> anyhow::Result<Option<PathBuf>> {
         if let Some(cassandra_collector) = self.cassandra_collector.as_ref() {
@@ -356,7 +395,13 @@ impl Monitor {
                     "targets": [cassandra_target],"labels": {}
                 }
             ]);
-            let mcac_json_path = upload_dir().join(CASS_MCAC_CONF_FILE);
+            let mcac_json_path = upload_dir()
+                .join(cluster_name)
+                .join(MONITOR_DIR)
+                .join(CASS_MCAC_CONF_FILE);
+            if let Some(parent) = mcac_json_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
             let mcac_json_file = File::create(mcac_json_path.as_path()).unwrap();
             serde_json::to_writer(mcac_json_file, &mcac_json)?;
             Ok(Some(mcac_json_path))
@@ -365,7 +410,7 @@ impl Monitor {
         }
     }
 
-    pub fn gen_grafana_datasource_config(&self) -> anyhow::Result<PathBuf> {
+    pub fn gen_grafana_datasource_config(&self, cluster_name: &str) -> anyhow::Result<PathBuf> {
         let prometheus = &self.prometheus;
         let prometheus_url = format!(
             "http://{}:{}",
@@ -384,10 +429,15 @@ impl Monitor {
         );
         let prometheus_datasource: Value =
             serde_yaml::from_str(datasource_config_yaml.as_str()).unwrap();
-        let prometheus_datasource_path = upload_dir().join(GRAFANA_PROMETHEUS_DS_FILE);
-        let prometheus_datasource_file =
-            File::create(prometheus_datasource_path.as_path()).unwrap();
+        let grafana_ds_config = upload_dir()
+            .join(cluster_name)
+            .join(MONITOR_DIR)
+            .join(GRAFANA_PROMETHEUS_DS_FILE);
+        if let Some(parent) = grafana_ds_config.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let prometheus_datasource_file = File::create(grafana_ds_config.as_path()).unwrap();
         serde_yaml::to_writer(prometheus_datasource_file, &prometheus_datasource)?;
-        Ok(prometheus_datasource_path)
+        Ok(grafana_ds_config)
     }
 }

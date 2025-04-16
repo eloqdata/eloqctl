@@ -9,8 +9,6 @@ use crate::config::PROXY_CONF_TEMPLATE;
 use crate::config::{config_template, PROXY_BIN};
 use indexmap::IndexMap;
 use std::fs;
-use std::io::{Read, Write};
-use std::path::PathBuf;
 
 pub struct ProxyUploadBuilder;
 

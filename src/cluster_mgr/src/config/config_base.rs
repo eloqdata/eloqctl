@@ -31,7 +31,7 @@ pub const MYSQL_EXPORTER_FILE_KEY: &str = "mysqld_exporter";
 pub const CASSANDRA_COLLECTOR_AGENT_FILE_KEY: &str = "datastax-mcac-agent";
 pub const DEPLOYMENT_CHECK_SUCCESS_TASK: &str = "deploy_check_success_task";
 
-pub const ASAN_OPTIONS: &str = "abort_on_error=0:disable_coredump=0:halt_on_error=0";
+pub const ASAN_OPTIONS: &str = "abort_on_error=0:disable_coredump=0:halt_on_error=0:malloc_context_size=20:fast_unwind_on_malloc=0:leak_check_at_exit=0";
 
 pub fn export_asan(log: &str) -> String {
     format!("export ASAN_OPTIONS={ASAN_OPTIONS}:log_path={log}")
@@ -326,7 +326,11 @@ impl DeployConfig {
                     let parts: Vec<&str> = host_port.split(':').collect();
                     let host = parts[0];
                     monitor
-                        .gen_mysql_exporter_connect_config(host.to_string(), mysql_port)
+                        .gen_mysql_exporter_connect_config(
+                            &self.deployment.cluster_name,
+                            host.to_string(),
+                            mysql_port,
+                        )
                         .unwrap()
                 })
                 .collect_vec();
@@ -340,7 +344,8 @@ impl DeployConfig {
         gen_db_misc_files!(
             self,
             build_install_monograph_script,
-            MONOGRAPH_INSTALL_SCRIPT
+            MONOGRAPH_INSTALL_SCRIPT,
+            self.deployment.cluster_name.clone()
         )
     }
 
@@ -413,7 +418,13 @@ impl DeployConfig {
         let final_script = rs
             .replace("${INSTALL_DIR}", &tx_home)
             .replace("${MALLOC}", &malloc)
-            .replace("${BS_INI}", &format!("{install_dir}/my_local.cnf"))
+            .replace(
+                "${BS_INI}",
+                &format!(
+                    "{install_dir}/{}/my_local.cnf",
+                    self.deployment.cluster_name
+                ),
+            )
             .replace("${DATA_DIR}", &format!("{tx_home}/datafarm"));
         Ok(final_script)
     }
@@ -697,10 +708,10 @@ mod tests {
 
         let mono_host_list = config.get_host_list(DeploymentPackage::MonographTx);
         let monitor = monitor.unwrap();
-        let pro_rs = monitor.gen_prometheus_config(HashMap::from([(
-            MONITOR_JOB_NAME.to_string(),
-            mono_host_list,
-        )]));
+        let pro_rs = monitor.gen_prometheus_config(
+            &config.deployment.cluster_name,
+            HashMap::from([(MONITOR_JOB_NAME.to_string(), mono_host_list)]),
+        );
         println!("pro_rs={pro_rs:#?}")
     }
 }

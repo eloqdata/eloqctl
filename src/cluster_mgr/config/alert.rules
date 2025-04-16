@@ -1,0 +1,117 @@
+groups:
+  - name: alert_rules
+    rules:
+      - alert: memory_usage_more_than_70%
+        expr: (memory_usage / memory_limit) * 100 > 70
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory usage is above 70% on {{ $labels.instance }}, core {{ $labels.core_id }}"
+          description: "Memory usage is above 70% on node {{ $labels.instance }}, core {{ $labels.core_id }}. Current usage: {{ printf \"%.2f\" $value }}%"
+          
+      - alert: memory_usage_more_than_80%
+        expr: (memory_usage / memory_limit) * 100 > 80
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory usage is above 80% on {{ $labels.instance }}, core {{ $labels.core_id }}"
+          description: "Memory usage is above 80% on node {{ $labels.instance }}, core {{ $labels.core_id }}. Current usage: {{ printf \"%.2f\" $value }}%"
+      
+      - alert: memory_usage_more_than_90%
+        expr: (memory_usage / memory_limit) * 100 > 90
+        for: 1m
+        labels:
+          severity: emergency
+        annotations:
+          summary: "Memory usage is above 90% on {{ $labels.instance }}, core {{ $labels.core_id }}"
+          description: "Memory usage is above 90% on node {{ $labels.instance }}, core {{ $labels.core_id }}. Current usage: {{ printf \"%.2f\" $value }}%"
+
+
+      - alert: cache_hit_ratio_less_than_95%
+        expr: (cache_hit_or_miss_total{type="hits"} / ignoring(type)  (cache_hit_or_miss_total{type="hits"} + ignoring(type) cache_hit_or_miss_total{type="miss"})) * 100 < 95
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cache hit ratio is below 95%"
+          description: "Cache hit ratio is below 95%. Current ratio: {{ printf \"%.2f\" $value }}%"
+
+      - alert: memory_frament_ratio_more_than_30%
+        expr: memory_fragment_ratio > 30
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory fragment ratio is above 30%"
+          description: "Memory fragment ratio is above 30%. Current ratio: {{ printf \"%.2f\" $value }}"
+      
+      - alert: client_connection_count_too_high
+        expr: redis_connection_count > (redis_max_connections * 0.7)
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Client connection count is too high"
+          description: "Client connection count is above 70% of maxclients. Current count: {{ $value }}"
+
+      - alert: eloqkv_standby_lag
+        expr: standby_lagging_msgs > (max_standby_lag * 0.7)
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The number of standby lagging messages exceeds threshold"
+          description: "Standby lagging messages are above 70% of max_standby_lag. Current lag: {{ $value }} messages."
+
+      - alert: standby_msg_out_of_sync
+        expr: changes(standby_out_of_sync_count[1m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "standby msg is out of sync"
+          description: "standby msg is out of sync."
+
+      - alert: redis_slow_log_alert
+        expr: redis_slow_log_len > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Has slow log"
+          description: "Slow log len is {{ $value }} in shard {{$labels.core_id}}."
+
+      - alert: continuous_checkpoint_failures
+        expr: is_continuous_checkpoint_failures > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "consecutive checkpoint failures detected"
+          description: "The number of consecutive checkpoint failures has exceeded the threshold."
+
+
+      - alert: no_leader
+        expr: sum by (ng_id) (is_leader) == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "no leader in the last minutes"
+          description: "no leader in the last minutes for node group {{ $labels.ng_id }}"
+
+      - alert: leader_changes
+        expr: sum by (ng_id) (changes(leader_changes_seen_total[1m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Leader changes"
+          description: "Has seen leader changes in the last minutes for node group {{ $labels.ng_id }}"
+
+      - alert: leader_changes_frequently
+        expr: sum by (ng_id) (changes(leader_changes_seen_total[10m])) > 2
+        labels:
+          severity: critical
+        annotations:
+          summary: "Leader changes frequently"
+          description: "More than three leadership changes were seen within 10 minutes for node group {{ $labels.ng_id }}"
+          

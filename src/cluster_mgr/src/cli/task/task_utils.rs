@@ -5,7 +5,7 @@ use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskHost, TaskId, TaskInstance};
 use crate::cli::upload_dir;
 use crate::cli::{SubCommand, CMD, CMD_OUTPUT, CMD_STATUS};
-use crate::config::{config_base::DeployConfig, DeploymentPackage};
+use crate::config::{config_base::DeployConfig, DeploymentPackage, MONITOR_DIR};
 use crate::state::state_base::StateOperation;
 use crate::state::state_mgr::{STATE_MGR, TASK_STATUS_STATE};
 use crate::state::task_status_operation::{TaskStatusEntity, TaskStatusOperation};
@@ -484,11 +484,38 @@ fn check_whether_to_skip_checkpoint(cluster_name: &str) -> bool {
         }
     }
 
+    // // Check monitor directory
+    // let monitor_path = upload_path.join(MONITOR_DIR);
+    // if monitor_path.exists() {
+    //     if let Ok(monitor_entries) = fs::read_dir(&monitor_path) {
+    //         for file_entry in monitor_entries.flatten() {
+    //             let file_path = file_entry.path();
+    //             if file_path.extension().and_then(|e| e.to_str()) == Some("ini") {
+    //                 // Found an INI file, check its content
+    //                 let mut ini = Ini::new();
+    //                 if let Ok(_) = ini.load(file_path.to_str().unwrap()) {
+    //                     if let Some(value) = ini.get("LOCAL", "enable_data_store") {
+    //                         if value.to_lowercase() == "false" {
+    //                             info!("Found enable_data_store=false in {}", file_path.display());
+    //                             return true;
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
     // Walk through all directories and check .ini files
     if let Ok(entries) = fs::read_dir(upload_path) {
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 let dir_path = entry.path();
+                // Skip the monitor directory as we already checked it
+                if dir_path.file_name().and_then(|f| f.to_str()) == Some(MONITOR_DIR) {
+                    continue;
+                }
+
                 // Check for .ini files in this directory
                 if let Ok(dir_entries) = fs::read_dir(&dir_path) {
                     for file_entry in dir_entries.flatten() {

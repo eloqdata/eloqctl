@@ -15,6 +15,7 @@ use crate::config::config_base::{
 use crate::config::deployment::Product;
 use crate::config::monitor::Monitor;
 use crate::config::DeploymentPackage;
+use crate::config::PROMETHEUS_CONFIG_FILE;
 use crate::{task_return_value, wait_command_complete};
 use indexmap::IndexMap;
 use itertools::Itertools;
@@ -64,7 +65,7 @@ impl MonitorComponentCommand {
             MonitorComponentCommand::Prometheus { home } => {
                 monitor.prometheus.as_ref().map(|prom| {
                     format!(
-                        r#"{home}/prometheus --web.listen-address="0.0.0.0:{port}" --storage.tsdb.path={home}/data --config.file={home}/prometheus.yml > /tmp/mono_prometheus.log 2>&1 &"#,
+                        r#"{home}/prometheus --web.listen-address="0.0.0.0:{port}" --storage.tsdb.path={home}/data --config.file={home}/{PROMETHEUS_CONFIG_FILE} > /tmp/mono_prometheus.log 2>&1 &"#,
                         home = home,
                         port = prom.port
                     )

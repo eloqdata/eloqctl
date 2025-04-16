@@ -6,10 +6,10 @@ connection:
 deployment:
   cluster_name: "eloqkv_with_multiple_ng"
   product: "EloqKV"
-  version: "latest"
+  version: "debug"
   install_dir: "/home/${USER}"
   tx_service:
-    tx_host_ports: [10.0.0.1:6379,10.0.0.2:6379,10.0.0.3:6379]
-  storage_service:
-    rocksdb: !LOCAL
-      # path: /tmp
+    tx_host_ports: [192.168.122.24:6379,192.168.122.25:6379,192.168.122.26:6379]
+  # storage_service:
+  #   rocksdb: !LOCAL
+  #     # path: /tmp

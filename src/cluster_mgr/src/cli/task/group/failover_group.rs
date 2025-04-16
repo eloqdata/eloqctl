@@ -1,11 +1,10 @@
 use crate::cli::task::failover_task_group::failover_task_group;
 use crate::cli::task::group::{Config, FailoverTaskGroup};
 use crate::cli::task::task_base::TaskExecutionContext;
-use crate::cli::{SubCommand, CMD, CMD_OUTPUT, CMD_STATUS};
-use anyhow::{anyhow, Result};
+use crate::cli::SubCommand;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use indexmap::IndexMap;
-use std::collections::HashMap;
 use tracing::info;
 
 #[async_trait]

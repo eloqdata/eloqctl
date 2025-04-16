@@ -164,8 +164,7 @@ impl CheckTask {
         Ok(None)
     }
 
-    async fn check_proxy(&self, host: TaskHost) -> Result<Option<ExecutionValue>> {
-        // TODO(ZX) later, check proxy
+    async fn check_proxy(&self, _: TaskHost) -> Result<Option<ExecutionValue>> {
         Ok(None)
     }
 }

@@ -1,9 +1,8 @@
 use crate::cli::ssh::SSHSession;
 use crate::cli::task::monograph_tx_ctl_task::ServerType;
 use crate::cli::{create_upload_cluster_dir, upload_dir};
-use crate::config::config_base::CASSANDRA_FILE_KEY;
 use crate::config::config_base::{
-    export_asan, LOG_SERVICE_HOME, MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY,
+    export_asan, CASSANDRA_FILE_KEY, LOG_SERVICE_HOME, MONOGRAPH_FILE_KEY, MONOGRAPH_LOG_FILE_KEY,
 };
 use crate::config::log_service::LogService;
 use crate::config::monitor::Monitor;
@@ -460,7 +459,9 @@ impl Deployment {
     }
 
     pub fn get_redis_keyspace(&self) -> anyhow::Result<String> {
-        let my_local = upload_dir().join("redis_local.ini");
+        let my_local = upload_dir()
+            .join(&self.cluster_name)
+            .join("redis_local.ini");
         if !my_local.exists() {
             self.gen_eloqkv_node_config(NodeType::Tx, None, None)?;
         }
@@ -1023,6 +1024,7 @@ impl Deployment {
         let mut ini;
 
         if let (Some(host_get), Some(port_get)) = (host.clone(), port.clone()) {
+            // Create the path using the cluster_name and ip-addr format
             let dir = format!("{}/{}", self.cluster_name, host_get);
             cnf_path = create_upload_cluster_dir(&dir)
                 .join(format!("{}-{}.{}", ini_name, port_get, "ini"));
@@ -1078,20 +1080,25 @@ impl Deployment {
                     ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
                 }
             }
-
-            ini.write(cnf_path.as_path())?;
-            Ok(cnf_path)
         } else {
-            // Handle the local case
-            cnf_path = upload_dir().join("redis_local.ini");
+            // Create the redis_local.ini file in the cluster's monitor directory
+            cnf_path = upload_dir()
+                .join(&self.cluster_name)
+                .join("redis_local.ini");
             ini = self.build_eloqkv_config(false, "".to_string())?;
 
             ini.set(SECTION_LOCAL, "ip", Some("127.0.0.1".to_owned()));
             ini.set(SECTION_LOCAL, "port", Some("6379".to_owned()));
-
-            ini.write(cnf_path.as_path())?;
-            Ok(cnf_path)
         }
+
+        // if let Some(parent) = cnf_path.parent() {
+        //     if !parent.exists() {
+        //         fs::create_dir_all(parent)?;
+        //     }
+        // }
+
+        ini.write(cnf_path.as_path())?;
+        Ok(cnf_path)
     }
 
     // generate proxy config file
@@ -1323,7 +1330,7 @@ impl Deployment {
         if let Some(monitor) = &self.monitor {
             if monitor.cassandra_collector.is_some() {
                 let storage = storage.expect("storage_service exists since we checked above");
-                let p = storage.gen_cassandra_env(install_dir)?;
+                let p = storage.gen_cassandra_env(&cluster_name, install_dir)?;
                 configs.push(p);
             }
         }

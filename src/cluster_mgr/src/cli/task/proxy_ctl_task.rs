@@ -1,4 +1,3 @@
-use serde::Serialize;
 use std::collections::HashMap;
 
 use super::task_base::{
@@ -9,7 +8,6 @@ use crate::cli::ProxyCommand;
 use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::PROXY_CONF_TEMPLATE;
 use indexmap::IndexMap;
-use reqwest;
 
 #[derive(Debug, Clone)]
 pub struct ProxyCtlTask {
@@ -83,16 +81,16 @@ impl ProxyCtlTask {
                     }
                 }
             }
-            ProxyCommand::List { proxy_name } => {
+            ProxyCommand::List { .. } => {
                 todo!()
             }
-            ProxyCommand::Add { cluster_name, .. } => {
+            ProxyCommand::Add { .. } => {
                 todo!()
                 // let task =
                 //     Self::add_cluster(ssh_key.clone(), proxy_hosts.clone(), &cluster_name, args);
                 // task.task_instance(&mut all_tasks);
             }
-            ProxyCommand::Remove { cluster_name, .. } => {
+            ProxyCommand::Remove { .. } => {
                 todo!()
                 // let task =
                 //     Self::remove_cluster(ssh_key.clone(), proxy_hosts.clone(), &cluster_name, args);
@@ -176,87 +174,87 @@ impl ProxyCtlTask {
         }
     }
 
-    fn add_cluster(
-        ssh_key: String,
-        host: String,
-        cluster_name: &str,
-        args: &HashMap<String, String>,
-    ) -> Self {
-        let web_service_addr = args
-            .get("web_service_addr")
-            .expect("web_service_addr is required");
+    // fn add_cluster(
+    //     ssh_key: String,
+    //     host: String,
+    //     cluster_name: &str,
+    //     args: &HashMap<String, String>,
+    // ) -> Self {
+    //     let web_service_addr = args
+    //         .get("web_service_addr")
+    //         .expect("web_service_addr is required");
 
-        // Get cluster details from args
-        let cluster_id = args
-            .get("cluster_id")
-            .expect("cluster_id is required")
-            .to_string();
-        let addrs = args
-            .get("cluster_addrs")
-            .expect("cluster_addrs is required");
-        let token = args
-            .get("cluster_token")
-            .expect("cluster_token is required")
-            .to_string();
-        let password = args
-            .get("cluster_password")
-            .expect("cluster_password is required")
-            .to_string();
+    //     // Get cluster details from args
+    //     let cluster_id = args
+    //         .get("cluster_id")
+    //         .expect("cluster_id is required")
+    //         .to_string();
+    //     let addrs = args
+    //         .get("cluster_addrs")
+    //         .expect("cluster_addrs is required");
+    //     let token = args
+    //         .get("cluster_token")
+    //         .expect("cluster_token is required")
+    //         .to_string();
+    //     let password = args
+    //         .get("cluster_password")
+    //         .expect("cluster_password is required")
+    //         .to_string();
 
-        let addrs: Vec<String> = addrs.split(',').map(|s| s.trim().to_string()).collect();
+    //     let addrs: Vec<String> = addrs.split(',').map(|s| s.trim().to_string()).collect();
 
-        #[derive(Serialize)]
-        struct AddClusterRequest {
-            cluster_id: String,
-            addrs: Vec<String>,
-            token: String,
-            password: String,
-        }
+    //     #[derive(Serialize)]
+    //     struct AddClusterRequest {
+    //         cluster_id: String,
+    //         addrs: Vec<String>,
+    //         token: String,
+    //         password: String,
+    //     }
 
-        let request_body = AddClusterRequest {
-            cluster_id,
-            addrs,
-            token,
-            password,
-        };
+    //     let request_body = AddClusterRequest {
+    //         cluster_id,
+    //         addrs,
+    //         token,
+    //         password,
+    //     };
 
-        Self {
-            ssh_key,
-            user: String::new(), // Not needed for local tasks
-            port: 0,             // Not needed for local tasks
-            host: web_service_addr.to_string(),
-            task_type: ProxyTaskType::AddCluster {
-                cluster_name: cluster_name.to_string(),
-                request_body: serde_json::to_string(&request_body).unwrap(),
-            },
-        }
-    }
+    //     Self {
+    //         ssh_key,
+    //         user: String::new(), // Not needed for local tasks
+    //         port: 0,             // Not needed for local tasks
+    //         host: web_service_addr.to_string(),
+    //         task_type: ProxyTaskType::AddCluster {
+    //             // cluster_name: cluster_name.to_string(),
+    //             // request_body: serde_json::to_string(&request_body).unwrap(),
+    //         },
+    //     }
+    // }
 
-    fn remove_cluster(
-        ssh_key: String,
-        host: String,
-        cluster_name: &str,
-        args: &HashMap<String, String>,
-    ) -> Self {
-        let web_service_addr = args
-            .get("web_service_addr")
-            .expect("web_service_addr is required");
-        let token = args
-            .get("cluster_token")
-            .expect("cluster_token is required")
-            .to_string();
+    // fn remove_cluster(
+    //     ssh_key: String,
+    //     host: String,
+    //     cluster_name: &str,
+    //     args: &HashMap<String, String>,
+    // ) -> Self {
+    //     let web_service_addr = args
+    //         .get("web_service_addr")
+    //         .expect("web_service_addr is required");
+    //     let token = args
+    //         .get("cluster_token")
+    //         .expect("cluster_token is required")
+    //         .to_string();
 
-        Self {
-            ssh_key,
-            user: String::new(), // Not needed for local tasks
-            port: 0,             // Not needed for local tasks
-            host: web_service_addr.to_string(),
-            task_type: ProxyTaskType::RemoveCluster {
-                cluster_name: cluster_name.to_string(),
-                token,
-            },
-        }
-    }
+    //     Self {
+    //         ssh_key,
+    //         user: String::new(), // Not needed for local tasks
+    //         port: 0,             // Not needed for local tasks
+    //         host: web_service_addr.to_string(),
+    //         task_type: ProxyTaskType::RemoveCluster {
+    //             // cluster_name: cluster_name.to_string(),
+    //             // token,
+    //         },
+    //     }
+    // }
 
     fn task_instance(self, tasks: &mut IndexMap<TaskId, TaskInstance>) {
         let host = match &self.task_type {
@@ -317,48 +315,44 @@ impl TaskExecutor for ProxyCtlTask {
                     .await?;
                 Ok(Some(output))
             }
-            ProxyTaskType::AddCluster {
-                cluster_name,
-                request_body,
-            } => {
-                let url = format!("http://{}/cluster", self.host);
-                let client = reqwest::Client::new();
-                let res = client
-                    .post(&url)
-                    .header("Content-Type", "application/json")
-                    .body(request_body.clone())
-                    .send()
-                    .await?;
-                let status = res.status();
-                let text = res.text().await?;
-                if status.is_success() {
-                    panic!("")
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Failed to add cluster {}: {}",
-                        cluster_name,
-                        text
-                    ))
-                }
+            ProxyTaskType::AddCluster { .. } => {
+                todo!()
+                // let url = format!("http://{}/cluster", self.host);
+                // let client = reqwest::Client::new();
+                // let res = client
+                //     .post(&url)
+                //     .header("Content-Type", "application/json")
+                //     .body(request_body.clone())
+                //     .send()
+                //     .await?;
+                // let status = res.status();
+                // let text = res.text().await?;
+                // if status.is_success() {
+                //     panic!("")
+                // } else {
+                //     Err(anyhow::anyhow!(
+                //         "Failed to add cluster {}: {}",
+                //         cluster_name,
+                //         text
+                //     ))
+                // }
             }
-            ProxyTaskType::RemoveCluster {
-                cluster_name,
-                token,
-            } => {
-                let url = format!("http://{}/cluster/{}", self.host, token);
-                let client = reqwest::Client::new();
-                let res = client.delete(&url).send().await?;
-                let status = res.status();
-                let text = res.text().await?;
-                if status.is_success() {
-                    panic!("")
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Failed to remove cluster {}: {}",
-                        cluster_name,
-                        text
-                    ))
-                }
+            ProxyTaskType::RemoveCluster { .. } => {
+                todo!()
+                // let url = format!("http://{}/cluster/{}", self.host, token);
+                // let client = reqwest::Client::new();
+                // let res = client.delete(&url).send().await?;
+                // let status = res.status();
+                // let text = res.text().await?;
+                // if status.is_success() {
+                //     panic!("")
+                // } else {
+                //     Err(anyhow::anyhow!(
+                //         "Failed to remove cluster {}: {}",
+                //         cluster_name,
+                //         text
+                //     ))
+                // }
             }
         }
     }

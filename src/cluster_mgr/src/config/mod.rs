@@ -43,6 +43,8 @@ pub const CASSANDRA_JVM_OPTION: &str = "jvm11-server.options";
 pub const CASSANDRA_JVM_TEMPLATE: &str = "jvm11-server.template";
 pub const JVM_SETTING_HOLDER: &str = "_GC_SETTINGS_PLACEHOLDER_";
 pub const PROMETHEUS_CONFIG_TEMPLATE: &str = "mono_prometheus.yaml";
+pub const MONITOR_DIR: &str = "monitor";
+pub const ALERT_RULES_TEMPLATE: &str = "alert.rules";
 
 pub const GRAFANA_DASHBOARDS_CONFIG_TEMPLATE: &str = "grafana_dashboards.yaml";
 
@@ -77,9 +79,13 @@ macro_rules! gen_db_script {
 
 #[macro_export]
 macro_rules! gen_db_misc_files {
-    ($self:ident,$build_func:ident, $script_template:expr) => {{
+    ($self:ident, $build_func:ident, $script_template:expr, $cluster_name:expr) => {{
         let script = $self.$build_func()?;
-        let script_location = upload_dir().join($script_template);
+        let cluster_dir = upload_dir().join($cluster_name);
+        if !cluster_dir.exists() {
+            std::fs::create_dir_all(&cluster_dir).unwrap();
+        }
+        let script_location = cluster_dir.join($script_template);
         std::fs::write(script_location.clone(), script).unwrap();
         Ok(script_location)
     }};

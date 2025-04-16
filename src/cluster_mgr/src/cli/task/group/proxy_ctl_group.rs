@@ -145,13 +145,8 @@ impl TaskGroup for ProxyTaskGroup {
                         barrier.push(stop_proxy_task.len());
                         executable.extend(stop_proxy_task);
                     }
-                    ProxyCommand::List { proxy_name } => {
-                        //
-                    }
-                    ProxyCommand::Add {
-                        cluster_name,
-                        proxy_name,
-                    } => {
+                    ProxyCommand::List { .. } => {}
+                    ProxyCommand::Add { .. } => {
                         todo!()
 
                         // // kill proxy process
@@ -180,7 +175,7 @@ impl TaskGroup for ProxyTaskGroup {
                         // barrier.push(proxy_upload_task.len());
                         // executable.extend(proxy_upload_task);
                     }
-                    ProxyCommand::Remove { cluster_name, .. } => {
+                    ProxyCommand::Remove { .. } => {
                         todo!()
                     }
                 }

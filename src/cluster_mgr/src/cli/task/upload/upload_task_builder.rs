@@ -149,10 +149,18 @@ pub(crate) fn list_files_by_host(host: &str, config: &Deployment) -> Vec<String>
         .map(|entry| entry.into_path())
         .collect_vec();
     if config.product() == Product::EloqSQL {
-        paths.push(upload_dir().join("my_local.cnf"));
-        paths.push(upload_dir().join(MONOGRAPH_INSTALL_SCRIPT));
+        paths.push(upload_dir().join(&config.cluster_name).join("my_local.cnf"));
+        paths.push(
+            upload_dir()
+                .join(&config.cluster_name)
+                .join(MONOGRAPH_INSTALL_SCRIPT),
+        );
         if config.monitor.is_some() {
-            paths.push(upload_dir().join(CREATE_MONITOR_USER_SQL_FILE));
+            paths.push(
+                upload_dir()
+                    .join(&config.cluster_name)
+                    .join(CREATE_MONITOR_USER_SQL_FILE),
+            );
         }
     }
     paths
