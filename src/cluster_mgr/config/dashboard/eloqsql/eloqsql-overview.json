@@ -10,7 +10,7 @@
     },
     {
       "name": "DS_LOKI",
-      "label": "Loki",
+      "label": "loki",
       "description": "",
       "type": "datasource",
       "pluginId": "loki",
@@ -29,7 +29,7 @@
       "type": "grafana",
       "id": "grafana",
       "name": "Grafana",
-      "version": "9.4.3"
+      "version": "11.6.0"
     },
     {
       "type": "panel",
@@ -90,13 +90,11 @@
       }
     ]
   },
-  "description": "",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
   "links": [],
-  "liveNow": false,
   "panels": [
     {
       "collapsed": true,
@@ -224,8 +222,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "red",
@@ -249,6 +246,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -256,9 +254,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -291,8 +291,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "red",
@@ -316,6 +315,7 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -323,9 +323,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -358,8 +360,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "red",
@@ -384,6 +385,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -391,9 +393,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -426,8 +430,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "red",
@@ -452,6 +455,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -459,9 +463,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -469,7 +475,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[6s]))) / (1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[6s])) + sum(delta(cache_hit_or_miss_total{type=\"miss\",instance=~\"$eloqdata_server\"}[6s])))",
+          "expr": "(1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[5s]))) / (1 + sum(delta(cache_hit_or_miss_total{type=\"hits\", instance=~\"$eloqdata_server\"}[5s])) + sum(delta(cache_hit_or_miss_total{type=\"miss\",instance=~\"$eloqdata_server\"}[5s])))",
           "legendFormat": "Current TPS",
           "range": true,
           "refId": "A"
@@ -494,8 +500,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           }
@@ -515,6 +520,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -522,9 +528,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -532,7 +540,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(mysql_processed_tx_total{instance=~\"$eloqdata_server\"}[6s]))",
+          "expr": "sum(rate(mysql_processed_tx_total{instance=~\"$eloqdata_server\"}[5s]))",
           "legendFormat": "Current QPS",
           "range": true,
           "refId": "A"
@@ -557,8 +565,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           }
@@ -578,6 +585,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -585,9 +593,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -595,7 +605,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(mysql_processed_query_total{instance=~\"$eloqdata_server\"}[6s]))",
+          "expr": "sum(rate(mysql_processed_query_total{instance=~\"$eloqdata_server\"}[5s]))",
           "legendFormat": "Current QPS",
           "range": true,
           "refId": "A"
@@ -630,12 +640,10 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
-          },
-          "unit": "µs"
+          }
         },
         "overrides": []
       },
@@ -652,6 +660,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -659,9 +668,11 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -669,7 +680,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile($percentile / 100, sum by (le)(rate(mysql_tx_duration_bucket{instance=~\"$eloqdata_server\"}[6s])))",
+          "expr": "histogram_quantile($percentile / 100, sum by (le)(rate(mysql_tx_duration_bucket{instance=~\"$eloqdata_server\"}[5s])))",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -695,8 +706,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -713,8 +723,16 @@
       "id": 123157,
       "options": {
         "displayMode": "basic",
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "maxVizHeight": 300,
         "minVizHeight": 10,
         "minVizWidth": 0,
+        "namePlacement": "auto",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -723,9 +741,11 @@
           "fields": "",
           "values": false
         },
-        "showUnfilled": true
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -762,8 +782,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -780,8 +799,16 @@
       "id": 123403,
       "options": {
         "displayMode": "basic",
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "maxVizHeight": 300,
         "minVizHeight": 10,
         "minVizWidth": 0,
+        "namePlacement": "auto",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -790,9 +817,11 @@
           "fields": "",
           "values": false
         },
-        "showUnfilled": true
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -829,8 +858,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               }
             ]
           },
@@ -847,8 +875,16 @@
       "id": 123404,
       "options": {
         "displayMode": "gradient",
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "maxVizHeight": 300,
         "minVizHeight": 10,
         "minVizWidth": 0,
+        "namePlacement": "auto",
         "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
@@ -857,9 +893,11 @@
           "fields": "",
           "values": false
         },
-        "showUnfilled": true
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
       },
-      "pluginVersion": "9.4.3",
+      "pluginVersion": "11.6.0",
       "targets": [
         {
           "datasource": {
@@ -1134,7 +1172,7 @@
             "y": 22
           },
           "id": 123160,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -1234,7 +1272,7 @@
             "y": 22
           },
           "id": 123169,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -1336,7 +1374,7 @@
             "y": 32
           },
           "id": 123215,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -1442,7 +1480,7 @@
             "y": 32
           },
           "id": 123216,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -1561,7 +1599,7 @@
             "y": 38
           },
           "id": 123235,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -1669,7 +1707,7 @@
             "y": 38
           },
           "id": 123234,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -1786,12 +1824,12 @@
           },
           "gridPos": {
             "h": 8,
-            "w": 6,
+            "w": 24,
             "x": 0,
             "y": 33
           },
           "id": 123238,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -1910,12 +1948,12 @@
           },
           "gridPos": {
             "h": 8,
-            "w": 6,
+            "w": 24,
             "x": 0,
             "y": 37
           },
           "id": 123255,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -2040,7 +2078,7 @@
             "y": 41
           },
           "id": 123141,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -2140,7 +2178,7 @@
             "y": 41
           },
           "id": 123145,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -2254,7 +2292,7 @@
             "y": 51
           },
           "id": 123139,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -2359,7 +2397,7 @@
             "y": 51
           },
           "id": 123148,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -2475,7 +2513,7 @@
             "y": 27
           },
           "id": 123151,
-          "interval": "6s",
+          "interval": "15s",
           "options": {
             "legend": {
               "calcs": [
@@ -2575,7 +2613,7 @@
             "y": 27
           },
           "id": 123152,
-          "interval": "6s",
+          "interval": "15s",
           "options": {
             "legend": {
               "calcs": [
@@ -2928,7 +2966,7 @@
             "y": 40
           },
           "id": 123214,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3028,7 +3066,7 @@
             "y": 40
           },
           "id": 123213,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3130,7 +3168,7 @@
             "y": 50
           },
           "id": 123212,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3234,7 +3272,7 @@
             "y": 50
           },
           "id": 123231,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3347,7 +3385,7 @@
             "y": 30
           },
           "id": 123367,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3446,7 +3484,7 @@
             "y": 30
           },
           "id": 123368,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3545,7 +3583,7 @@
             "y": 40
           },
           "id": 123321,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3644,7 +3682,7 @@
             "y": 40
           },
           "id": 123336,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3757,7 +3795,7 @@
             "y": 51
           },
           "id": 123177,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3856,7 +3894,7 @@
             "y": 51
           },
           "id": 123178,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -3955,7 +3993,7 @@
             "y": 61
           },
           "id": 123371,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4054,7 +4092,7 @@
             "y": 61
           },
           "id": 123372,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4167,7 +4205,7 @@
             "y": 43
           },
           "id": 123179,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4266,7 +4304,7 @@
             "y": 43
           },
           "id": 123186,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4365,7 +4403,7 @@
             "y": 53
           },
           "id": 123188,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4464,7 +4502,7 @@
             "y": 53
           },
           "id": 123189,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4577,7 +4615,7 @@
             "y": 44
           },
           "id": 123193,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4677,7 +4715,7 @@
             "y": 44
           },
           "id": 123183,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4790,7 +4828,7 @@
             "y": 45
           },
           "id": 123201,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4892,7 +4930,7 @@
             "y": 45
           },
           "id": 123194,
-          "interval": "6s",
+          "interval": "5s",
           "options": {
             "legend": {
               "calcs": [
@@ -4948,6 +4986,10 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
           "gridPos": {
             "h": 8,
             "w": 24,
@@ -4985,45 +5027,31 @@
       "type": "row"
     }
   ],
-  "refresh": "6s",
-  "revision": 1,
-  "schemaVersion": 38,
-  "style": "dark",
+  "refresh": "5s",
+  "schemaVersion": 41,
   "tags": [],
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": false,
-          "text": "Prometheus",
-          "value": "Prometheus"
-        },
+        "current": {},
         "hide": 2,
         "includeAll": false,
-        "multi": false,
         "name": "DS_PROMETHEUS",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
         "type": "datasource"
       },
       {
-        "current": {
-          "selected": false,
-          "text": "Loki",
-          "value": "Loki"
-        },
+        "current": {},
         "hide": 2,
         "includeAll": false,
-        "multi": false,
         "name": "DS_LOKI",
         "options": [],
         "query": "loki",
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
         "type": "datasource"
       },
       {
@@ -5032,7 +5060,28 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(mysql_max_connections{namespace=~\"$namespace\"},eloqdata_cluster)",
+        "definition": "label_values(memory_limit{namespace=\"$namespace\"},namespace)",
+        "includeAll": false,
+        "label": "Namespace",
+        "multi": true,
+        "name": "namespace",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(memory_limit{namespace=\"$namespace\"},namespace)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(memory_limit{namespace=~\"$namespace\"},eloqdata_cluster)",
         "hide": 2,
         "includeAll": false,
         "label": "Full Cluster Name",
@@ -5041,37 +5090,11 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(mysql_max_connections{namespace=~\"$namespace\"},eloqdata_cluster)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
-        "type": "query"
-      },
-      {
-        "current": {},
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
-        },
-        "definition": "label_values(mysql_max_connections,namespace)",
-        "hide": 0,
-        "includeAll": false,
-        "label": "Namespace",
-        "multi": true,
-        "name": "namespace",
-        "options": [],
-        "query": {
-          "qryType": 1,
-          "query": "label_values(mysql_max_connections,namespace)",
+          "query": "label_values(memory_limit{namespace=~\"$namespace\"},eloqdata_cluster)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
         "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
         "type": "query"
       },
       {
@@ -5080,8 +5103,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(mysql_max_connections{namespace=~\"$namespace\"},eloqdata_cluster)",
-        "hide": 0,
+        "definition": "label_values(memory_limit{namespace=~\"$namespace\"},eloqdata_cluster)",
         "includeAll": false,
         "label": "EloqData Cluster",
         "multi": true,
@@ -5089,13 +5111,11 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(mysql_max_connections{namespace=~\"$namespace\"},eloqdata_cluster)",
+          "query": "label_values(memory_limit{namespace=~\"$namespace\"},eloqdata_cluster)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
-        "refresh": 1,
+        "refresh": 2,
         "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
         "type": "query"
       },
       {
@@ -5105,7 +5125,6 @@
           "uid": "${DS_PROMETHEUS}"
         },
         "definition": "label_values(memory_limit{namespace=~\"$namespace\", eloqdata_cluster=~\"$eloqdata_cluster\"},instance)",
-        "hide": 0,
         "includeAll": true,
         "label": "EloqData Server",
         "multi": true,
@@ -5116,23 +5135,18 @@
           "query": "label_values(memory_limit{namespace=~\"$namespace\", eloqdata_cluster=~\"$eloqdata_cluster\"},instance)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
-        "refresh": 1,
+        "refresh": 2,
         "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
         "type": "query"
       },
       {
         "current": {
-          "selected": true,
           "text": "99",
           "value": "99"
         },
         "description": "p99.9,p99, p95, p90, p50",
-        "hide": 0,
         "includeAll": false,
         "label": "Percentile",
-        "multi": false,
         "name": "percentile",
         "options": [
           {
@@ -5162,8 +5176,6 @@
           }
         ],
         "query": "99.9,99, 95, 90, 50",
-        "queryValue": "",
-        "skipUrlSync": false,
         "type": "custom"
       },
       {
@@ -5173,7 +5185,6 @@
           "uid": "${DS_PROMETHEUS}"
         },
         "definition": "label_values(mysql_dml_total, type)",
-        "hide": 0,
         "includeAll": true,
         "label": "DML Type",
         "multi": true,
@@ -5185,8 +5196,6 @@
         },
         "refresh": 2,
         "regex": "",
-        "skipUrlSync": false,
-        "sort": 0,
         "type": "query"
       }
     ]
@@ -5195,33 +5204,7 @@
     "from": "now-5m",
     "to": "now"
   },
-  "timepicker": {
-    "hidden": false,
-    "refresh_intervals": [
-      "5s",
-      "10s",
-      "30s",
-      "1m",
-      "5m",
-      "15m",
-      "30m",
-      "1h",
-      "2h",
-      "1d"
-    ],
-    "time_options": [
-      "5m",
-      "15m",
-      "1h",
-      "6h",
-      "12h",
-      "24h",
-      "2d",
-      "7d",
-      "30d"
-    ],
-    "type": "timepicker"
-  },
+  "timepicker": {},
   "timezone": "browser",
   "title": "EloqSQL Overview",
   "uid": "eloqsql-overview",
