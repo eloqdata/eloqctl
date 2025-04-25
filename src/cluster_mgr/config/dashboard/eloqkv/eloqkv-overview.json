@@ -6118,29 +6118,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(memory_limit{namespace=~\"$namespace\"},eloqdata_cluster)",
-        "hide": 2,
-        "includeAll": false,
-        "label": "Full Cluster Name",
-        "multi": true,
-        "name": "full_cluster_name",
-        "options": [],
-        "query": {
-          "qryType": 1,
-          "query": "label_values(memory_limit{namespace=~\"$namespace\"},eloqdata_cluster)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 2,
-        "regex": "",
-        "type": "query"
-      },
-      {
-        "current": {},
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
-        },
-        "definition": "label_values(memory_limit{namespace=\"$namespace\"},namespace)",
+        "definition": "label_values(memory_limit,namespace)",
         "includeAll": false,
         "label": "Namespace",
         "multi": true,
@@ -6148,7 +6126,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(memory_limit{namespace=\"$namespace\"},namespace)",
+          "query": "label_values(memory_limit,namespace)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -6845,6 +6823,28 @@
         ],
         "query": "append,bitcount,cluster,config,dbsize,decr,decrby,del,dump,echo,eval,exists,flushall,flushdb,get,getbit,getrange,getset,hdel,hexists,hget,hgetall,hincrby,hkeys,hlen,hmget,hmset,hrandfield,hscan,hset,hsetnx,hstrlen,hvals,incr,incrby,incrbyfloat,info,keys,lindex,linsert,llen,lmove,lmpop,lpop,lpos,lpush,lpushx,lrange,lrem,lset,ltrim,mget,mset,msetnx,ping,psetex,restore,rpop,rpoplpush,rpush,rpushx,sadd,scan,scard,sdiff,sdiffstore,select,set,setbit,setex,setnx,setrange,sinter,sintercard,sinterstore,sismember,smembers,smismember,smove,sort,sort_ro,spop,srandmember,srem,sscan,strlen,substr,sunion,sunionstore,type,zadd,zcard,zcount,zdiff,zdiffstore,zincrby,zinter,zintercard,zinterstore,zlexcount,zmpop,zmscore,zpopmax,zpopmin,zrandmember,zrange,zrangebylex,zrangebyrank,zrangebyscore,zrank,zrem,zremrangebylex,zremrangebyrank,zremrangebystore,zrevrank,zscan,zunion,zunionstore",
         "type": "custom"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(memory_limit{namespace=\"$namespace\"},eloqdata_cluster)",
+        "hide": 2,
+        "includeAll": false,
+        "label": "Full Cluster Name",
+        "multi": true,
+        "name": "full_cluster_name",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(memory_limit{namespace=\"$namespace\"},eloqdata_cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "type": "query"
       }
     ]
   },

@@ -5060,7 +5060,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(memory_limit{namespace=\"$namespace\"},namespace)",
+        "definition": "label_values(memory_limit,namespace)",
         "includeAll": false,
         "label": "Namespace",
         "multi": true,
@@ -5068,7 +5068,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(memory_limit{namespace=\"$namespace\"},namespace)",
+          "query": "label_values(memory_limit,namespace)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
