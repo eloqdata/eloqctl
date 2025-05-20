@@ -67,12 +67,6 @@ impl TaskGroup for LaunchTaskGroup {
             InstallDepPkgTaskGroup.tasks(cmd, config).await?
         };
 
-        // // TODO(ZX) #4 placed after start cluster
-        // // Add the topology update task
-        // let topology_update_tasks = TopologyUpdateTask::from_config(cluster_config);
-        // barrier.push(topology_update_tasks.len());
-        // executable.extend(topology_update_tasks);
-
         let exe_ctx = vec![
             dep_tasks,
             CheckTaskGroup

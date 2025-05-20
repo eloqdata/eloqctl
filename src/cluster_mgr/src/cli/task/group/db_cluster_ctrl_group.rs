@@ -5,12 +5,17 @@ use crate::cli::task::group::{Config, CtrlDBTaskGroup, TaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
-use crate::cli::task::task_base::{TaskExecutionContext, TaskId, TaskInstance};
+use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
+use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::task_utils::{stop_with_failover, stop_with_hot_standby};
+use crate::cli::task::topology_display_task::TopologyDisplayTask;
+use crate::cli::task::topology_update_task::TopologyUpdateFromRedisTask;
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use indexmap::IndexMap;
+use std::collections::HashMap;
+use tokio::sync::watch;
 
 #[async_trait::async_trait]
 impl TaskGroup for CtrlDBTaskGroup {
@@ -109,9 +114,60 @@ impl TaskGroup for CtrlDBTaskGroup {
                 }
                 (barrier, tasks)
             }
-            SubCommand::Status { .. } => {
-                let tasks = self.status_tasks(cmd, &cluster_config);
-                (vec![tasks.len()], tasks)
+            SubCommand::Status { detail, .. } => {
+                if detail {
+                    bail!("zxlog: detail status is not supported yet");
+
+                    let mut barrier = Vec::new();
+                    let mut executable = IndexMap::new();
+
+                    // Barrier group 1: fetch TX topology via Redis and update state
+                    let (redis_tx, redis_rx) = watch::channel(ClusterNodes {
+                        masters: Vec::new(),
+                        replicas: Vec::new(),
+                    });
+                    let redis_task_id = TaskId {
+                        cmd: "topology".to_string(),
+                        task: "redis-topology".to_string(),
+                        host: "local".to_string(),
+                    };
+                    let redis_task = RedisOpTask::new(
+                        redis_task_id.clone(),
+                        cluster_config.deployment.tx_service.tx_host_ports.clone(),
+                        "cluster nodes".to_string(),
+                        redis_tx.clone(),
+                        None,
+                        true,
+                    );
+                    barrier.push(1);
+                    executable.insert(
+                        redis_task_id.clone(),
+                        TaskInstance {
+                            task_input: HashMap::default(),
+                            task: Box::new(redis_task),
+                            task_host: TaskHost::Local,
+                        },
+                    );
+
+                    // Barrier group 2: update topology from Redis result
+                    let update_map =
+                        TopologyUpdateFromRedisTask::from_redis(cluster_config, redis_rx.clone());
+                    if !update_map.is_empty() {
+                        barrier.push(update_map.len());
+                        executable.extend(update_map);
+                    }
+
+                    // Barrier group 3: topology display
+                    // Prepare display tasks for later
+                    let display_map = TopologyDisplayTask::from_command(cmd.clone());
+                    barrier.push(display_map.len());
+                    executable.extend(display_map);
+
+                    (barrier, executable)
+                } else {
+                    let tasks = self.status_tasks(cmd, &cluster_config);
+                    (vec![tasks.len()], tasks)
+                }
             }
             _ => unreachable!(),
         };
@@ -310,6 +366,7 @@ impl CtrlDBTaskGroup {
     ) -> IndexMap<TaskId, TaskInstance> {
         let deployment = &config.deployment;
         let mut executable = IndexMap::new();
+
         if deployment.log_service.is_some() {
             let tasks = MonographLogCtlTask::from_config(cmd.clone(), config);
             executable.extend(tasks);
@@ -326,17 +383,9 @@ impl CtrlDBTaskGroup {
         }
         let status_tx = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Tx);
         executable.extend(status_tx);
+
         if deployment.codis.is_some() {
             //TODO
-        }
-
-        // If detail flag is set, add the topology display task
-        if let SubCommand::Status { detail, .. } = cmd {
-            if detail {
-                use crate::cli::task::topology_display_task::TopologyDisplayTask;
-                let topology_tasks = TopologyDisplayTask::from_command(cmd);
-                executable.extend(topology_tasks);
-            }
         }
 
         executable

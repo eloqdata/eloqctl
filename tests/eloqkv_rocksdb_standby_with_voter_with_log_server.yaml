@@ -18,11 +18,11 @@ deployment:
         port: 9400
         data_dir:
           - "/home/${USER}/eloqkv_with_hot_standby_and_voter/wal_eloqkv/9400"
-      - host: 192.168.122.25
+      - host: 192.168.122.24
         port: 9500
         data_dir:
           - "/home/${USER}/eloqkv_with_hot_standby_and_voter/wal_eloqkv/9500"
-      - host: 192.168.122.26
+      - host: 192.168.122.25
         port: 9600
         data_dir:
           - "/home/${USER}/eloqkv_with_hot_standby_and_voter/wal_eloqkv/9600"

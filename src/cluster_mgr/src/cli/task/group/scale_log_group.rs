@@ -65,8 +65,6 @@ impl TaskGroup for ScaleLogTaskGroup {
                 (ScaleOperationType::RemoveNodes, remove_nodes)
             };
 
-            // TODO(ZX) !!! check logic here
-
             // Validate log_ng_id based on operation type
             match operation_type {
                 ScaleOperationType::AddNodes => {
@@ -90,7 +88,7 @@ impl TaskGroup for ScaleLogTaskGroup {
             let mut executable = IndexMap::new();
             let mut barrier = Vec::new();
 
-            // Step 1: Get the current log service configuration
+            //  Get the current log service configuration
             let mut temp_log_service = match &deploy_cfg.deployment.log_service {
                 Some(service) => service.clone(),
                 None => return Err(anyhow!("Log service configuration not found")),
@@ -134,7 +132,7 @@ impl TaskGroup for ScaleLogTaskGroup {
                         executable.extend(ssh_python_task);
                     }
 
-                    // Step 2: Update log service configuration with new nodes (for add operation)
+                    // Update log service configuration with new nodes (for add operation)
                     info!("Updating log service configuration with new nodes");
 
                     // Get the current number of nodes to determine node_id for new nodes
@@ -195,7 +193,7 @@ impl TaskGroup for ScaleLogTaskGroup {
                     let log_scripts_paths = temp_config.gen_log_start_script()?;
                     info!("Generated log scripts: {:?}", log_scripts_paths);
 
-                    // Extract existing host names from the original config
+                    // Extract existing host names from the original config - needed to identify truly new hosts
                     let existing_hosts: Vec<String> = deploy_cfg
                         .deployment
                         .log_service
@@ -204,18 +202,25 @@ impl TaskGroup for ScaleLogTaskGroup {
                         .nodes
                         .iter()
                         .map(|node| node.host.clone())
+                        .unique()
                         .collect();
 
-                    // Merge existing_hosts and scale_node_list, removing duplicates
-                    let mut host_list_to_upload_bash = existing_hosts.clone();
-                    for host_port in scale_node_list.clone() {
-                        let host = host_port.split(':').next().unwrap_or("").to_string();
-                        if !host.is_empty() && !host_list_to_upload_bash.contains(&host) {
-                            host_list_to_upload_bash.push(host);
-                        }
-                    }
+                    // Extract all host names with ports from the temp_log_service (includes both existing and new nodes)
+                    let all_log_nodes: Vec<String> = temp_log_service
+                        .nodes
+                        .iter()
+                        .map(|node| format!("{}:{}", node.host, node.port))
+                        .collect();
 
-                    // Extract host names from add_nodes
+                    info!(
+                        "All log nodes after configuration update: {:?}",
+                        all_log_nodes
+                    );
+
+                    // Create a comprehensive list for uploading bash scripts to all nodes in the cluster
+                    let node_list_to_upload_bash = all_log_nodes.clone();
+
+                    // Extract host names from add_nodes - keep this for binary uploads
                     let hosts_to_upload_log_binary = scale_node_list
                         .iter()
                         .filter_map(|node| node.split(':').next().map(|h| h.to_string()))
@@ -241,51 +246,47 @@ impl TaskGroup for ScaleLogTaskGroup {
                     // TODO(ZX) should only upload the host:port in newly added nodes
 
                     // Upload log start bash file for all nodes
-                    for host in &host_list_to_upload_bash {
-                        // Gather all start_tx_log_*.bash scripts for this host
-                        let mut sources = Vec::new();
-                        if let Some(script_list) = &log_scripts_paths {
-                            for path in script_list {
-                                if path.to_string_lossy().contains(&*host) {
-                                    sources.push(path.to_string_lossy().to_string());
-                                    info!("Adding script to upload: {}", path.display());
+                    for node_str in &node_list_to_upload_bash {
+                        if let Some((host, port_str)) = node_str.split_once(':') {
+                            // Gather all start_tx_log_*.bash scripts for this host
+                            let mut sources = Vec::new();
+                            if let Some(script_list) = &log_scripts_paths {
+                                for path in script_list {
+                                    if path.to_string_lossy().contains(host) {
+                                        sources.push(path.to_string_lossy().to_string());
+                                        info!("Adding script to upload: {}", path.display());
+                                    }
                                 }
                             }
+
+                            info!(
+                                "Found {} files to upload binary for host:port {}",
+                                sources.len(),
+                                node_str
+                            );
+
+                            // Create an upload file that includes all sources
+                            let upload_file = UploadFile {
+                                source: sources.join(" "),
+                                dest: deploy_cfg.install_dir(),
+                                extension: "bash".to_string(),
+                                host: host.to_string(),
+                                copy_dir: false,
+                            };
+
+                            // Create the upload task
+                            let source_host = get_source_host(None);
+                            let (id, instance) = build_task_instance(
+                                source_host,
+                                upload_file,
+                                config,
+                                &"deploy".to_string(),
+                                &format!("deploy_log_start_bash_to_{}", node_str),
+                            );
+
+                            barrier.push(1);
+                            executable.insert(id, instance);
                         }
-
-                        info!(
-                            "Found {} files to upload binary for host {}",
-                            sources.len(),
-                            host
-                        );
-
-                        // Create an upload file that includes all sources
-                        let upload_file = UploadFile {
-                            source: sources.join(" "),
-                            dest: deploy_cfg.install_dir(),
-                            extension: "bash".to_string(),
-                            host: host.to_string(),
-                            copy_dir: false,
-                        };
-
-                        // Create the upload task
-                        let task_id = TaskId {
-                            cmd: "deploy".to_string(),
-                            task: "deploy_monograph_all_bash".to_string(),
-                            host: host.to_string(),
-                        };
-
-                        let source_host = get_source_host(None);
-                        let (id, instance) = build_task_instance(
-                            source_host,
-                            upload_file,
-                            config,
-                            task_id.cmd.as_str(),
-                            task_id.task.as_str(),
-                        );
-
-                        barrier.push(1);
-                        executable.insert(id, instance);
                     }
 
                     // Upload log binary tarball for newly added hosts
@@ -334,19 +335,14 @@ impl TaskGroup for ScaleLogTaskGroup {
                         };
 
                         // Create the upload task
-                        let task_id = TaskId {
-                            cmd: "deploy".to_string(),
-                            task: "deploy_monograph_all_gz".to_string(),
-                            host: host.to_string(),
-                        };
 
                         let source_host = get_source_host(None);
                         let (id, instance) = build_task_instance(
                             source_host,
                             upload_file,
                             config,
-                            task_id.cmd.as_str(),
-                            task_id.task.as_str(),
+                            &"deploy".to_string(),
+                            &"deploy_monograph_all_gz".to_string(),
                         );
 
                         barrier.push(1);
@@ -613,6 +609,54 @@ impl TaskGroup for ScaleLogTaskGroup {
                             executable.insert(task_id, instance);
                         });
 
+                    // Step 3.5: Delete the start scripts for removed nodes
+                    info!("Setting up tasks to delete start scripts for removed nodes");
+
+                    // Group removed nodes by host to execute delete commands efficiently
+                    let nodes_by_host: HashMap<String, Vec<u16>> = scale_node_list
+                        .iter()
+                        .filter_map(|node_str| {
+                            if let Some((host, port_str)) = node_str.split_once(':') {
+                                if let Ok(port) = port_str.parse::<u16>() {
+                                    return Some((host.to_string(), port));
+                                }
+                            }
+                            None
+                        })
+                        .into_group_map();
+
+                    // Create delete commands for each host
+                    for (host, ports) in nodes_by_host {
+                        // Create bash command to delete all start scripts for the removed ports
+                        let files_to_delete = ports
+                            .iter()
+                            .map(|port| format!("start_tx_log_{}.bash", port))
+                            .collect::<Vec<_>>()
+                            .join(" ");
+
+                        let delete_cmd = format!(
+                            "cd {} && rm -f {}",
+                            deploy_cfg.install_dir(),
+                            files_to_delete
+                        );
+
+                        info!(
+                            "Adding command to delete scripts on {}: {}",
+                            host, delete_cmd
+                        );
+
+                        // Create the delete task using ExecCustomCommand
+                        let delete_tasks = ExecCustomCommand::build_task_by_host(
+                            delete_cmd,
+                            &config,
+                            vec![host.clone()],
+                            Some(format!("delete_removed_log_scripts_{}", host)),
+                        );
+
+                        barrier.push(delete_tasks.len());
+                        executable.extend(delete_tasks);
+                    }
+
                     // Step 4: Update log service configuration to remove nodes
                     info!("Updating log service configuration to remove nodes");
 
@@ -651,6 +695,81 @@ impl TaskGroup for ScaleLogTaskGroup {
 
                     // Update the modified configuration
                     temp_config.deployment.log_service = Some(temp_log_service.clone());
+
+                    // Step 5: Generate start scripts for remaining log nodes after removal
+                    info!("Generating start scripts for remaining log nodes");
+                    let log_scripts_paths = temp_config.gen_log_start_script()?;
+                    info!("Generated log scripts: {:?}", log_scripts_paths);
+
+                    // Extract existing host names from the original config - used to identify which hosts remain
+                    let remaining_hosts: Vec<String> = temp_log_service
+                        .nodes
+                        .iter()
+                        .map(|node| node.host.clone())
+                        .unique()
+                        .collect();
+
+                    // Extract all host:port combinations from the updated temp_log_service (only remaining nodes)
+                    let all_log_nodes: Vec<String> = temp_log_service
+                        .nodes
+                        .iter()
+                        .map(|node| format!("{}:{}", node.host, node.port))
+                        .collect();
+
+                    info!(
+                        "Remaining log nodes after configuration update: {:?}",
+                        all_log_nodes
+                    );
+
+                    // Create a comprehensive list for uploading bash scripts to all remaining nodes in the cluster
+                    let node_list_to_upload_bash = all_log_nodes.clone();
+
+                    // Step 6: Upload updated start scripts to all remaining nodes
+                    info!("Setting up upload tasks for updated log start scripts");
+
+                    // Upload log start bash file for all remaining nodes
+                    for node_str in &node_list_to_upload_bash {
+                        if let Some((host, port_str)) = node_str.split_once(':') {
+                            // Gather all start_tx_log_*.bash scripts for this host
+                            let mut sources = Vec::new();
+                            if let Some(script_list) = &log_scripts_paths {
+                                for path in script_list {
+                                    if path.to_string_lossy().contains(host) {
+                                        sources.push(path.to_string_lossy().to_string());
+                                        info!("Adding script to upload: {}", path.display());
+                                    }
+                                }
+                            }
+
+                            info!(
+                                "Found {} files to upload for host:port {}",
+                                sources.len(),
+                                node_str
+                            );
+
+                            // Create an upload file that includes all sources
+                            let upload_file = UploadFile {
+                                source: sources.join(" "),
+                                dest: deploy_cfg.install_dir(),
+                                extension: "bash".to_string(),
+                                host: host.to_string(),
+                                copy_dir: false,
+                            };
+
+                            // Create the upload task
+                            let source_host = get_source_host(None);
+                            let (id, instance) = build_task_instance(
+                                source_host,
+                                upload_file,
+                                config,
+                                &"deploy".to_string(),
+                                &format!("deploy_log_start_bash_to_{}", node_str),
+                            );
+
+                            barrier.push(1);
+                            executable.insert(id, instance);
+                        }
+                    }
                 }
             }
 

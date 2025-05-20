@@ -9,7 +9,8 @@ use crate::state::service_status_operation::{ServiceInstanceEntity, ServiceInsta
 use crate::state::snapshot_info_operation::{SnapshotEntity, SnapshotOperation};
 use crate::state::state_base::{QueryCondition, StateOperation, StateOperationAny};
 use crate::state::task_status_operation::{TaskStatusEntity, TaskStatusOperation};
-use crate::state::topology_operation::{TopologyEntity, TopologyOperation};
+use crate::state::topology_log_operation::{TopologyLogEntity, TopologyLogOperation};
+use crate::state::topology_tx_operation::{TopologyTxEntity, TopologyTxOperation};
 use crate::StateValue;
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
@@ -31,7 +32,8 @@ pub const SCALE_STATE: &str = "Scale";
 pub const TASK_STATUS_STATE: &str = "TaskStatus";
 pub const SERVICE_STATUS_STATE: &str = "ServiceStatus";
 pub const SNAPSHOT_STATUS_STATE: &str = "SnapshotStatus";
-pub const TOPOLOGY_STATE: &str = "Topology";
+pub const TOPOLOGY_TX_STATE: &str = "TopologyTx";
+pub const TOPOLOGY_LOG_STATE: &str = "TopologyLog";
 
 pub(crate) static CLUSTER_MGR_CLI_DB: &str = "cluster_mgr_state.db";
 pub(crate) static MONO_CLUSTER_MGR_SCHEMA_PATH: &str = "MONO_CLUSTER_MGR_SCHEMA_PATH";
@@ -411,8 +413,10 @@ impl StateMgr {
             let scale_opt_ref =
                 Box::leak(ScaleOperation::boxed(db_conn_pool.clone())) as &dyn StateOperationAny;
 
-            let topology_opt_ref =
-                Box::leak(TopologyOperation::boxed(db_conn_pool.clone())) as &dyn StateOperationAny;
+            let topo_tx_opt_ref = Box::leak(TopologyTxOperation::boxed(db_conn_pool.clone()))
+                as &dyn StateOperationAny;
+            let topo_log_opt_ref = Box::leak(TopologyLogOperation::boxed(db_conn_pool.clone()))
+                as &dyn StateOperationAny;
 
             let state_map: HashMap<String, Arc<&'static dyn StateOperationAny>> = HashMap::from([
                 (DEPLOYMENT_STATE.to_string(), Arc::new(deployment_opt_ref)),
@@ -427,7 +431,8 @@ impl StateMgr {
                 ),
                 (PROXY_STATE.to_string(), Arc::new(proxy_opt_ref)),
                 (SCALE_STATE.to_string(), Arc::new(scale_opt_ref)),
-                (TOPOLOGY_STATE.to_string(), Arc::new(topology_opt_ref)),
+                (TOPOLOGY_TX_STATE.to_string(), Arc::new(topo_tx_opt_ref)),
+                (TOPOLOGY_LOG_STATE.to_string(), Arc::new(topo_log_opt_ref)),
             ]);
             info!("Create StateMgr instance success.");
             Ok(Self {
@@ -454,14 +459,13 @@ impl StateMgr {
         Ok(())
     }
 
-    pub async fn load_topology_from_state(
+    /// Load TX topology entries for the given cluster
+    pub async fn load_topology_tx_from_state(
         &self,
         cluster_name: String,
-    ) -> Result<Vec<TopologyEntity>> {
-        let topology_state_operation =
-            self.get_state_operation::<TopologyOperation>(TOPOLOGY_STATE);
-
-        let topology_entities = topology_state_operation
+    ) -> Result<Vec<TopologyTxEntity>> {
+        let topo_tx_op = self.get_state_operation::<TopologyTxOperation>(TOPOLOGY_TX_STATE);
+        let entries = topo_tx_op
             .load(|| -> Option<QueryCondition> {
                 Some(QueryCondition {
                     cond_text: "cluster_name = $1".to_string(),
@@ -469,8 +473,24 @@ impl StateMgr {
                 })
             })
             .await?;
+        Ok(entries)
+    }
 
-        Ok(topology_entities)
+    /// Load log topology entries for the given cluster
+    pub async fn load_topology_log_from_state(
+        &self,
+        cluster_name: String,
+    ) -> Result<Vec<TopologyLogEntity>> {
+        let topo_log_op = self.get_state_operation::<TopologyLogOperation>(TOPOLOGY_LOG_STATE);
+        let entries = topo_log_op
+            .load(|| -> Option<QueryCondition> {
+                Some(QueryCondition {
+                    cond_text: "cluster_name = $1".to_string(),
+                    bind_values: vec![StateValue::Varchar(cluster_name.clone())],
+                })
+            })
+            .await?;
+        Ok(entries)
     }
 }
 

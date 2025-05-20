@@ -169,3 +169,6 @@ eloqctl list
 eloqctl remove "$CLUSTER_NAME"
 
 echo "Multiple Node Scale (Log+TX) tests PASSED !!!" 
+
+
+# TODO(zx): add test for scale/scale-log on the existing hosts

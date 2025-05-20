@@ -3,6 +3,8 @@ use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskHost, TaskId
 use crate::cli::SubCommand;
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::state::state_mgr::STATE_MGR;
+use crate::state::topology_log_operation::TopologyLogEntity;
+use crate::state::topology_tx_operation::TopologyTxEntity;
 use anyhow::Result;
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -75,14 +77,20 @@ impl TaskExecutor for TopologyDisplayTask {
             self.cluster_name
         );
 
-        match STATE_MGR
-            .load_topology_from_state(self.cluster_name.clone())
-            .await
-        {
-            Ok(topology_entities) => {
-                if topology_entities.is_empty() {
+        // Load TX and log topology from state
+        let tx_entities_res = STATE_MGR
+            .load_topology_tx_from_state(self.cluster_name.clone())
+            .await;
+        let log_entities_res = STATE_MGR
+            .load_topology_log_from_state(self.cluster_name.clone())
+            .await;
+
+        // Handle TX load result
+        let tx_entities = match tx_entities_res {
+            Ok(entities) => {
+                if entities.is_empty() {
                     let message = format!(
-                        "No topology information found for cluster {}",
+                        "No TX topology information found for cluster {}",
                         self.cluster_name
                     );
                     info!("{}", message);
@@ -90,72 +98,93 @@ impl TaskExecutor for TopologyDisplayTask {
                     task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(message));
                     return Ok(Some(task_result));
                 }
-
-                // Create a table for the output
-                let mut table = Table::new();
-                table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
-
-                // Add table header
-                table.set_titles(row![
-                    "Node Group ID",
-                    "Node ID",
-                    "Host",
-                    "Port",
-                    "Role",
-                    "Is Candidate"
-                ]);
-
-                // Group by node_group_id for better organization
-                let mut grouped: HashMap<i32, Vec<_>> = HashMap::new();
-                let entities_for_display = topology_entities.clone();
-                for entity in entities_for_display {
-                    grouped
-                        .entry(entity.node_group_id)
-                        .or_insert_with(Vec::new)
-                        .push(entity);
-                }
-
-                // Sort by node_group_id for consistent display
-                let mut group_ids: Vec<i32> = grouped.keys().cloned().collect();
-                group_ids.sort();
-
-                // Build the rows in the table
-                for group_id in group_ids {
-                    if let Some(nodes) = grouped.get(&group_id) {
-                        for node in nodes {
-                            let role = if node.is_master { "Master" } else { "Replica" };
-                            let candidate = if node.is_candidate { "Yes" } else { "No" };
-
-                            table.add_row(Row::new(vec![
-                                Cell::new(&node.node_group_id.to_string()),
-                                Cell::new(&node.node_id),
-                                Cell::new(&node.host),
-                                Cell::new(&node.port.to_string()),
-                                Cell::new(role),
-                                Cell::new(candidate),
-                            ]));
-                        }
-                    }
-                }
-
-                // Convert the table to a string and store it in the task result
-                let table_string = format!(
-                    "\nCluster Topology for {}:\n{}",
-                    self.cluster_name,
-                    table.to_string()
-                );
-                info!("Successfully displayed topology information");
-
-                task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
-                task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(table_string));
+                entities
             }
             Err(e) => {
-                let error_msg = format!("Failed to load topology information: {}", e);
+                let error_msg = format!("Failed to load TX topology information: {}", e);
                 error!("{}", error_msg);
                 task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
                 task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(error_msg));
+                return Ok(Some(task_result));
+            }
+        };
+
+        // Build TX table
+        let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+        table.set_titles(row!["Node Group ID", "Node ID", "Host", "Port", "Role",]);
+
+        let mut grouped_tx: HashMap<i32, Vec<TopologyTxEntity>> = HashMap::new();
+        for entity in tx_entities.clone() {
+            grouped_tx
+                .entry(entity.node_group_id)
+                .or_insert_with(Vec::new)
+                .push(entity);
+        }
+
+        let mut group_ids: Vec<i32> = grouped_tx.keys().cloned().collect();
+        group_ids.sort();
+
+        for group_id in group_ids {
+            if let Some(nodes) = grouped_tx.get(&group_id) {
+                for node in nodes {
+                    // Interpret role: 0=Master,1=Replica,2=Voter
+                    let role = match node.role {
+                        0 => "Master",
+                        1 => "Replica",
+                        2 => "Voter",
+                        _ => "Unknown",
+                    };
+
+                    table.add_row(Row::new(vec![
+                        Cell::new(&node.node_group_id.to_string()),
+                        Cell::new(&node.node_id),
+                        Cell::new(&node.host),
+                        Cell::new(&node.port.to_string()),
+                        Cell::new(role),
+                    ]));
+                }
             }
         }
+
+        let mut output = format!(
+            "\nCluster TX Topology for {}:\n{}",
+            self.cluster_name,
+            table.to_string()
+        );
+
+        // Append log service info if available
+        if let Ok(log_entities) = log_entities_res {
+            if !log_entities.is_empty() {
+                let mut log_table = Table::new();
+                log_table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+                log_table.set_titles(row![
+                    "Log Group ID",
+                    "Log Node ID",
+                    "Host",
+                    "Port",
+                    "Data Dirs"
+                ]);
+                for ent in log_entities {
+                    log_table.add_row(Row::new(vec![
+                        Cell::new(&ent.node_group_id.to_string()),
+                        Cell::new(&ent.node_id),
+                        Cell::new(&ent.host),
+                        Cell::new(&ent.port.to_string()),
+                        Cell::new(ent.data_dirs.as_deref().unwrap_or("")),
+                    ]));
+                }
+                output.push_str(&format!(
+                    "\n\nLog Service Topology for {}:\n{}",
+                    self.cluster_name,
+                    log_table.to_string()
+                ));
+            }
+        }
+
+        info!("Successfully displayed topology information");
+        task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
+        task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(output));
 
         Ok(Some(task_result))
     }
