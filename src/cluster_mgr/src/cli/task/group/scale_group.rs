@@ -224,15 +224,19 @@ impl super::TaskGroup for ScaleTaskGroup {
                         }
                     }
 
-                    // ensure ssh connection
-                    let add_hosts = add_nodes
+                    let existing_hosts = config.get_unique_host_list();
+
+                    // Add SSH setup for newly added log nodes
+                    let newly_added_hosts = add_nodes
                         .clone()
                         .iter()
                         .map(|host_port| host_port.split(':').next().unwrap_or("").to_string())
                         .filter(|host| !host.is_empty())
+                        .filter(|host| !existing_hosts.contains(host))
+                        .dedup()
                         .collect::<Vec<String>>();
 
-                    if !add_hosts.is_empty() {
+                    if !newly_added_hosts.is_empty() {
                         // Add SSH setup for new nodes with Python SSH script
                         let ssh_python_bin = config_template(SSH_PYTHON_SCRIPT)?
                             .to_string_lossy()
@@ -240,10 +244,7 @@ impl super::TaskGroup for ScaleTaskGroup {
 
                         // Merge existing hosts with new hosts
                         let mut all_hosts = config.get_unique_host_list();
-                        all_hosts.extend(add_hosts.clone());
-                        // Deduplicate hosts
-                        all_hosts.sort();
-                        all_hosts.dedup();
+                        all_hosts.extend(newly_added_hosts.clone());
                         // Join the hostnames with spaces
                         let host_values = all_hosts.join(" ");
 
@@ -352,7 +353,7 @@ impl super::TaskGroup for ScaleTaskGroup {
             let check_status_task = CheckTxClusterScaleStatusTask::new(
                 check_status_task_id.clone(),
                 event_id.clone(),
-                true, // Q? need to poll until finished here? or need `poll until finished` at all in this function?
+                true,
                 Some(scale_status_tx.clone()),
                 Some(redis_op_rx.clone()),
                 None,
@@ -534,28 +535,18 @@ impl super::TaskGroup for ScaleTaskGroup {
             })
             .collect();
 
-        // Create directories for each node in nodes_list
-        info!("Creating directories for each node in nodes_list");
+        // Create directories only for unique newly added hosts
+        info!("Creating directories for unique newly added hosts");
 
-        for host_port in nodes_list.iter() {
-            let parts: Vec<&str> = host_port.split(':').collect();
-            if parts.len() != 2 {
-                warn!("Invalid node format: {}, expected host:port", host_port);
-                continue;
-            }
-
-            let host = parts[0].to_string();
-            let port = parts[1];
-
+        for host in &new_hosts_to_upload_tarball {
             let mkdir_remote_dir = ExecCustomCommand::build_task_by_host(
                 format!(
-                    "mkdir -p {}/data/port-{}/tx_service",
+                    "mkdir -p {}/data/tx_service",
                     deploy_config.deployment.tx_srv_home(),
-                    port
                 ),
                 config,
                 vec![host.clone()],
-                Some(format!("mkdir-{}", port)),
+                Some(format!("mkdir-{}", host)),
             );
 
             barrier.push(mkdir_remote_dir.len());
@@ -760,7 +751,7 @@ impl super::TaskGroup for ScaleTaskGroup {
                     log: false,
                     store: false,
                     monitor: false,
-                    force: false,
+                    force: true,
                     all: false,
                     password: password.clone(),
                     nodes: nodes_list.clone(),
@@ -976,6 +967,83 @@ impl super::TaskGroup for ScaleTaskGroup {
 
         barrier.push(1);
         executable.insert(topology_display_task_id, topology_display_instance);
+
+        if let ScaleOperationType::RemoveNodes = operation_type {
+            info!("Creating cleanup tasks for removed TX node directories and files");
+
+            // Group removed nodes by host for efficient cleanup
+            let nodes_by_host: HashMap<String, Vec<u16>> = nodes_list
+                .iter()
+                .filter_map(|node_str| {
+                    if let Some((host, port_str)) = node_str.split_once(':') {
+                        if let Ok(port) = port_str.parse::<u16>() {
+                            return Some((host.to_string(), port));
+                        }
+                    }
+                    None
+                })
+                .into_group_map();
+
+            let install_dir = deploy_config.install_dir();
+            let tx_srv_home = deploy_config.deployment.tx_srv_home();
+
+            for (host, ports) in nodes_by_host {
+                // Check if this is the last node on this host
+                let host_ports = all_nodes_before_scale
+                    .iter()
+                    .filter_map(|node| {
+                        if let Some((h, _)) = node.split_once(':') {
+                            if h == host {
+                                return Some(node.clone());
+                            }
+                        }
+                        None
+                    })
+                    .collect::<Vec<_>>();
+
+                let is_last_node = host_ports.len() <= ports.len();
+
+                if is_last_node {
+                    // If this is the last node on the host, remove the entire installation directory
+                    info!("Removing entire installation directory on host {}", host);
+                    let clean_cmd = format!("rm -rf {}/EloqKV", install_dir);
+                    let clean_tasks = ExecCustomCommand::build_task_by_host(
+                        clean_cmd,
+                        config,
+                        vec![host.clone()],
+                        Some(format!("clean_tx_all_{}", host)),
+                    );
+
+                    barrier.push(clean_tasks.len());
+                    executable.extend(clean_tasks);
+                } else {
+                    // Otherwise, only remove directories specific to the removed ports
+                    let clean_cmd = ports
+                        .iter()
+                        .map(|port| {
+                            format!(
+                                "rm -rf {}/rocksdb-{port} {}/data/tx_service/{port} {}/logs/node-{port} {}/EloqKv-node-{port}.ini",
+                                install_dir, tx_srv_home, tx_srv_home, install_dir
+                            )
+                        })
+                        .join(" && ");
+
+                    info!(
+                        "Removing node-specific directories on host {} for ports {:?}",
+                        host, ports
+                    );
+                    let clean_tasks = ExecCustomCommand::build_task_by_host(
+                        clean_cmd,
+                        config,
+                        vec![host.clone()],
+                        Some(format!("clean_tx_nodes_{}", host)),
+                    );
+
+                    barrier.push(clean_tasks.len());
+                    executable.extend(clean_tasks);
+                }
+            }
+        }
 
         info!("Scale task group configured with sequential tasks for scaling operation");
 

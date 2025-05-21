@@ -627,7 +627,7 @@ impl TaskGroup for ScaleLogTaskGroup {
                         .into_group_map();
 
                     // Create delete commands for each host
-                    for (host, ports) in nodes_by_host {
+                    for (host, ports) in &nodes_by_host {
                         // Create bash command to delete all start scripts for the removed ports
                         let files_to_delete = ports
                             .iter()
@@ -656,6 +656,63 @@ impl TaskGroup for ScaleLogTaskGroup {
 
                         barrier.push(delete_tasks.len());
                         executable.extend(delete_tasks);
+                    }
+
+                    // Add tasks to remove log data directories
+                    info!("Setting up tasks to remove log data directories for removed nodes");
+                    let install_dir = deploy_cfg.install_dir();
+
+                    // Get all log nodes to determine if we're removing the last node on a host
+                    let all_log_nodes: Vec<(String, u16)> =
+                        if let Some(log_service) = &deploy_cfg.deployment.log_service {
+                            log_service
+                                .nodes
+                                .iter()
+                                .map(|node| (node.host.clone(), node.port))
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+
+                    for (host, ports) in &nodes_by_host {
+                        // Check if these are the last log nodes on this host
+                        let remaining_nodes_on_host = all_log_nodes
+                            .iter()
+                            .filter(|(h, p)| h == host && !ports.contains(p))
+                            .count();
+
+                        let is_last_node = remaining_nodes_on_host == 0;
+
+                        // Build the cleanup command
+                        let cleanup_cmd = if is_last_node {
+                            // If this is the last log node on the host, remove all log-related directories
+                            format!(
+                                "rm -rf {}/wal_eloqkv {}/LogServer",
+                                install_dir, install_dir
+                            )
+                        } else {
+                            // Otherwise, only remove directories specific to the removed ports
+                            ports
+                                .iter()
+                                .map(|port| format!("rm -rf {}/wal_eloqkv/{}", install_dir, port))
+                                .join(" && ")
+                        };
+
+                        info!(
+                            "Adding cleanup command for log nodes on host {}: {}",
+                            host, cleanup_cmd
+                        );
+
+                        // Create the cleanup task using ExecCustomCommand
+                        let cleanup_tasks = ExecCustomCommand::build_task_by_host(
+                            cleanup_cmd,
+                            &config,
+                            vec![host.clone()],
+                            Some(format!("cleanup_log_data_{}", host)),
+                        );
+
+                        barrier.push(cleanup_tasks.len());
+                        executable.extend(cleanup_tasks);
                     }
 
                     // Step 4: Update log service configuration to remove nodes
