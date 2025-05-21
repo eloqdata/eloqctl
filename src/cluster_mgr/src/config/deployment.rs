@@ -641,7 +641,7 @@ impl Deployment {
         ini.set(
             SECTION_LOCAL,
             "eloq_data_path",
-            Some(format!("{}/data/port-{}", self.tx_srv_home(), port)),
+            Some(format!("{}/data", self.tx_srv_home())),
         );
 
         if self.tx_service.requirepass.is_some() {
@@ -1339,7 +1339,7 @@ impl Deployment {
 
         let mut txlog_flag = String::new();
         if self.log_service.is_some() {
-            let txlog_service_list = self
+            let service_nodes = self
                 .log_service
                 .as_ref()
                 .unwrap()
@@ -1352,9 +1352,9 @@ impl Deployment {
                         port_str = node.port
                     )
                 })
-                .collect::<Vec<_>>()
-                .join(",");
-            let txlog_group_replica_num = txlog_service_list.len();
+                .collect::<Vec<_>>();
+            let txlog_group_replica_num = service_nodes.len();
+            let txlog_service_list = service_nodes.join(",");
 
             txlog_flag = format!(
                 "--txlog_service_list={} --txlog_group_replica_num={}",
@@ -1419,7 +1419,7 @@ impl Deployment {
 
         let mut txlog_flag = String::new();
         if self.log_service.is_some() {
-            let txlog_service_list = self
+            let service_nodes = self
                 .log_service
                 .as_ref()
                 .unwrap()
@@ -1432,9 +1432,9 @@ impl Deployment {
                         port_str = node.port
                     )
                 })
-                .collect::<Vec<_>>()
-                .join(",");
-            let txlog_group_replica_num = txlog_service_list.len();
+                .collect::<Vec<_>>();
+            let txlog_group_replica_num = service_nodes.len();
+            let txlog_service_list = service_nodes.join(",");
 
             txlog_flag = format!(
                 "--txlog_service_list={} --txlog_group_replica_num={}",

@@ -119,7 +119,7 @@ impl TaskExecutor for CheckTxClusterScaleStatusTask {
                                 .await
                             {
                                 Ok(response) => {
-                                    info!("Current cluster scale status: {:?}", response.status);
+                                    info!("Received cluster scale status: {:?}", response.status);
 
                                     // If status is FINISHED (3), break the loop
                                     if response.status == 3 {
@@ -178,13 +178,13 @@ impl TaskExecutor for CheckTxClusterScaleStatusTask {
                                         return Ok(Some(task_result));
                                     }
 
-                                    // For IN_PROGRESS (2) status
-                                    let status_value = response.status as i32;
-                                    // Send status through channel if available
-                                    if let Some(tx) = &self.scale_status_tx {
-                                        let _ = tx.send(status_value);
-                                        info!("Sent IN_PROGRESS status through channel");
-                                    }
+                                    // // For IN_PROGRESS (2) and UNKNOWN (0) status retry
+                                    // let status_value = response.status as i32;
+                                    // // Send status through channel if available
+                                    // if let Some(tx) = &self.scale_status_tx {
+                                    //     let _ = tx.send(status_value);
+                                    //     info!("Sent IN_PROGRESS status through channel");
+                                    // }
 
                                     // Check if we've exceeded our timeout
                                     if start_time.elapsed() > max_poll_duration {
