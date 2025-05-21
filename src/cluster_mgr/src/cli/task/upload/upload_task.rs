@@ -47,7 +47,6 @@ impl TaskExecutor for UploadTask {
 
         let scp = scp_command_value.clone().into_inner_value::<String>();
 
-        // TODO(ZX) later, sometimes hangs here, more robust
         info!("Running local scp: {}", scp);
         let status = Command::new("sh")
             .arg("-c")

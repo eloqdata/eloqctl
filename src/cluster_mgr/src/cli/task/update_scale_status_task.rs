@@ -22,6 +22,7 @@ pub struct DbScaleOpUpdateTask {
     is_candidate: Option<String>,
     stage: i32,
     scale_status_rx: Option<watch::Receiver<i32>>,
+    cluster_name: String,
 }
 
 impl DbScaleOpUpdateTask {
@@ -33,6 +34,7 @@ impl DbScaleOpUpdateTask {
         nodes_list: Vec<String>,
         is_candidate: Option<Vec<bool>>,
         stage: i32,
+        cluster_name: String,
     ) -> Self {
         // Convert Vec<bool> to CSV string of booleans
         let is_candidate_str = is_candidate.map(|v| {
@@ -50,6 +52,7 @@ impl DbScaleOpUpdateTask {
             is_candidate: is_candidate_str,
             stage,
             scale_status_rx: None,
+            cluster_name,
         }
     }
 
@@ -61,6 +64,7 @@ impl DbScaleOpUpdateTask {
         nodes_list: Vec<String>,
         is_candidate: Option<Vec<bool>>,
         scale_status_rx: watch::Receiver<i32>,
+        cluster_name: String,
     ) -> Self {
         // Convert Vec<bool> to CSV string of booleans
         let is_candidate_str = is_candidate.map(|v| {
@@ -78,6 +82,7 @@ impl DbScaleOpUpdateTask {
             is_candidate: is_candidate_str,
             stage: 0, // Default stage, will be updated if NOT_STARTED is received
             scale_status_rx: Some(scale_status_rx),
+            cluster_name,
         }
     }
 
@@ -88,6 +93,7 @@ impl DbScaleOpUpdateTask {
         let now = Utc::now();
         let entity = ScaleEntity {
             event_id: self.event_id.clone(),
+            cluster_name: self.cluster_name.clone(),
             operation_type: self.operation_type,
             nodes_list: self.nodes_list.clone(),
             is_candidate: self.is_candidate.clone(),
@@ -200,6 +206,7 @@ impl TaskExecutor for DbScaleOpUpdateTask {
             let now = Utc::now();
             let entity = ScaleEntity {
                 event_id: self.event_id.clone(),
+                cluster_name: self.cluster_name.clone(),
                 operation_type: self.operation_type,
                 nodes_list: self.nodes_list.clone(),
                 is_candidate: self.is_candidate.clone(),

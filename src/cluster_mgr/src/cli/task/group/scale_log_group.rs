@@ -98,15 +98,19 @@ impl TaskGroup for ScaleLogTaskGroup {
 
             match operation_type {
                 ScaleOperationType::AddNodes => {
+                    let existing_hosts = config.get_unique_host_list();
+
                     // Add SSH setup for newly added log nodes
-                    let add_hosts = scale_node_list
+                    let newly_added_hosts = scale_node_list
                         .clone()
                         .iter()
                         .map(|host_port| host_port.split(':').next().unwrap_or("").to_string())
                         .filter(|host| !host.is_empty())
+                        .filter(|host| !existing_hosts.contains(host))
+                        .dedup()
                         .collect::<Vec<String>>();
 
-                    if !add_hosts.is_empty() {
+                    if !newly_added_hosts.is_empty() {
                         // Add SSH setup for new nodes with Python SSH script
                         let ssh_python_bin = config_template(SSH_PYTHON_SCRIPT)?
                             .to_string_lossy()
@@ -114,10 +118,7 @@ impl TaskGroup for ScaleLogTaskGroup {
 
                         // Merge existing hosts with new hosts
                         let mut all_hosts = config.get_unique_host_list();
-                        all_hosts.extend(add_hosts.clone());
-                        // Deduplicate hosts
-                        all_hosts.sort();
-                        all_hosts.dedup();
+                        all_hosts.extend(newly_added_hosts.clone());
                         // Join the hostnames with spaces
                         let host_values = all_hosts.join(" ");
 
@@ -178,11 +179,9 @@ impl TaskGroup for ScaleLogTaskGroup {
                         }
                     }
 
-                    let log_group_replica_num = temp_log_service.replica;
-
                     info!(
                         "Current node count: {}, log_group_replica_num: {}",
-                        current_node_count, log_group_replica_num
+                        current_node_count, temp_log_service.replica
                     );
 
                     // Create a modified deployment config with the updated log service
@@ -242,8 +241,6 @@ impl TaskGroup for ScaleLogTaskGroup {
 
                     // Step 5: Create upload tasks for the newly added log nodes scripts
                     info!("Setting up upload tasks for log start scripts");
-
-                    // TODO(ZX) should only upload the host:port in newly added nodes
 
                     // Upload log start bash file for all nodes
                     for node_str in &node_list_to_upload_bash {

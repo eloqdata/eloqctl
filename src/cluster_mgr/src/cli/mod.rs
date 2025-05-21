@@ -148,7 +148,6 @@ pub enum SubCommand {
         restart: bool,
     },
 
-    // TODO(ZX) !!! remove cluster should also remove entries in t_topology and t_scale_operation
     #[command(long_about = "Remove cluster")]
     #[strum(serialize = "remove")]
     Remove { cluster: String },

@@ -1354,7 +1354,7 @@ impl Deployment {
                 })
                 .collect::<Vec<_>>()
                 .join(",");
-            let txlog_group_replica_num = self.log_service.as_ref().unwrap().replica;
+            let txlog_group_replica_num = txlog_service_list.len();
 
             txlog_flag = format!(
                 "--txlog_service_list={} --txlog_group_replica_num={}",
@@ -1434,7 +1434,7 @@ impl Deployment {
                 })
                 .collect::<Vec<_>>()
                 .join(",");
-            let txlog_group_replica_num = self.log_service.as_ref().unwrap().replica;
+            let txlog_group_replica_num = txlog_service_list.len();
 
             txlog_flag = format!(
                 "--txlog_service_list={} --txlog_group_replica_num={}",

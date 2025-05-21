@@ -55,8 +55,9 @@ create table if not exists t_proxy
     create_timestamp  timestamp    not null DEFAULT CURRENT_TIMESTAMP,
     update_timestamp  timestamp    not null DEFAULT CURRENT_TIMESTAMP
 );
-create table if not exists t_scale_operations (
+create table if not exists t_scale_tx_nodes (
     event_id varchar(200) PRIMARY KEY,
+    cluster_name varchar(200) not null,
     operation_type integer not null,
     nodes_list text not null,
     is_candidate text,

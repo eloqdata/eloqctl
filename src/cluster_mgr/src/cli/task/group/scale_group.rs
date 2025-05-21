@@ -380,6 +380,7 @@ impl super::TaskGroup for ScaleTaskGroup {
                 nodes_list.clone(),
                 is_candidate.clone(),
                 scale_status_rx.clone(),
+                cluster_name.clone(),
             );
 
             let handle_status_instance = TaskInstance {
@@ -460,6 +461,7 @@ impl super::TaskGroup for ScaleTaskGroup {
                 nodes_list.clone(),
                 is_candidate.clone(),
                 0, // Stage 0: scale started
+                cluster_name.clone(),
             );
 
             // Create the task input map
@@ -880,6 +882,7 @@ impl super::TaskGroup for ScaleTaskGroup {
             nodes_list.clone(),
             is_candidate,
             1,
+            cluster_name.clone(),
         );
         let update_stage1_instance = TaskInstance {
             task_input: HashMap::default(),

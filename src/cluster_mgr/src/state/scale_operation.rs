@@ -5,21 +5,22 @@ use sqlx::FromRow;
 use tracing::{error, info};
 
 /// SQL select statement for scale operations
-pub const SCALE_SELECT: &str = r#"select event_id, operation_type, nodes_list, is_candidate, stage, error_message, create_timestamp, update_timestamp from t_scale_operations"#;
+pub const SCALE_SELECT: &str = r#"select event_id, cluster_name, operation_type, nodes_list, is_candidate, stage, error_message, create_timestamp, update_timestamp from t_scale_tx_nodes"#;
 
 /// SQL upsert statements for scale operations
 pub const SCALE_UPSERT: [&str; 2] = [
-    r#"insert into t_scale_operations (event_id, operation_type, nodes_list, is_candidate, stage, error_message, create_timestamp, update_timestamp) values ("#,
+    r#"insert into t_scale_tx_nodes (event_id, cluster_name, operation_type, nodes_list, is_candidate, stage, error_message, create_timestamp, update_timestamp) values ("#,
     r#" )on CONFLICT (event_id) DO UPDATE SET stage = excluded.stage, error_message = excluded.error_message, update_timestamp = excluded.update_timestamp"#,
 ];
 
 /// SQL delete statement for scale operations
-pub const SCALE_DELETE: &str = r#"delete from t_scale_operations"#;
+pub const SCALE_DELETE: &str = r#"delete from t_scale_tx_nodes"#;
 
 /// Entity representing a scale operation stored in SQLite
 #[derive(Clone, Debug, PartialEq, Eq, FromRow)]
 pub struct ScaleEntity {
     pub event_id: String,
+    pub cluster_name: String,
     pub operation_type: i32,
     pub nodes_list: String,
     pub is_candidate: Option<String>,
@@ -33,6 +34,7 @@ impl Stateful for ScaleEntity {
     fn to_values(&self) -> Vec<StateValue> {
         vec![
             StateValue::Varchar(self.event_id.clone()),
+            StateValue::Varchar(self.cluster_name.clone()),
             StateValue::Integer(self.operation_type),
             StateValue::Varchar(self.nodes_list.clone()),
             StateValue::Varchar(self.is_candidate.clone().unwrap_or_default()),

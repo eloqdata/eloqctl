@@ -247,6 +247,25 @@ impl StateMgr {
             .get_state_operation::<ServiceInstanceOperation>(SERVICE_STATUS_STATE)
             .del(|| -> Option<QueryCondition> { Some(cond.clone()) })
             .await?;
+
+        // Delete entries from t_topology_tx
+        rows += self
+            .get_state_operation::<TopologyTxOperation>(TOPOLOGY_TX_STATE)
+            .del(|| -> Option<QueryCondition> { Some(cond.clone()) })
+            .await?;
+
+        // Delete entries from t_topology_log
+        rows += self
+            .get_state_operation::<TopologyLogOperation>(TOPOLOGY_LOG_STATE)
+            .del(|| -> Option<QueryCondition> { Some(cond.clone()) })
+            .await?;
+
+        // Delete entries from t_scale_tx_nodes
+        rows += self
+            .get_state_operation::<ScaleOperation>(SCALE_STATE)
+            .del(|| -> Option<QueryCondition> { Some(cond.clone()) })
+            .await?;
+
         Ok(rows)
     }
 
