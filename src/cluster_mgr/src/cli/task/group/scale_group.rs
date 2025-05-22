@@ -884,7 +884,7 @@ impl super::TaskGroup for ScaleTaskGroup {
             operation_type.clone() as i32,
             nodes_list.clone(),
             is_candidate,
-            1,
+            1, // stage 1, scale operation finished
             cluster_name.clone(),
         );
         let update_stage1_instance = TaskInstance {
@@ -912,16 +912,7 @@ impl super::TaskGroup for ScaleTaskGroup {
         };
 
         // Get all nodes that should exist after scale operation
-        let final_nodes = match operation_type {
-            ScaleOperationType::AddNodes => {
-                // For add operation, use candidate_nodes_after_scale
-                candidate_nodes_after_scale.clone()
-            }
-            ScaleOperationType::RemoveNodes => {
-                // For remove operation, use candidate_nodes_after_scale
-                candidate_nodes_after_scale.clone()
-            }
-        };
+        let final_nodes = candidate_nodes_after_scale.clone();
 
         let final_topology_task = RedisOpTask::new(
             final_topology_task_id.clone(),

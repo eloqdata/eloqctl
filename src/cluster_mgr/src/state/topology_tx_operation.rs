@@ -1,6 +1,10 @@
 use crate::{state_operation_impl, StateValue, Stateful};
+use anyhow::Context;
 use chrono::{DateTime, Utc};
-use sqlx::FromRow;
+use serde::{Deserialize, Serialize};
+use serde_json::{from_str, json, to_string, Value as JsonValue};
+use sqlx::{sqlite::SqliteRow, types::Json, FromRow, Row};
+use std::fmt;
 
 pub(crate) const TOPOLOGY_TX_SELECT: &str = r#"select
     cluster_name,
@@ -10,6 +14,7 @@ pub(crate) const TOPOLOGY_TX_SELECT: &str = r#"select
     role,
     host,
     port,
+    ini_config,
     create_timestamp,
     update_timestamp
 from t_topology_tx"#;
@@ -23,6 +28,7 @@ pub(crate) const TOPOLOGY_TX_UPDATE: [&str; 2] = [
         role,
         host,
         port,
+        ini_config,
         create_timestamp,
         update_timestamp
     ) values("#,
@@ -30,35 +36,92 @@ pub(crate) const TOPOLOGY_TX_UPDATE: [&str; 2] = [
         node_group_count=excluded.node_group_count,
         node_id=excluded.node_id,
         role=excluded.role,
+        ini_config=excluded.ini_config,
         update_timestamp=excluded.update_timestamp
     "#,
 ];
 
 pub(crate) const TOPOLOGY_TX_DELETE: &str = r#"delete from t_topology_tx"#;
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigJson {
+    pub eloq_data_path: String,
+    pub enable_data_store: bool,
+    pub enable_wal: bool,
+}
+
+impl From<ConfigJson> for String {
+    fn from(config: ConfigJson) -> Self {
+        to_string(&config).unwrap_or_default()
+    }
+}
+
+impl TryFrom<&str> for ConfigJson {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        from_str(value).context("Failed to parse ConfigJson from string")
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct TopologyTxEntity {
     pub cluster_name: String,
     pub node_group_count: i32,
     pub node_group_id: i32,
-    pub node_id: String,
+    pub node_id: i32,
     pub role: i32,
     pub host: String,
     pub port: i32,
+    pub ini_config: ConfigJson,
     pub create_timestamp: DateTime<Utc>,
     pub update_timestamp: DateTime<Utc>,
 }
 
+impl<'r> FromRow<'r, SqliteRow> for TopologyTxEntity {
+    fn from_row(row: &'r SqliteRow) -> Result<Self, sqlx::Error> {
+        let ini_config_str: String = row.try_get("ini_config")?;
+        let ini_config = match from_str::<ConfigJson>(&ini_config_str) {
+            Ok(config) => config,
+            Err(e) => {
+                return Err(sqlx::Error::ColumnDecode {
+                    index: "ini_config".to_string(),
+                    source: Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("Failed to parse ConfigJson: {}", e),
+                    )),
+                });
+            }
+        };
+
+        Ok(TopologyTxEntity {
+            cluster_name: row.try_get("cluster_name")?,
+            node_group_count: row.try_get("node_group_count")?,
+            node_group_id: row.try_get("node_group_id")?,
+            node_id: row.try_get("node_id")?,
+            role: row.try_get("role")?,
+            host: row.try_get("host")?,
+            port: row.try_get("port")?,
+            ini_config,
+            create_timestamp: row.try_get("create_timestamp")?,
+            update_timestamp: row.try_get("update_timestamp")?,
+        })
+    }
+}
+
 impl Stateful for TopologyTxEntity {
     fn to_values(&self) -> Vec<StateValue> {
+        let ini_config_str: String = self.ini_config.clone().into();
+
         vec![
             StateValue::Varchar(self.cluster_name.clone()),
             StateValue::Integer(self.node_group_count),
             StateValue::Integer(self.node_group_id),
-            StateValue::Varchar(self.node_id.clone()),
+            StateValue::Integer(self.node_id),
             StateValue::Integer(self.role),
             StateValue::Varchar(self.host.clone()),
             StateValue::Integer(self.port),
+            StateValue::Varchar(ini_config_str),
             StateValue::Timestamp(self.create_timestamp),
             StateValue::Timestamp(self.update_timestamp),
         ]

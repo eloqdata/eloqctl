@@ -263,6 +263,9 @@ impl CmdExecutor {
             | SubCommand::UpdateConf {
                 cluster,
                 restart: _,
+                fields: _,
+                tx_node_id: _,
+                password: _,
             }
             | SubCommand::Status {
                 cluster,

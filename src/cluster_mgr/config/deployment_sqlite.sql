@@ -71,10 +71,11 @@ create table if not exists t_topology_tx
     cluster_name        varchar(200) not null,
     node_group_count    integer      not null,
     node_group_id       integer      not null,
-    node_id             varchar(100) not null,
+    node_id             integer      not null,
     role                integer      not null,
     host                varchar(100) not null,
     port                integer      not null,
+    ini_config          json         not null DEFAULT '{}', -- store as json to make add/remove fields easier
     create_timestamp    timestamp    not null DEFAULT CURRENT_TIMESTAMP,
     update_timestamp    timestamp    not null DEFAULT CURRENT_TIMESTAMP,
     primary key (cluster_name, node_group_id, host, port)
@@ -92,6 +93,4 @@ create table if not exists t_topology_log
     update_timestamp    timestamp    not null DEFAULT CURRENT_TIMESTAMP,
     primary key (cluster_name, host, port)
 );
-
-
 

@@ -33,7 +33,7 @@ impl TaskGroup for LaunchTaskGroup {
             }
         };
 
-        // TODO(ZX) launch should check if the cluster is already running in the target nodes?
+        // Q? launch should check if the cluster is already running in the target nodes?
 
         let mut executable = IndexMap::new();
         let mut barrier = vec![];

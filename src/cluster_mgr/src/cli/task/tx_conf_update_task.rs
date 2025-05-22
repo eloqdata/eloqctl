@@ -226,6 +226,7 @@ impl TxConfUpdateTask {
             fs::create_dir_all(&upload_dir)?;
         }
 
+        // Q? iterate over all dirs in the upload/<cluster-name> to update ini config inside each host-named-dir
         for host_entry in fs::read_dir(&upload_dir)? {
             let host_dir = host_entry?.path();
             if !host_dir.is_dir() {

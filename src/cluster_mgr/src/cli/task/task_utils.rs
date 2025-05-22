@@ -472,6 +472,8 @@ pub fn stop_with_failover(
 }
 
 fn check_whether_to_skip_checkpoint(cluster_name: &str) -> bool {
+    // TODO(ZX) !!! should load and check ini config info from internal sqlite db, instead of checking the ini file in upload dir
+
     let upload_path = upload_dir().join(cluster_name);
     if !upload_path.exists() {
         return true;

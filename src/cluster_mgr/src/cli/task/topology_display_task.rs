@@ -144,7 +144,7 @@ impl TaskExecutor for TopologyDisplayTask {
 
                     table.add_row(Row::new(vec![
                         Cell::new(&node.node_group_id.to_string()),
-                        Cell::new(&node.node_id),
+                        Cell::new(&node.node_id.to_string()),
                         Cell::new(&node.host),
                         Cell::new(&node.port.to_string()),
                         Cell::new(role),

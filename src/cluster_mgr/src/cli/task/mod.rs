@@ -14,6 +14,7 @@ pub mod failover_op_task;
 pub mod group;
 pub mod grpc;
 pub mod grpc_log;
+pub mod ini_config_update_task;
 mod install_dep_pkg;
 mod local_copy_task;
 mod monitor_ctl_task;
