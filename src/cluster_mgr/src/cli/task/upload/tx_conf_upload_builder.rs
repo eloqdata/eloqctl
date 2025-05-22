@@ -481,24 +481,22 @@ impl TxConfUpload {
             let mut result = IndexMap::new();
             let source_host = get_source_host(None);
 
-            // Extract unique hosts from the nodes_list
-            let unique_new_hosts: Vec<String> = nodes_list
-                .iter()
-                .filter_map(|node| node.split(':').next().map(|h| h.to_string()))
-                .unique()
-                .collect();
+            for host_port in nodes_list {
+                let parts: Vec<&str> = host_port.split(':').collect();
+                if parts.len() != 2 {
+                    warn!("Invalid node format: {}, expected host:port", host_port);
+                    continue;
+                }
 
-            info!(
-                "Uploading cluster config to {} unique hosts",
-                unique_new_hosts.len()
-            );
+                let host = parts[0].to_string();
+                let port = parts[1];
 
-            for host in unique_new_hosts {
                 let upload_file = UploadFile {
                     source: config_file_path.to_string_lossy().to_string(),
                     dest: format!(
-                        "{}/data/tx_service/{}",
+                        "{}/data/port-{}/tx_service/{}",
                         deploy_config.deployment.tx_srv_home(),
+                        port,
                         SCALED_CLUSTER_CONFIG
                     ),
                     extension: "".to_string(), // No extension for this file
@@ -511,7 +509,7 @@ impl TxConfUpload {
                     upload_file,
                     config,
                     "upload-cluster-config",
-                    &format!("cluster-config-{}", host),
+                    &format!("cluster-config-{}-{}", host, port),
                 );
 
                 result.insert(task_id, task_instance);

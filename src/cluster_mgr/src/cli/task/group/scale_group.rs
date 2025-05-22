@@ -535,18 +535,28 @@ impl super::TaskGroup for ScaleTaskGroup {
             })
             .collect();
 
-        // Create directories only for unique newly added hosts
-        info!("Creating directories for unique newly added hosts");
+        // Create directories for each node in nodes_list
+        info!("Creating directories for each newly added host:port in nodes_list");
 
-        for host in &new_hosts_to_upload_tarball {
+        for host_port in nodes_list.iter() {
+            let parts: Vec<&str> = host_port.split(':').collect();
+            if parts.len() != 2 {
+                warn!("Invalid node format: {}, expected host:port", host_port);
+                continue;
+            }
+
+            let host = parts[0].to_string();
+            let port = parts[1];
+
             let mkdir_remote_dir = ExecCustomCommand::build_task_by_host(
                 format!(
-                    "mkdir -p {}/data/tx_service",
+                    "mkdir -p {}/data/port-{}/tx_service",
                     deploy_config.deployment.tx_srv_home(),
+                    port
                 ),
                 config,
                 vec![host.clone()],
-                Some(format!("mkdir-{}", host)),
+                Some(format!("mkdir-{}", port)),
             );
 
             barrier.push(mkdir_remote_dir.len());
@@ -1022,7 +1032,7 @@ impl super::TaskGroup for ScaleTaskGroup {
                         .iter()
                         .map(|port| {
                             format!(
-                                "rm -rf {}/rocksdb-{port} {}/data/tx_service/{port} {}/logs/node-{port} {}/EloqKv-node-{port}.ini",
+                                "rm -rf {}/rocksdb-{port} {}/data/port-{port} {}/logs/node-{port} {}/EloqKv-node-{port}.ini",
                                 install_dir, tx_srv_home, tx_srv_home, install_dir
                             )
                         })

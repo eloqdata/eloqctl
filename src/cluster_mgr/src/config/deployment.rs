@@ -638,10 +638,11 @@ impl Deployment {
         )?)
         .unwrap();
 
+        // Each eloqkv process will store data in {tx_srv_home}/data/port-{}, need to differentiate between different ports in case multiple eloqkv processes are running on the same host
         ini.set(
             SECTION_LOCAL,
             "eloq_data_path",
-            Some(format!("{}/data", self.tx_srv_home())),
+            Some(format!("{}/data/port-{}", self.tx_srv_home(), port)),
         );
 
         if self.tx_service.requirepass.is_some() {
