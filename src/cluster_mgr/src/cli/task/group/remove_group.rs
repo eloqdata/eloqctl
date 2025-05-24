@@ -2,15 +2,15 @@ use std::collections::HashMap;
 
 use crate::cli::task::cassandra_op_task::CassandraOpTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
-use crate::cli::task::group::{Config, CtrlDBTaskGroup, RemoveTaskGroup, TaskGroup};
+use crate::cli::task::group::{
+    BackupTaskGroup, Config, CtrlDBTaskGroup, RemoveTaskGroup, TaskGroup,
+};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::{BackupCommand, SubCommand};
 use crate::config::StorageProvider;
 use anyhow::bail;
 use indexmap::IndexMap;
 use itertools::Itertools;
-
-use super::BackupTaskGroup;
 
 #[async_trait::async_trait]
 impl TaskGroup for RemoveTaskGroup {

@@ -2,10 +2,12 @@ use anyhow::anyhow;
 use std::collections::HashMap;
 use tracing::info;
 
+use crate::cli::task::task_utils::{NodeGroupId, NodeId};
+
 /// Represents a node configuration parsed from the RPC response
 #[derive(Debug, Clone)]
 pub struct NodeConfig {
-    pub node_id: u32,
+    pub node_id: NodeId,
     pub host_name: String,
     pub port: u16,
     pub is_candidate: bool,
@@ -14,7 +16,7 @@ pub struct NodeConfig {
 /// Cluster configuration with node group information
 #[derive(Debug, Clone)]
 pub struct ClusterGroupConfig {
-    pub node_groups: HashMap<u32, Vec<NodeConfig>>,
+    pub node_groups: HashMap<NodeGroupId, Vec<NodeConfig>>,
     pub version: u64,
 }
 

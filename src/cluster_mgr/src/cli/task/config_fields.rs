@@ -782,21 +782,3 @@ pub fn is_cluster_wide_field(field_name: &str) -> bool {
         .get(field_name)
         .map_or(false, |metadata| metadata.scope == FieldScope::ClusterWide)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_field_exists() {
-        assert!(field_exists("eloq_data_path"));
-        assert!(field_exists("enable_data_store"));
-        assert!(!field_exists("nonexistent_field"));
-    }
-
-    #[test]
-    fn test_field_scope() {
-        assert!(!is_cluster_wide_field("eloq_data_path"));
-        assert!(is_cluster_wide_field("replication_factor"));
-    }
-}

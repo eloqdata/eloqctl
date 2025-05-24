@@ -1,5 +1,5 @@
-use super::redis_op_task::parse_cluster_nodes;
 use crate::cli::task::grpc::GrpcClient;
+use crate::cli::task::redis_op_task::parse_cluster_nodes;
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::state::snapshot_info_operation::{SnapshotEntity, SnapshotOperation};

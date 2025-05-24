@@ -1,7 +1,6 @@
-use super::MonitorCtlTaskGroup;
 use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
 use crate::cli::task::codis_task::{self, CodisTask};
-use crate::cli::task::group::{Config, CtrlDBTaskGroup, TaskGroup};
+use crate::cli::task::group::{Config, CtrlDBTaskGroup, MonitorCtlTaskGroup, TaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use super::task_base::{
+use crate::cli::ssh::{SSHCommandOption, SSHSession};
+use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use super::task_utils::NodeId;
-use crate::cli::ssh::{SSHCommandOption, SSHSession};
+use crate::cli::task::task_utils::NodeId;
 use crate::cli::ProxyCommand;
 use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::PROXY_CONF_TEMPLATE;

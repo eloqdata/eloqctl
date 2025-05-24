@@ -42,7 +42,6 @@ pub(crate) const TOPOLOGY_TX_UPDATE: [&str; 2] = [
 
 pub(crate) const TOPOLOGY_TX_DELETE: &str = r#"delete from t_topology_tx"#;
 
-// TODO(ZX) differentiate basic fields(eloq_data_path, checkpoint_interval, enable_data_store, enable_wal and enable_cache_replacement) and additional fields
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigJson {
     pub eloq_data_path: String,
@@ -71,12 +70,12 @@ impl TryFrom<&str> for ConfigJson {
 #[derive(Debug, Clone)]
 pub struct TopologyTxEntity {
     pub cluster_name: String,
-    pub node_group_count: i32,
-    pub node_group_id: i32,
-    pub node_id: i32,
+    pub node_group_count: u32,
+    pub node_group_id: u32,
+    pub node_id: u32,
     pub role: i32,
     pub host: String,
-    pub port: i32,
+    pub port: u16,
     pub ini_config: ConfigJson,
     pub create_timestamp: DateTime<Utc>,
     pub update_timestamp: DateTime<Utc>,
@@ -119,12 +118,12 @@ impl Stateful for TopologyTxEntity {
 
         vec![
             StateValue::Varchar(self.cluster_name.clone()),
-            StateValue::Integer(self.node_group_count),
-            StateValue::Integer(self.node_group_id),
-            StateValue::Integer(self.node_id),
+            StateValue::Integer(self.node_group_count as i32),
+            StateValue::Integer(self.node_group_id as i32),
+            StateValue::Integer(self.node_id as i32),
             StateValue::Integer(self.role),
             StateValue::Varchar(self.host.clone()),
-            StateValue::Integer(self.port),
+            StateValue::Integer(self.port as i32),
             StateValue::Varchar(ini_config_str),
             StateValue::Timestamp(self.create_timestamp),
             StateValue::Timestamp(self.update_timestamp),

@@ -53,6 +53,9 @@ pub(crate) const PID_NOT_FOUND: &str = "NONE";
 pub(crate) const PROCESS_PID: &str = "_process_pid_";
 pub(crate) const PROCESS_PID_LIST: &str = "_process_pid_list_";
 
+pub(crate) type NodeId = u32;
+pub(crate) type NodeGroupId = u32;
+
 #[allow(dead_code)]
 pub fn parse_process_pid_as_list(process_info: String) -> Option<Vec<i32>> {
     if process_info.is_empty() {
@@ -524,15 +527,11 @@ async fn check_whether_to_skip_checkpoint(cluster_name: &str) -> bool {
 /// Node configuration with node ID, IP, port, and candidate status
 #[derive(Debug, Clone)]
 pub struct NgNodeConfig {
-    pub node_id: u32,
+    pub node_id: NodeId,
     pub ip: String,
     pub port: u16,
     pub is_candidate: bool,
 }
-
-// TODO(ZX) use this
-pub type NodeId = u32;
-type NodeGroupId = u32;
 
 /// Parse node group configuration from string lists
 ///
@@ -550,7 +549,7 @@ pub fn parse_ng_config(
     tx_ip_port_list: &str,
     standby_ip_port_list: &str,
     voter_ip_port_list: &str,
-    port_delta: Option<i16>,
+    port_delta: Option<u16>,
 ) -> anyhow::Result<HashMap<NodeGroupId, Vec<NgNodeConfig>>> {
     let port_delta = port_delta.unwrap_or(0);
     const NG_DELIMITER: char = ',';

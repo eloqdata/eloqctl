@@ -264,7 +264,7 @@ impl TopologyUpdateTask {
     }
 
     // Load ConfigJson for a specific host and port from INI files
-    async fn load_config_from_ini_file(&self, host: &str, port: i32) -> Result<ConfigJson> {
+    async fn load_config_from_ini_file(&self, host: &str, port: u16) -> Result<ConfigJson> {
         let tx_op = STATE_MGR.get_state_operation::<TopologyTxOperation>(TOPOLOGY_TX_STATE);
 
         // Try to find existing config in database first
@@ -274,7 +274,7 @@ impl TopologyUpdateTask {
                 let bind_values = vec![
                     StateValue::Varchar(self.cluster_name.clone()),
                     StateValue::Varchar(host.to_string()),
-                    StateValue::Integer(port),
+                    StateValue::Integer(port as i32),
                 ];
                 Some(QueryCondition {
                     cond_text,
@@ -336,7 +336,7 @@ impl TopologyUpdateTask {
     }
 
     // Try to get topology from cluster_config file
-    async fn get_topology_from_config_file(&self) -> Result<Option<Vec<TopologyTxEntity>>> {
+    async fn get_topology_from_cluster_config_file(&self) -> Result<Option<Vec<TopologyTxEntity>>> {
         let config_path = upload_dir()
             .join(&self.cluster_name)
             .join(SCALED_CLUSTER_CONFIG);
@@ -367,31 +367,27 @@ impl TopologyUpdateTask {
         let mut tx_entities = Vec::new();
         let now = Utc::now();
         let cluster_name = &self.config.deployment.cluster_name;
-        let node_group_count = cluster_config.node_groups.len() as i32;
+        let node_group_count = cluster_config.node_groups.len() as u32;
 
         for (&ng_id, nodes) in &cluster_config.node_groups {
             for node in nodes {
                 // Load INI file from upload directory to store in entities
                 let config_json = self
-                    .load_config_from_ini_file(&node.host_name, node.port as i32)
+                    .load_config_from_ini_file(&node.host_name, node.port)
                     .await?;
 
                 // Determine the role based on is_candidate flag
-                // 1 = Replica (Standby), 2 = Voter (non-candidate)
-                let role = if node.is_candidate {
-                    1 // Replica
-                } else {
-                    2 // Voter
-                };
+                // 1 = Replica, 2 = Voter
+                let role = if node.is_candidate { 1 } else { 2 };
 
                 tx_entities.push(TopologyTxEntity {
                     cluster_name: cluster_name.clone(),
                     node_group_count,
-                    node_group_id: ng_id as i32,
-                    node_id: node.node_id as i32,
+                    node_group_id: ng_id,
+                    node_id: node.node_id,
                     role,
                     host: node.host_name.clone(),
-                    port: node.port as i32,
+                    port: node.port,
                     ini_config: config_json,
                     create_timestamp: now,
                     update_timestamp: now,
@@ -412,7 +408,7 @@ impl TopologyUpdateTask {
     // Extract TX entries from node group config parsed by parse_ng_config
     async fn extract_tx_topology_from_ini_file(&self) -> Result<Vec<TopologyTxEntity>> {
         let mut tx_entities = Vec::new();
-        let port_delta = 10000;
+        let port_delta: u16 = 10000;
         let cluster_name = &self.config.deployment.cluster_name;
         let now = Utc::now();
 
@@ -441,7 +437,7 @@ impl TopologyUpdateTask {
             Some(port_delta),
         ) {
             Ok(ng_configs) => {
-                let node_group_count = ng_configs.len() as i32;
+                let node_group_count = ng_configs.len() as u32;
 
                 // Process each node group
                 for (ng_id, nodes) in ng_configs.iter() {
@@ -456,7 +452,7 @@ impl TopologyUpdateTask {
                             2 // Voter
                         };
 
-                        let port = node.port as i32 - port_delta as i32;
+                        let port = node.port - port_delta;
 
                         // Load configuration specific to this host and port
                         let config_json = self.load_config_from_ini_file(&node.ip, port).await?;
@@ -464,8 +460,8 @@ impl TopologyUpdateTask {
                         tx_entities.push(TopologyTxEntity {
                             cluster_name: cluster_name.clone(),
                             node_group_count,
-                            node_group_id: *ng_id as i32,
-                            node_id: node.node_id as i32,
+                            node_group_id: *ng_id,
+                            node_id: node.node_id,
                             role,
                             host: node.ip.clone(),
                             port,
@@ -848,7 +844,7 @@ impl TaskExecutor for TopologyUpdateTask {
                                     match self
                                         .write_config_to_ini_file(
                                             &entity.host,
-                                            entity.port,
+                                            entity.port as i32,
                                             &updated_config,
                                         )
                                         .await
@@ -947,7 +943,7 @@ impl TaskExecutor for TopologyUpdateTask {
                                     match self
                                         .write_config_to_ini_file(
                                             &entity.host,
-                                            entity.port,
+                                            entity.port as i32,
                                             &updated_config,
                                         )
                                         .await
@@ -1101,7 +1097,7 @@ impl TaskExecutor for TopologyUpdateTask {
         }
 
         // Try to get topology from cluster_config file
-        let tx_entries = match self.get_topology_from_config_file().await {
+        let tx_entries = match self.get_topology_from_cluster_config_file().await {
             Ok(Some(entries)) => {
                 info!("Using topology from cluster_config file");
                 entries

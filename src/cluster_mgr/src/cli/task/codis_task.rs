@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
-use super::task_base::{
+use crate::cli::ssh::{SSHCommandOption, SSHSession};
+use crate::cli::task::task_base::{
     ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId, TaskInstance,
 };
-use crate::{
-    cli::ssh::{SSHCommandOption, SSHSession},
-    config::{config_base::DeployConfig, deployment::Codis, CODIS_DASHBOARD_CNF, CODIS_PROXY_CNF},
-};
+use crate::config::config_base::DeployConfig;
+use crate::config::deployment::Codis;
+use crate::config::CODIS_DASHBOARD_CNF;
+use crate::config::CODIS_PROXY_CNF;
 use indexmap::IndexMap;
 
 pub enum Operation {

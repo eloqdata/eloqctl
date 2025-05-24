@@ -113,7 +113,7 @@ impl TaskExecutor for TopologyDisplayTask {
         table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
         table.set_titles(row!["Node Group ID", "Node ID", "Host", "Port", "Role",]);
 
-        let mut grouped_tx: HashMap<i32, Vec<TopologyTxEntity>> = HashMap::new();
+        let mut grouped_tx: HashMap<u32, Vec<TopologyTxEntity>> = HashMap::new();
         for entity in tx_entities.clone() {
             grouped_tx
                 .entry(entity.node_group_id)
@@ -121,11 +121,11 @@ impl TaskExecutor for TopologyDisplayTask {
                 .push(entity);
         }
 
-        let mut group_ids: Vec<i32> = grouped_tx.keys().cloned().collect();
+        let mut group_ids: Vec<u32> = grouped_tx.keys().cloned().collect();
         group_ids.sort();
 
-        // Store the last group ID before entering the loop
-        let last_group_id = *group_ids.last().unwrap_or(&-1);
+        // Q? need this? Store the last group ID before entering the loop
+        let last_group_id = *group_ids.last().unwrap_or(&0);
 
         for group_id in group_ids {
             if let Some(nodes) = grouped_tx.get_mut(&group_id) {
