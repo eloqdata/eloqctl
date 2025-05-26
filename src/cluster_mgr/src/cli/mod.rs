@@ -17,7 +17,7 @@ pub const CMD_OUTPUT: &str = "_cmd_output_";
 pub const CMD: &str = "_cmd_";
 
 #[derive(Parser, Default, Debug)]
-#[command(author, version = "0.7.1", about = "EloqData cluster management tool")]
+#[command(author, version = "0.7.2", about = "EloqData cluster management tool")]
 #[command(next_line_help = true)]
 pub struct Command {
     #[arg(long, value_name = "home-dir")]
