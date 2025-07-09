@@ -8,6 +8,7 @@ deployment:
   product: "EloqKV"
   version: "latest"
   install_dir: "/mnt/ssd/${USER}/zhouxiao"
+  enable_wal: false
   tx_service:
     tx_host_ports: [192.168.122.24:6389]
     # enable_cache_replacement: on

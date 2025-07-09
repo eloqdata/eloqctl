@@ -9,7 +9,7 @@ function log_start() {
   fi
   export LD_LIBRARY_PATH=${LOG_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
   log_start_cmd="${LOG_INSTALL_DIR}/bin/launch_sv -conf=${GROUP_MEMBERS} \
-    -node_id=${NODE_ID} -storage_path=${STORAGE_DIR} -log_group_replica_num=${LOG_GROUP_REPLICA_NUM} -bthread_concurrency=6 > ${log_dir}/output 2>&1 &"
+    -node_id=${NODE_ID} -storage_path=${STORAGE_DIR} -log_group_replica_num=${LOG_GROUP_REPLICA_NUM} -bthread_concurrency=${BTHREAD_CONCURRENCY} > ${log_dir}/output 2>&1 &"
   echo "$log_start_cmd"
   eval "$log_start_cmd"
 }

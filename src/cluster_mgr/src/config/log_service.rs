@@ -66,6 +66,7 @@ pub struct LogService {
     pub nodes: Vec<LogServiceNode>,
     pub replica: u32,
     pub readiness: Option<LogReadiness>,
+    pub bthread_concurrency: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -429,6 +430,7 @@ mod tests {
             nodes,
             replica: replica as u32,
             readiness: Some(LogReadiness::default()),
+            bthread_concurrency: None,
         }
     }
 

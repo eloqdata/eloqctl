@@ -442,6 +442,7 @@ impl DeployConfig {
                         .iter()
                         .map(|cmd_items| {
                             let curr_member = &cmd_items.log_member;
+                            let bthread_concurrency = log_srv.bthread_concurrency.unwrap_or(6);
                             let cmd_script = log_start_template
                                 .replace("${LOG_INSTALL_DIR}", log_home_dir.as_str())
                                 .replace("${GROUP_MEMBERS}", &cmd_items.group_members_config)
@@ -450,7 +451,11 @@ impl DeployConfig {
                                 .replace("${STORAGE_DIR}", curr_member.storage_path.as_str())
                                 .replace("${ASAN_OPTS}", ASAN_OPTIONS)
                                 .replace("${VERSION}", version)
-                                .replace("${LOG_GROUP_REPLICA_NUM}", &log_srv.replica.to_string());
+                                .replace("${LOG_GROUP_REPLICA_NUM}", &log_srv.replica.to_string())
+                                .replace(
+                                    "${BTHREAD_CONCURRENCY}",
+                                    &bthread_concurrency.to_string(),
+                                );
                             (
                                 LogProcessKey {
                                     host: host.clone(),

@@ -8,6 +8,7 @@ deployment:
   product: "EloqKV"
   version: "latest"
   install_dir: "/home/${USER}"
+  enable_wal: true
   tx_service:
     tx_host_ports: [10.0.0.1:6379]
     standby_host_ports: [10.0.0.2:6379]
@@ -19,6 +20,7 @@ deployment:
         data_dir:
           - "/home/${USER}/eloqkv_with_hot_standby_and_voter/wal_eloqkv"
     replica: 1
+    bthread_concurrency: 6
   storage_service:
     rocksdb: !LOCAL
       # path: /tmp

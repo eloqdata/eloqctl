@@ -8,6 +8,7 @@ deployment:
   product: "EloqKV"
   version: "latest"
   install_dir: "/home/${USER}"
+  enable_wal: true
   tx_service:
     tx_host_ports: [127.0.0.1:6389]
     # client_port: 6389
@@ -18,6 +19,7 @@ deployment:
         data_dir:
           - "/home/${USER}/eloqkv-cluster/wal_eloqkv"
     replica: 1
+    bthread_concurrency: 6
   storage_service:
     cassandra:
       host: [127.0.0.1]

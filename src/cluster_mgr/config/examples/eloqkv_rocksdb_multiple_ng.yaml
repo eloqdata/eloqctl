@@ -8,6 +8,7 @@ deployment:
   product: "EloqKV"
   version: "debug"
   install_dir: "/home/${USER}"
+  enable_wal: false
   tx_service:
     tx_host_ports: [192.168.122.24:6379,192.168.122.25:6379,192.168.122.26:6379]
   # storage_service:
