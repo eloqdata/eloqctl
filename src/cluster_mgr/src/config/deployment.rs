@@ -1362,10 +1362,8 @@ impl Deployment {
 
         let mut txlog_flag = String::new();
         if self.log_service.is_some() {
-            let service_nodes = self
-                .log_service
-                .as_ref()
-                .unwrap()
+            let log_service = self.log_service.as_ref().unwrap();
+            let service_nodes = log_service
                 .nodes
                 .iter()
                 .map(|node| {
@@ -1376,7 +1374,7 @@ impl Deployment {
                     )
                 })
                 .collect::<Vec<_>>();
-            let txlog_group_replica_num = service_nodes.len();
+            let txlog_group_replica_num = log_service.log_replica();
             let txlog_service_list = service_nodes.join(",");
 
             txlog_flag = format!(
@@ -1437,10 +1435,8 @@ impl Deployment {
 
         let mut txlog_flag = String::new();
         if self.log_service.is_some() {
-            let service_nodes = self
-                .log_service
-                .as_ref()
-                .unwrap()
+            let log_service = self.log_service.as_ref().unwrap();
+            let service_nodes = log_service
                 .nodes
                 .iter()
                 .map(|node| {
@@ -1451,7 +1447,7 @@ impl Deployment {
                     )
                 })
                 .collect::<Vec<_>>();
-            let txlog_group_replica_num = service_nodes.len();
+            let txlog_group_replica_num = log_service.log_replica();
             let txlog_service_list = service_nodes.join(",");
 
             txlog_flag = format!(
