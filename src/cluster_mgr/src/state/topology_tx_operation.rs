@@ -50,6 +50,7 @@ pub struct ConfigJson {
     pub eloq_data_path: String,
     pub enable_data_store: bool,
     pub enable_wal: bool,
+    #[serde(default)]
     pub enable_io_uring: bool,
     pub checkpoint_interval: Option<u32>,
     pub enable_cache_replacement: Option<bool>,

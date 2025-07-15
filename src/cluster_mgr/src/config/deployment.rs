@@ -402,14 +402,15 @@ impl Deployment {
             .expect("log_service is not configured");
         let replica_num = log_srv.log_replica();
         let all_members = log_srv.group_member_as_vec();
-        let group_member_map = log_srv.group_member_config(all_members.as_slice());
-        let ordered_members = group_member_map
-            .into_iter()
-            .sorted_by_key(|(key, _val)| *key)
-            .collect::<IndexMap<usize, String>>();
-        let node_group = Vec::from_iter(ordered_members.values())
-            .into_iter()
+
+        // The txlog_service_list should contain all nodes in the order they appear in the grouping algorithm
+        // This matches the order used in the -conf parameter for log service startup
+        let node_group = all_members
+            .iter()
+            .map(|member| format!("{}:{}", member.member_host, member.port))
+            .collect::<Vec<String>>()
             .join(",");
+
         let key_list = match self.product() {
             Product::EloqSQL => "eloq_txlog_service_list".to_string(),
             Product::EloqKV => "txlog_service_list".to_string(),
