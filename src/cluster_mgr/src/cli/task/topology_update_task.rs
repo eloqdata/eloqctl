@@ -333,7 +333,6 @@ impl TopologyUpdateTask {
             }
         }
 
-        // Q? bail here?
         // Fall back to default config if no matching file found
         info!(
             "No specific INI file found for {}:{}, using default",

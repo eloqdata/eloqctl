@@ -278,11 +278,10 @@ impl LogService {
         // that gets written to the EloqKV configuration as txlog_service_list
         let mut all_members = Vec::new();
 
-        // Collect all members in the order they appear in txlog_service_list
-        for group_id in 0..group_members.len() {
-            if let Some(members) = group_members.get(&group_id) {
-                all_members.extend(members.clone());
-            }
+        // Collect all members in the order they were inserted into the IndexMap
+        // This preserves the order from the grouping algorithm
+        for (_group_id, members) in &group_members {
+            all_members.extend(members.clone());
         }
 
         // Create a mapping from host:port to the correct node_id index
@@ -337,42 +336,123 @@ impl LogService {
     }
 
     fn members_grouping(&self, node_sorted: &[LogServiceNode]) -> Vec<Vec<NodeDiskCell>> {
-        let node_host_table = self.init_members_table(node_sorted);
-        let member_count = self.log_replica();
-        let mut pre_remain_cell = 0_usize;
-        let mut group_id = 0_usize;
+        let replica_count = self.log_replica();
         let mut result = vec![];
 
-        for (row_id, row) in node_host_table.iter().enumerate() {
-            let cols_len = row.len();
-            let row_slice = row.as_slice();
+        // Group nodes by host to understand the distribution
+        let mut nodes_by_host: HashMap<String, Vec<(usize, &LogServiceNode)>> = HashMap::new();
+        for (idx, node) in node_sorted.iter().enumerate() {
+            nodes_by_host
+                .entry(node.host.clone())
+                .or_insert_with(Vec::new)
+                .push((idx, node));
+        }
 
-            let (t_member, outer_from) = if pre_remain_cell == 0 {
-                (vec![], 0)
-            } else {
-                let pre_row_idx = row_id - 1;
-                let pre_row_slice = node_host_table.get(pre_row_idx).unwrap().as_slice();
-                let pre_row_member = &pre_row_slice[cols_len - pre_remain_cell..];
-                let curr_row_from = member_count - pre_remain_cell;
-                let curr_row_member = &row_slice[0..curr_row_from];
-                ([pre_row_member, curr_row_member].concat(), curr_row_from)
-            };
-            if !t_member.is_empty() {
-                result.push(t_member);
-                group_id += 1;
+        // Ensure deterministic order of hosts to avoid inconsistent ordering between
+        // multiple invocations (e.g., txlog_service_list vs -conf generation).
+        let mut hosts: Vec<String> = nodes_by_host.keys().cloned().collect();
+        hosts.sort();
+        let total_nodes = node_sorted.len();
+        let mut assigned_nodes = vec![false; total_nodes];
+        let mut leader_host_index = 0; // Track which host should provide the next leader
+
+        // Create groups ensuring:
+        // 1. Each group has nodes from different hosts (host diversity)
+        // 2. Leaders (first nodes) of different groups are from different hosts (leader distribution)
+        while assigned_nodes.iter().any(|&assigned| !assigned) {
+            let mut group_cells = Vec::new();
+            let mut hosts_used_in_group = std::collections::HashSet::new();
+
+            // Step 1: Assign leader from a different host than previous groups
+            let mut leader_assigned = false;
+            let mut attempts = 0;
+            let disk_default = "default".to_string();
+
+            while !leader_assigned && attempts < hosts.len() {
+                let leader_host = &hosts[leader_host_index % hosts.len()];
+                leader_host_index += 1;
+
+                // Find an unused node from this host to be the leader
+                if let Some(host_nodes) = nodes_by_host.get(leader_host) {
+                    for (node_idx, node) in host_nodes {
+                        if !assigned_nodes[*node_idx] {
+                            assigned_nodes[*node_idx] = true;
+                            hosts_used_in_group.insert(leader_host.clone());
+
+                            let disk = node.data_dir.first().unwrap_or(&disk_default);
+                            group_cells.push(NodeDiskCell {
+                                host_idx: *node_idx as i32,
+                                host: node.host.clone(),
+                                dist_idx: 0,
+                                disk: disk.clone(),
+                            });
+
+                            leader_assigned = true;
+                            break;
+                        }
+                    }
+                }
+                attempts += 1;
             }
-            let curr_col_len = cols_len - outer_from;
-            let curr_group = curr_col_len / member_count;
-            let curr_remain = curr_col_len % member_count;
-            pre_remain_cell = curr_remain;
 
-            (0..curr_group).for_each(|inner_group_id| {
-                let inner_from = inner_group_id * member_count + outer_from;
-                let to = inner_from + member_count;
-                group_id += 1;
-                let inner_members = &row_slice[inner_from..to];
-                result.push(inner_members.to_vec());
-            });
+            // Step 2: Fill remaining slots with nodes from different hosts
+            for _ in 1..replica_count {
+                let mut node_assigned = false;
+
+                // Try to find a node from a host not yet used in this group
+                for host in &hosts {
+                    if hosts_used_in_group.contains(host) {
+                        continue; // Skip hosts already used in this group
+                    }
+
+                    if let Some(host_nodes) = nodes_by_host.get(host) {
+                        for (node_idx, node) in host_nodes {
+                            if !assigned_nodes[*node_idx] {
+                                assigned_nodes[*node_idx] = true;
+                                hosts_used_in_group.insert(host.clone());
+
+                                let disk = node.data_dir.first().unwrap_or(&disk_default);
+                                group_cells.push(NodeDiskCell {
+                                    host_idx: *node_idx as i32,
+                                    host: node.host.clone(),
+                                    dist_idx: 0,
+                                    disk: disk.clone(),
+                                });
+
+                                node_assigned = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if node_assigned {
+                        break;
+                    }
+                }
+
+                // If we couldn't find a node from a new host, try any available node
+                if !node_assigned {
+                    for (node_idx, node) in node_sorted.iter().enumerate() {
+                        if !assigned_nodes[node_idx] {
+                            assigned_nodes[node_idx] = true;
+
+                            let disk = node.data_dir.first().unwrap_or(&disk_default);
+                            group_cells.push(NodeDiskCell {
+                                host_idx: node_idx as i32,
+                                host: node.host.clone(),
+                                dist_idx: 0,
+                                disk: disk.clone(),
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Only add the group if it has nodes
+            if !group_cells.is_empty() {
+                result.push(group_cells);
+            }
         }
 
         result
@@ -410,10 +490,15 @@ impl LogService {
     }
 
     pub fn group_member_as_vec(&self) -> Vec<LogGroupMember> {
-        self.group_members()
+        let mut all_members: Vec<LogGroupMember> = self
+            .group_members()
             .values()
             .flat_map(|val| val.iter().cloned().collect_vec())
-            .collect_vec()
+            .collect_vec();
+
+        // Sort by node_id to ensure consistent ordering for txlog_service_list and -conf
+        all_members.sort_by_key(|member| member.node_id);
+        all_members
     }
 
     /// log startup command, with host as granularity, key is hostname value is start command.
@@ -422,15 +507,12 @@ impl LogService {
         let all_member_as_slice = all_member_vec.as_slice();
         let host_members_lookup = self.host_members(all_member_as_slice);
 
-        // BUGFIX: GROUP_MEMBERS should contain all log service nodes in sorted order
+        // BUGFIX: GROUP_MEMBERS should contain all log service nodes in the order from grouping algorithm
         // This matches what gets written to txlog_service_list in EloqKV configuration
-        // Always include ALL nodes from the configuration, not just the grouped ones
-        let mut all_nodes_sorted = self.nodes.clone();
-        all_nodes_sorted.sort_by_key(|node| node.host.clone());
-
-        let all_members_config = all_nodes_sorted
+        // Use the same order as the grouping algorithm produces, not sorted by host
+        let all_members_config = all_member_vec
             .iter()
-            .map(|node| format!("{}:{}", node.host, node.port))
+            .map(|member| format!("{}:{}", member.member_host, member.port))
             .collect::<Vec<String>>()
             .join(",");
 

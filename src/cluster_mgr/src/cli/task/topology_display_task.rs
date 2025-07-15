@@ -165,14 +165,33 @@ impl TaskExecutor for TopologyDisplayTask {
                     "Log Node ID",
                     "Host",
                     "Port",
+                    "Role",
                     "Data Dirs"
                 ]);
-                for ent in log_entities {
+
+                // Sort by group id then node id
+                let mut sorted_logs = log_entities;
+                sorted_logs.sort_by(|a, b| {
+                    a.node_group_id
+                        .cmp(&b.node_group_id)
+                        .then_with(|| a.node_id.cmp(&b.node_id))
+                });
+
+                let mut current_group: Option<u32> = None;
+                for ent in sorted_logs {
+                    let role = if current_group != Some(ent.node_group_id) {
+                        current_group = Some(ent.node_group_id);
+                        "Leader"
+                    } else {
+                        "Replica"
+                    };
+
                     log_table.add_row(Row::new(vec![
                         Cell::new(&ent.node_group_id.to_string()),
                         Cell::new(&ent.node_id.to_string()),
                         Cell::new(&ent.host),
                         Cell::new(&ent.port.to_string()),
+                        Cell::new(role),
                         Cell::new(ent.data_dirs.as_deref().unwrap_or("")),
                     ]));
                 }
