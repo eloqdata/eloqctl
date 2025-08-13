@@ -32,7 +32,7 @@ pub const CASSANDRA_COLLECTOR_AGENT_FILE_KEY: &str = "datastax-mcac-agent";
 pub const DEPLOYMENT_CHECK_SUCCESS_TASK: &str = "deploy_check_success_task";
 pub const SCALED_CLUSTER_CONFIG: &str = "cluster_config";
 
-pub const ASAN_OPTIONS: &str = "abort_on_error=0:disable_coredump=0:halt_on_error=0:malloc_context_size=20:fast_unwind_on_malloc=0:leak_check_at_exit=0";
+pub const ASAN_OPTIONS: &str = "abort_on_error=1:disable_coredump=0:halt_on_error=0:fast_unwind_on_malloc=0:leak_check_at_exit=0";
 
 pub fn export_asan(log: &str) -> String {
     format!("export ASAN_OPTIONS={ASAN_OPTIONS}:log_path={log}")
