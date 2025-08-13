@@ -127,10 +127,20 @@ pub struct RocksGCP {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct RocksMinio {
+    pub aws_id: String,
+    pub aws_secret: String,
+    pub bucket_name: String,
+    pub bucket_prefix: String,
+    pub endpoint: String,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum RocksDB {
     LOCAL(RocksLocal),
     S3(RocksS3),
     GCS(RocksGCP),
+    MINIO(RocksMinio),
 }
 
 impl StorageService {
@@ -153,6 +163,8 @@ impl StorageService {
                 RocksDB::LOCAL(_) => name,
                 RocksDB::S3(_) => "rocks_s3".to_owned(),
                 RocksDB::GCS(_) => "rocks_gcs".to_owned(),
+                // Treat MINIO as S3 for naming/downloading purposes
+                RocksDB::MINIO(_) => "rocks_s3".to_owned(),
             }
         }
         name

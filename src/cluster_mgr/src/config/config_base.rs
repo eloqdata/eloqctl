@@ -443,6 +443,7 @@ impl DeployConfig {
                         .map(|cmd_items| {
                             let curr_member = &cmd_items.log_member;
                             let bthread_concurrency = log_srv.bthread_concurrency.unwrap_or(6);
+                            let rocks_flag = log_srv.rocks_cloud_flag();
                             let cmd_script = log_start_template
                                 .replace("${LOG_INSTALL_DIR}", log_home_dir.as_str())
                                 .replace("${GROUP_MEMBERS}", &cmd_items.group_members_config)
@@ -458,10 +459,8 @@ impl DeployConfig {
                                     "${LOG_GROUP_REPLICA_NUM}",
                                     &log_srv.log_replica().to_string(),
                                 )
-                                .replace(
-                                    "${BTHREAD_CONCURRENCY}",
-                                    &bthread_concurrency.to_string(),
-                                );
+                                .replace("${BTHREAD_CONCURRENCY}", &bthread_concurrency.to_string())
+                                .replace("${ROCKS_CLOUD_FLAG}", rocks_flag.as_str());
                             (
                                 LogProcessKey {
                                     host: host.clone(),

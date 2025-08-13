@@ -19,7 +19,6 @@ use anyhow::{anyhow, Result};
 use chrono::Local;
 use configparser::ini::Ini;
 use core::panic;
-use indexmap::IndexMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
@@ -741,6 +740,18 @@ impl Deployment {
                             Some(s3.sst_file_cache_size),
                         );
                     }
+                    RocksDB::MINIO(minio) => {
+                        // MINIO uses S3-compatible API with endpoint and combined bucket name
+                        ini.set(SECTION_STORE, "aws_access_key_id", Some(minio.aws_id));
+                        ini.set(SECTION_STORE, "aws_secret_key", Some(minio.aws_secret));
+                        ini.set(
+                            SECTION_STORE,
+                            "rocksdb_cloud_s3_endpoint_url",
+                            Some(minio.endpoint),
+                        );
+                        let bucket = format!("{}-{}", minio.bucket_prefix, minio.bucket_name);
+                        ini.set(SECTION_STORE, "rocksdb_cloud_bucket_name", Some(bucket));
+                    }
                     RocksDB::GCS(gcs) => {
                         ini.set(
                             SECTION_STORE,
@@ -960,11 +971,47 @@ impl Deployment {
 
             ini = self.build_eloqkv_config(true, port_get.clone())?;
 
+            // If storage is MINIO, add txlog cloud settings to [local]
+            if let Some(storage) = self.storage_service.as_ref() {
+                if let Some(provider) = storage.provider() {
+                    if matches!(provider, StorageProvider::Rocksdb) {
+                        if let Some(rocks) = storage.rocksdb.as_ref() {
+                            if let RocksDB::MINIO(minio) = rocks {
+                                let bucket =
+                                    format!("{}-{}", minio.bucket_prefix, minio.bucket_name);
+                                ini.set(
+                                    SECTION_LOCAL,
+                                    "txlog_rocksdb_cloud_endpoint_url",
+                                    Some(minio.endpoint.clone()),
+                                );
+                                ini.set(
+                                    SECTION_LOCAL,
+                                    "txlog_rocksdb_cloud_bucket_name",
+                                    Some(bucket),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
             if self.log_service.is_some() {
+                // If MINIO is used, skip setting txlog_service_list but keep other log configs
+                let is_minio = self
+                    .storage_service
+                    .as_ref()
+                    .and_then(|s| s.rocksdb.as_ref())
+                    .map(|r| matches!(r, RocksDB::MINIO(_)))
+                    .unwrap_or(false);
+
                 self.build_log_config()
                     .into_iter()
                     .for_each(|(key, conf_val)| {
-                        ini.set(SECTION_CLUSTER, &key, Some(conf_val));
+                        if is_minio && key == "txlog_service_list" {
+                            // skip
+                        } else {
+                            ini.set(SECTION_CLUSTER, &key, Some(conf_val));
+                        }
                     });
             }
 
@@ -1018,6 +1065,30 @@ impl Deployment {
 
             ini.set(SECTION_LOCAL, "ip", Some("127.0.0.1".to_owned()));
             ini.set(SECTION_LOCAL, "port", Some("6379".to_owned()));
+
+            // If storage is MINIO, add txlog cloud settings to [local] for local ini as well
+            if let Some(storage) = self.storage_service.as_ref() {
+                if let Some(provider) = storage.provider() {
+                    if matches!(provider, StorageProvider::Rocksdb) {
+                        if let Some(rocks) = storage.rocksdb.as_ref() {
+                            if let RocksDB::MINIO(minio) = rocks {
+                                let bucket =
+                                    format!("{}-{}", minio.bucket_prefix, minio.bucket_name);
+                                ini.set(
+                                    SECTION_LOCAL,
+                                    "txlog_rocksdb_cloud_endpoint_url",
+                                    Some(minio.endpoint.clone()),
+                                );
+                                ini.set(
+                                    SECTION_LOCAL,
+                                    "txlog_rocksdb_cloud_bucket_name",
+                                    Some(bucket),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // if let Some(parent) = cnf_path.parent() {

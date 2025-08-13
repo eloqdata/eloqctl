@@ -59,7 +59,10 @@ dependencies = ["devtools_build"]
 script = '''
 #!/bin/bash
 WORKSPACE_DIR=${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}
-cp ${WORKSPACE_DIR}/target/release/rest_api eloqctl/bin/
+TARGET_DIR=${CARGO_TARGET_DIR:-${WORKSPACE_DIR}/target}
+PKG_DIR=${ELOQCTL_PKG_DIR:-eloqctl}
+mkdir -p "${PKG_DIR}/bin"
+cp ${TARGET_DIR}/release/rest_api "${PKG_DIR}/bin/"
 '''
 dependencies = ["rest_api_build", "pkg_eloqctl"]
 
@@ -67,18 +70,18 @@ dependencies = ["rest_api_build", "pkg_eloqctl"]
 script = '''
 #!/bin/bash
 WORKSPACE_DIR="${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}"
-CLUSTER_MGR_RELEASE=${WORKSPACE_DIR}/target/release/cluster_mgr
+TARGET_DIR=${CARGO_TARGET_DIR:-${WORKSPACE_DIR}/target}
+CLUSTER_MGR_RELEASE=${TARGET_DIR}/release/cluster_mgr
 echo "pkg_eloqctl.workspace = ${WORKSPACE_DIR}"
-mkdir -p eloqctl/bin
-cd eloqctl
-../version.sh > version
+PKG_DIR=${ELOQCTL_PKG_DIR:-eloqctl}
+mkdir -p "${PKG_DIR}/bin"
+cd "${PKG_DIR}"
+${WORKSPACE_DIR}/version.sh > version 2>/dev/null || true
 cp -r ${WORKSPACE_DIR}/src/cluster_mgr/config ./
 cp -r ${WORKSPACE_DIR}/tests ./
 cd bin
 cp "$CLUSTER_MGR_RELEASE" ./
-if [ ! -f eloqctl ]; then
-  ln -s cluster_mgr eloqctl
-fi
+ln -sfn cluster_mgr eloqctl 2>/dev/null || true
 '''
 dependencies = ["generate_proto", "build_eloqctl"]
 
