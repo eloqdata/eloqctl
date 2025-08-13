@@ -76,14 +76,12 @@ echo "pkg_eloqctl.workspace = ${WORKSPACE_DIR}"
 PKG_DIR=${ELOQCTL_PKG_DIR:-eloqctl}
 mkdir -p "${PKG_DIR}/bin"
 cd "${PKG_DIR}"
-${WORKSPACE_DIR}/version.sh > version
+${WORKSPACE_DIR}/version.sh > version 2>/dev/null || true
 cp -r ${WORKSPACE_DIR}/src/cluster_mgr/config ./
 cp -r ${WORKSPACE_DIR}/tests ./
 cd bin
 cp "$CLUSTER_MGR_RELEASE" ./
-if [ ! -f eloqctl ]; then
-  ln -s cluster_mgr eloqctl
-fi
+ln -sfn cluster_mgr eloqctl 2>/dev/null || true
 '''
 dependencies = ["generate_proto", "build_eloqctl"]
 

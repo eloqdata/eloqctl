@@ -67,6 +67,14 @@ pub struct LogService {
     pub replica: u32,
     pub readiness: Option<LogReadiness>,
     pub bthread_concurrency: Option<u32>,
+    // Optional cloud storage flags for log service's rocks backend
+    pub aws_access_key_id: Option<String>,
+    pub aws_secret_key: Option<String>,
+    pub bucket_name: Option<String>,
+    pub endpoint_url: Option<String>,
+    pub region: Option<String>,
+    pub bucket_prefix: Option<String>,
+    pub object_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -547,6 +555,49 @@ impl LogService {
             })
             .collect::<HashMap<String, Vec<String>>>()
     }
+
+    /// Compose rocks cloud flags string for `launch_sv`.
+    /// Example: "-aws_access_key_id=minioadmin -aws_secret_key=minioadmin \
+    /// -bucket_name=eloqlogservice -endpoint_url=http://127.0.0.1:9000"
+    pub fn rocks_cloud_flag(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(v) = &self.aws_access_key_id {
+            if !v.is_empty() {
+                parts.push(format!("-aws_access_key_id={}", v));
+            }
+        }
+        if let Some(v) = &self.aws_secret_key {
+            if !v.is_empty() {
+                parts.push(format!("-aws_secret_key={}", v));
+            }
+        }
+        if let Some(v) = &self.bucket_name {
+            if !v.is_empty() {
+                parts.push(format!("-bucket_name={}", v));
+            }
+        }
+        if let Some(v) = &self.bucket_prefix {
+            if !v.is_empty() {
+                parts.push(format!("-bucket_prefix={}", v));
+            }
+        }
+        if let Some(v) = &self.region {
+            if !v.is_empty() {
+                parts.push(format!("-region={}", v));
+            }
+        }
+        if let Some(v) = &self.endpoint_url {
+            if !v.is_empty() {
+                parts.push(format!("-endpoint_url={}", v));
+            }
+        }
+        if let Some(v) = &self.object_path {
+            if !v.is_empty() {
+                parts.push(format!("-object_path={}", v));
+            }
+        }
+        parts.join(" ")
+    }
 }
 
 #[cfg(test)]
@@ -579,6 +630,13 @@ mod tests {
             replica: replica as u32,
             readiness: Some(LogReadiness::default()),
             bthread_concurrency: None,
+            aws_access_key_id: None,
+            aws_secret_key: None,
+            bucket_name: None,
+            endpoint_url: None,
+            region: None,
+            bucket_prefix: None,
+            object_path: None,
         }
     }
 

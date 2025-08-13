@@ -294,7 +294,7 @@ impl MonographLogCtlTask {
                     successful_results.insert(key.clone(), value.clone());
                 }
                 Err(err) => {
-                    failed_results.push((key.clone(), err.clone()));
+                    failed_results.push((key.clone(), err));
                     warn!(
                         "join_all_command_result: Task failed for key={:?}, error={:?}",
                         key, err
