@@ -806,7 +806,8 @@ impl CmdExecutor {
         if let Some(logsrv) = &mut cnf.log_service {
             if logsrv.image.is_none() {
                 let vers = cnf.version.as_deref().expect("version is missing");
-                let img = format!("{prefix}/logservice/log-service-{vers}-{os}-{arch}.tar.gz");
+                let img =
+                    format!("{prefix}/logservice/{store}/log-service-{vers}-{os}-{arch}.tar.gz");
                 info!("log service image is set: {img}");
                 logsrv.image = Some(img);
             }
