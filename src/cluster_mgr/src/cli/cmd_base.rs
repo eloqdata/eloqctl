@@ -104,8 +104,8 @@ impl CmdExecutor {
             Ok(client)
         } else {
             let (client, conn) = tokio_postgres::Config::new()
-                .user("postgres")
-                .password("eloq-pub-service-postgresql")
+                .user("readonly_user")
+                .password("eloq_readonly123!")
                 .host("18.177.72.104")
                 .port(5432)
                 .dbname("eloq_release")
