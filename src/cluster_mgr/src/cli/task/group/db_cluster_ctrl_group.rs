@@ -278,15 +278,12 @@ impl CtrlDBTaskGroup {
 
         if let SubCommand::Start { nodes, cluster, .. } = &start_cmd {
             if !nodes.is_empty() {
-                for _ in nodes {
-                    let start_nodes = MonographTxCtlTask::from_config(
-                        start_cmd.clone(),
-                        config,
-                        ServerType::Node,
-                    );
-                    barrier.push(start_nodes.len());
-                    executable.extend(start_nodes);
-                }
+                // Generate node-start tasks once for the provided node list to avoid
+                // duplicate TaskIds and mismatched barrier sizes
+                let start_nodes =
+                    MonographTxCtlTask::from_config(start_cmd.clone(), config, ServerType::Node);
+                barrier.push(start_nodes.len());
+                executable.extend(start_nodes);
             } else {
                 // Start order: cassandra -> log-server -> tx-server
                 if let Some(storage) = &deployment.storage_service {

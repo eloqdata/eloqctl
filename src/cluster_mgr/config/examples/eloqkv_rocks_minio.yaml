@@ -1,0 +1,51 @@
+connection:
+  username: "${USER}"
+  auth_type: "keypair"
+  auth:
+    keypair: "/home/${USER}/.ssh/id_rsa"
+deployment:
+  cluster_name: "eloqkv-cluster-minio"
+  product: "EloqKV"
+  version: "debug"
+  install_dir: "/home/${USER}"
+  enable_wal: true
+  enable_io_uring: false
+  checkpoint_interval: 120
+  tx_service:
+    tx_host_ports: [127.0.0.1:6389]
+    # client_port: 6389
+  log_service:
+    nodes:
+      - host: 127.0.0.1
+        port: 19000
+        data_dir:
+          - "/home/${USER}/eloqkv-cluster/wal_eloqkv"
+    replica: 1
+    bthread_concurrency: 6
+    aws_access_key_id: "minioadmin"
+    aws_secret_key: "minioadmin"
+    bucket_name: "eloqservice"
+    endpoint_url: "http://127.0.0.1:9000"
+  storage_service:
+    rocksdb: !MINIO
+      aws_id: "minioadmin"
+      aws_secret: "minioadmin"
+      bucket_name: "eloqservice"
+      bucket_prefix: "store"
+      endpoint: "http://127.0.0.1:9000"
+  # monitor:
+  #   data_dir: ""
+  #   eloq_metrics:
+  #     path: "/eloq_metrics"
+  #     port: 18081
+  #   prometheus:
+  #     download_url: "https://github.com/prometheus/prometheus/releases/download/v2.42.0/prometheus-2.42.0.linux-amd64.tar.gz"
+  #     port: 9500
+  #     host: 127.0.0.1
+  #   grafana:
+  #     download_url: "https://dl.grafana.com/oss/release/grafana-9.3.6.linux-amd64.tar.gz"
+  #     port: 3301
+  #     host: 127.0.0.1
+  #   node_exporter:
+  #     url: "https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz"
+  #     port: 9200

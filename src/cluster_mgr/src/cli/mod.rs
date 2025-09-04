@@ -75,7 +75,7 @@ pub enum SubCommand {
     #[command(long_about = "Start cluster(TxService/LogService/Storage)")]
     Start {
         cluster: String,
-        #[arg(long)]
+        #[arg(long, value_delimiter = ',', value_name = "nodes")]
         nodes: Vec<String>,
     },
     #[command(long_about = "Stop cluster components")]
@@ -96,7 +96,7 @@ pub enum SubCommand {
         all: bool,
         #[arg(long, value_name = "cluster password")]
         password: Option<String>,
-        #[arg(long)]
+        #[arg(long, value_delimiter = ',', value_name = "nodes")]
         nodes: Vec<String>,
     },
 
