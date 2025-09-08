@@ -1,0 +1,71 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Task Execution Flow
+
+## Task Hierarchy and Organization
+
+The cluster management system is built around a hierarchical task execution model:
+
+- **TaskGroup**: A logical collection of related tasks based on business logic
+  - [src/cluster_mgr/src/cli/task/group/mod.rs](mdc:src/cluster_mgr/src/cli/task/group/mod.rs) - Contains TaskGroup trait definition and implementation
+  - Groups like DeploymentTaskGroup, ScaleTaskGroup, etc. implement specific business operations
+
+- **TaskController**: Manages parallelization and coordination of task execution
+  - [src/cluster_mgr/src/cli/task/task_controller.rs](mdc:src/cluster_mgr/src/cli/task/task_controller.rs) - Controls execution flow with barriers
+
+- **TaskInstance**: An executable unit containing a task, its inputs, and host info
+  - [src/cluster_mgr/src/cli/task/task_base.rs](mdc:src/cluster_mgr/src/cli/task/task_base.rs) - Contains TaskInstance definition
+
+## Execution Flow
+
+1. Command is parsed from CLI in [main.rs](mdc:src/cluster_mgr/src/main.rs)
+2. A TaskGroup is selected based on the command type
+3. The TaskGroup creates a TaskExecutionContext with tasks and barrier information
+4. TaskController splits tasks based on barriers and executes them in parallel
+5. Results are collected and processed
+
+```
++-------+      +-------------+      +----------------+      +---------------+
+| CLI   | ---> | Task Group  | ---> | Task Context   | ---> | Task          |
+| Input |      | Selection   |      | Creation       |      | Controller    |
++-------+      +-------------+      +----------------+      +---------------+
+                                                                   |
+                                    +----------------+             |
+                                    | Task Results   | <-----------+
+                                    +----------------+
+```
+
+## Barrier System
+
+Tasks are organized with barriers that define execution boundaries:
+
+```
++--------parallel-------- + Pause  +  ------parallel----- +
++-----+------+------+------+--------+------+-------+-------+
+|     |      |      |      |        |      |       |       |
+|task1| task2| task3| task4| Barrier|task5 | task6 | task7 |
++-----+------+------+------+--------+------+-------+-------+
+```
+
+- Tasks within a barrier group execute in parallel
+- The next group starts only after all tasks in the previous group complete
+- Defined in `TaskExecutionContext.barrier` as a vector of task counts per group
+
+## Error Handling
+
+The task execution system provides robust error handling:
+
+- Each task produces a TaskResultPair containing success/error data
+- The `err_brk` parameter in `run_all_tasks` determines if execution stops on errors
+- TaskController can be configured to continue despite errors in certain task groups
+- Error details are logged and included in task results
+
+## Key Components
+
+- **TaskId**: Uniquely identifies a task with cmd, task name, and host
+- **TaskHost**: Represents where a task is executed (local or remote)
+- **TaskResultEnum**: Holds the success or error result of a task execution
+- **TaskExecutionContext**: Contains the task group, barrier settings, and executable tasks

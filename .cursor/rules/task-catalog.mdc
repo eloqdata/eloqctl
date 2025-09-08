@@ -1,0 +1,78 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Task and TaskGroup Catalog
+
+## Task Groups
+
+Task Groups organize related tasks into logical units with coordinated execution:
+
+### Deployment and Installation
+- **DeploymentTaskGroup**: [src/cluster_mgr/src/cli/task/group/deployment_group.rs](mdc:src/cluster_mgr/src/cli/task/group/deployment_group.rs) - Manages cluster deployment operations
+- **InstallDBTaskGroup**: Group for database installation tasks
+- **InstallDepPkgTaskGroup**: [src/cluster_mgr/src/cli/task/group/install_dep_pkg.rs](mdc:src/cluster_mgr/src/cli/task/group/install_dep_pkg.rs) - Installs required dependency packages
+- **BootstrapTaskGroup**: [src/cluster_mgr/src/cli/task/group/bootstrap_group.rs](mdc:src/cluster_mgr/src/cli/task/group/bootstrap_group.rs) - Bootstraps initial cluster setup
+
+### Control Operations
+- **ProxyTaskGroup**: [src/cluster_mgr/src/cli/task/group/proxy_ctl_group.rs](mdc:src/cluster_mgr/src/cli/task/group/proxy_ctl_group.rs) - Manages proxy service operations
+- **CtrlDBTaskGroup**: [src/cluster_mgr/src/cli/task/group/db_cluster_ctrl_group.rs](mdc:src/cluster_mgr/src/cli/task/group/db_cluster_ctrl_group.rs) - Controls database cluster operations (start/stop/status)
+- **MonitorCtlTaskGroup**: [src/cluster_mgr/src/cli/task/group/monitor_ctl_group.rs](mdc:src/cluster_mgr/src/cli/task/group/monitor_ctl_group.rs) - Controls monitoring components
+- **LogServiceCtlTaskGroup**: [src/cluster_mgr/src/cli/task/group/log_srv_ctl_group.rs](mdc:src/cluster_mgr/src/cli/task/group/log_srv_ctl_group.rs) - Manages log service components
+
+### Cluster Management
+- **ScaleTaskGroup**: [src/cluster_mgr/src/cli/task/group/scale_group.rs](mdc:src/cluster_mgr/src/cli/task/group/scale_group.rs) - Handles cluster scaling operations (add/remove nodes)
+- **ScaleLogTaskGroup**: [src/cluster_mgr/src/cli/task/group/scale_log_group.rs](mdc:src/cluster_mgr/src/cli/task/group/scale_log_group.rs) - Manages log scale operations
+- **FailoverTaskGroup**: [src/cluster_mgr/src/cli/task/group/failover_group.rs](mdc:src/cluster_mgr/src/cli/task/group/failover_group.rs) - Coordinates failover processes
+- **LaunchTaskGroup**: [src/cluster_mgr/src/cli/task/group/launch_group.rs](mdc:src/cluster_mgr/src/cli/task/group/launch_group.rs) - Launches cluster services
+- **RemoveTaskGroup**: [src/cluster_mgr/src/cli/task/group/remove_group.rs](mdc:src/cluster_mgr/src/cli/task/group/remove_group.rs) - Removes cluster components
+
+### Maintenance
+- **UpdateClusterTaskGroup**: [src/cluster_mgr/src/cli/task/group/update_cluster_group.rs](mdc:src/cluster_mgr/src/cli/task/group/update_cluster_group.rs) - Updates cluster software
+- **UpdateConfigTaskGroup**: [src/cluster_mgr/src/cli/task/group/update_config_group.rs](mdc:src/cluster_mgr/src/cli/task/group/update_config_group.rs) - Updates configuration
+- **BackupTaskGroup**: [src/cluster_mgr/src/cli/task/group/backup_group.rs](mdc:src/cluster_mgr/src/cli/task/group/backup_group.rs) - Manages backup operations
+- **CheckTaskGroup**: [src/cluster_mgr/src/cli/task/group/check_group.rs](mdc:src/cluster_mgr/src/cli/task/group/check_group.rs) - Performs system checks
+- **CustomCmdTaskGroup**: [src/cluster_mgr/src/cli/task/group/custom_cmd_group.rs](mdc:src/cluster_mgr/src/cli/task/group/custom_cmd_group.rs) - Executes custom commands
+
+## Tasks
+
+Individual task implementations that perform specific operations(reuse these tasks as much as possible), one xxx_task.rs file should only implement one type of task, do not try to create or insert multiple tasks inside one xxx_task.rs file, always insert multiple tasks to xxx_group.rs file:
+
+### Database Operations
+- **MonographTxCtlTask**: [src/cluster_mgr/src/cli/task/monograph_tx_ctl_task.rs](mdc:src/cluster_mgr/src/cli/task/monograph_tx_ctl_task.rs) - Controls MonographDB transaction nodes
+- **MonographBootstrapTask**: [src/cluster_mgr/src/cli/task/monograph_bootstrap_task.rs](mdc:src/cluster_mgr/src/cli/task/monograph_bootstrap_task.rs) - Bootstraps MonographDB instances
+- **TxConfUpdateTask**: [src/cluster_mgr/src/cli/task/tx_conf_update_task.rs](mdc:src/cluster_mgr/src/cli/task/tx_conf_update_task.rs) - Updates transaction configuration
+- **CassandraCtlTask**: [src/cluster_mgr/src/cli/task/cassandra_ctl_task.rs](mdc:src/cluster_mgr/src/cli/task/cassandra_ctl_task.rs) - Controls Cassandra instances
+- **CassandraOpTask**: [src/cluster_mgr/src/cli/task/cassandra_op_task.rs](mdc:src/cluster_mgr/src/cli/task/cassandra_op_task.rs) - Performs Cassandra operations
+- **DbUpdateTask**: [src/cluster_mgr/src/cli/task/db_update_task.rs](mdc:src/cluster_mgr/src/cli/task/db_update_task.rs) - Updates database configurations
+- **RedisOpTask**: [src/cluster_mgr/src/cli/task/redis_op_task.rs](mdc:src/cluster_mgr/src/cli/task/redis_op_task.rs) - Manages Redis operations
+
+### Scaling and Topology
+- **ScaleOpTask**: [src/cluster_mgr/src/cli/task/scale_op_task.rs](mdc:src/cluster_mgr/src/cli/task/scale_op_task.rs) - Executes cluster scaling operations
+- **ScaleLogOpTask**: [src/cluster_mgr/src/cli/task/scale_log_op_task.rs](mdc:src/cluster_mgr/src/cli/task/scale_log_op_task.rs) - Manages log scaling operations
+- **TopologyUpdateTask**: [src/cluster_mgr/src/cli/task/topology_update_task.rs](mdc:src/cluster_mgr/src/cli/task/topology_update_task.rs) - Updates cluster topology
+- **TopologyDisplayTask**: [src/cluster_mgr/src/cli/task/topology_display_task.rs](mdc:src/cluster_mgr/src/cli/task/topology_display_task.rs) - Displays cluster topology
+- **FailoverOpTask**: [src/cluster_mgr/src/cli/task/failover_op_task.rs](mdc:src/cluster_mgr/src/cli/task/failover_op_task.rs) - Performs failover operations
+- **CheckTxClusterScaleStatusTask**: [src/cluster_mgr/src/cli/task/check_tx_cluster_scale_status_task.rs](mdc:src/cluster_mgr/src/cli/task/check_tx_cluster_scale_status_task.rs) - Checks scaling status
+- **UpdateScaleStatusTask**: [src/cluster_mgr/src/cli/task/update_scale_status_task.rs](mdc:src/cluster_mgr/src/cli/task/update_scale_status_task.rs) - Updates scaling status
+
+### File and Deployment Management
+- **DownloadTask**: [src/cluster_mgr/src/cli/task/download_task.rs](mdc:src/cluster_mgr/src/cli/task/download_task.rs) - Downloads files from remote sources
+- **UnpackFileTask**: [src/cluster_mgr/src/cli/task/unpack_file_task.rs](mdc:src/cluster_mgr/src/cli/task/unpack_file_task.rs) - Unpacks compressed files
+- **CopyTask**: [src/cluster_mgr/src/cli/task/copy_task.rs](mdc:src/cluster_mgr/src/cli/task/copy_task.rs) - Copies files between hosts
+- **LocalCopyTask**: [src/cluster_mgr/src/cli/task/local_copy_task.rs](mdc:src/cluster_mgr/src/cli/task/local_copy_task.rs) - Copies files locally
+- **UploadTask**: [src/cluster_mgr/src/cli/task/upload](mdc:src/cluster_mgr/src/cli/task/upload) - Uploads files to remote hosts
+
+### Monitoring and Logging
+- **MonitorCtlTask**: [src/cluster_mgr/src/cli/task/monitor_ctl_task.rs](mdc:src/cluster_mgr/src/cli/task/monitor_ctl_task.rs) - Controls monitoring components
+- **MonographLogCtlTask**: [src/cluster_mgr/src/cli/task/monograph_log_ctl_task.rs](mdc:src/cluster_mgr/src/cli/task/monograph_log_ctl_task.rs) - Manages MonographDB logs
+- **MonographLogProbeTask**: [src/cluster_mgr/src/cli/task/monograph_log_probe_task.rs](mdc:src/cluster_mgr/src/cli/task/monograph_log_probe_task.rs) - Probes log data
+- **DbUpdateLogTask**: [src/cluster_mgr/src/cli/task/db_update_log_task.rs](mdc:src/cluster_mgr/src/cli/task/db_update_log_task.rs) - Updates log configurations
+
+### Utilities
+- **ExecCustomCommand**: [src/cluster_mgr/src/cli/task/exec_custom_cmd.rs](mdc:src/cluster_mgr/src/cli/task/exec_custom_cmd.rs) - Executes custom commands
+- **CheckTask**: [src/cluster_mgr/src/cli/task/check_task.rs](mdc:src/cluster_mgr/src/cli/task/check_task.rs) - Performs system checks
+- **BackupTask**: [src/cluster_mgr/src/cli/task/backup_task.rs](mdc:src/cluster_mgr/src/cli/task/backup_task.rs) - Executes backup operations
+- **InstallDepPkg**: [src/cluster_mgr/src/cli/task/install_dep_pkg.rs](mdc:src/cluster_mgr/src/cli/task/install_dep_pkg.rs) - Installs dependency packages
+- **GrpcTask**: [src/cluster_mgr/src/cli/task/grpc.rs](mdc:src/cluster_mgr/src/cli/task/grpc.rs) - Performs gRPC operations

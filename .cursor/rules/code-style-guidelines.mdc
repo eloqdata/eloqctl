@@ -1,0 +1,48 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Code Style Guidelines
+
+## Formatting
+
+- Line length should not exceed 100 characters
+- Use 4 spaces for indentation
+- Format code using rustfmt with 2021 edition settings
+- Run clippy before submitting code changes
+
+## Naming Conventions
+
+- Use snake_case for variables, functions, and modules
+- Use PascalCase for types, traits, and enums
+- Use SCREAMING_SNAKE_CASE for constants
+- Prefix trait implementations with the trait name
+
+## Error Handling
+
+- Use `anyhow` for general error propagation
+- Use `thiserror` for defining specific error types
+- Prefer the `?` operator for error propagation
+- Add context to errors with `.context()` or `.with_context()`
+
+## Documentation
+
+- Document public API with doc comments (///)
+- Include examples in doc comments when appropriate
+- Use regular comments (//) for implementation notes
+- Follow the standard Rust documentation style
+
+## Testing
+
+- Write unit tests for critical functionality
+- Place tests in a `tests` module with `#[cfg(test)]`
+- For complex functions, test edge cases specifically
+- Use descriptive test names that explain what is being tested
+
+## Type Safety
+
+- Leverage the Rust type system for safety
+- Use strong typing with enums instead of primitive types when appropriate
+- Avoid unnecessary type conversions
+- Prefer owned types over references when performance isn't critical

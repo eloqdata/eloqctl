@@ -1,0 +1,182 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# EloqCTL Internal Database Interaction
+
+## Database Interaction Model
+
+The cluster manager uses SQLite for persistent state storage with a robust abstraction layer:
+
+- **StateOperation**: Core trait defining database operations
+  - [src/cluster_mgr/src/state/state_base.rs](mdc:src/cluster_mgr/src/state/state_base.rs) - Contains operation trait definitions
+  - Implemented by various entity-specific operations like TopologyTxOperation
+
+- **Stateful**: Trait for entities that can be persisted
+  - Converts between domain objects and database values
+  - Handles type conversions via the StateValue enum
+
+- **StateManager**: Orchestrates database operations
+  - [src/cluster_mgr/src/state/state_mgr.rs](mdc:src/cluster_mgr/src/state/state_mgr.rs) - Central manager for database interactions
+  - Manages connection pool and provides entity operation instances
+
+## Core Operations
+
+The database layer provides three standardized operations:
+
+### Load Operation
+```rust
+async fn load<F>(&self, cond_supplier: F) -> anyhow::Result<Vec<Self::StateObject>>
+where
+    F: Send,
+    F: Fn() -> Option<QueryCondition>;
+```
+- Retrieves entities based on optional query conditions
+- Returns typed domain objects via SQLite row mapping
+- Supports conditional filtering with parameterized queries
+
+### Put Operation
+```rust
+async fn put(&self, obj: Self::StateObject) -> anyhow::Result<u64>;
+```
+- Inserts or updates entities with UPSERT semantics
+- Uses SQL conflict resolution for idempotent operations
+- Returns number of affected rows
+
+### Delete Operation
+```rust
+async fn del<F>(&self, cond_supplier: F) -> anyhow::Result<u64>
+where
+    F: Send,
+    F: Fn() -> Option<QueryCondition>;
+```
+- Removes entities matching optional conditions
+- Supports both targeted and bulk deletion
+- Returns number of affected rows
+
+## SQL Command Definition
+
+Each entity operation defines its SQL commands as constants:
+
+```
++--------------------+
+| Entity Operation   |
++--------------------+
+|                    |
+| SELECT_STATEMENT   |
+| UPDATE_STATEMENTS  |
+| DELETE_STATEMENT   |
+|                    |
++--------------------+
+```
+
+Example from [topology_tx_operation.rs](mdc:src/cluster_mgr/src/state/topology_tx_operation.rs):
+
+```rust
+pub(crate) const TOPOLOGY_TX_SELECT: &str = r#"select
+    cluster_name,
+    node_group_count,
+    /* other fields */
+from t_topology_tx"#;
+
+pub(crate) const TOPOLOGY_TX_UPDATE: [&str; 2] = [
+    r#"insert into t_topology_tx(/* fields */) values("#,
+    r#") on conflict(/* keys */) do update set /* updates */"#,
+];
+
+pub(crate) const TOPOLOGY_TX_DELETE: &str = r#"delete from t_topology_tx"#;
+```
+
+## Implementation Pattern
+
+The system uses a macro-based approach to reduce boilerplate:
+
+```
++------------------+
+| state_operation_ |
+| impl! macro      |
++------------------+
+        |
+        v
++------------------+     +------------------+
+| Entity Operation | --> | SQLite Database  |
++------------------+     +------------------+
+        ^
+        |
++------------------+
+| Domain Entity    |
++------------------+
+```
+
+The `state_operation_impl!` macro generates:
+- SQLite query construction
+- Parameter binding logic
+- Error handling
+- Result conversion
+
+## Type Conversion System
+
+The database layer handles type conversions via the StateValue enum:
+
+```
++---------------+     +---------------+     +---------------+
+| Domain Object | --> | StateValue    | --> | SQLite Types  |
++---------------+     | - Varchar     |     +---------------+
+                      | - Integer     |
+                      | - Bigint      |
+                      | - Timestamp   |
+                      +---------------+
+```
+
+This system provides:
+- Type safety through Rust's type system
+- Clean separation between domain and persistence
+- Consistent error handling across all operations
+
+## Query Conditions
+
+Queries use a flexible condition system:
+
+```rust
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QueryCondition {
+    pub cond_text: String,
+    pub bind_values: Vec<StateValue>,
+}
+```
+
+This allows for:
+- Parameterized queries to prevent SQL injection
+- Dynamic query construction
+- Type-safe parameter binding
+
+## Usage Flow
+
+A typical database interaction flow:
+
+1. Task requires state persistence or retrieval
+2. TaskGroup obtains the appropriate operation from StateManager
+3. Task calls load/put/del with domain objects or conditions
+4. Results are processed and used in task execution
+5. Do not use block_on, change the function to async if you need
+
+```
++----------+     +-------------+     +-------------+     +----------+
+|  Task    | --> |   State     | --> |   SQLite    | --> |  Task    |
+|          |     |   Manager   |     |   Database  |     |  Logic   |
++----------+     +-------------+     +-------------+     +----------+
+```
+
+## Entity Structure
+
+Each entity corresponds to a database table and includes:
+- FromRow implementation for SQLite result mapping
+- Stateful trait implementation for value conversion
+- Domain logic relevant to the entity's purpose
+
+This creates a clean separation between:
+- Database concerns (SQL, connections)
+- Domain logic (entity behavior)
+- State management (persistence operations)
+

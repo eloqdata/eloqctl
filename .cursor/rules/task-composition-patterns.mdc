@@ -1,0 +1,162 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Task Composition Patterns
+
+## Task Communication Flow
+
+Tasks in the cluster manager communicate and coordinate using several established patterns:
+
+### Channel-Based Communication
+
+Tasks use Tokio watch channels to share state and results:
+
+```
++---------------+     watch::channel     +---------------+
+| Producer Task | --------------------> | Consumer Task |
++---------------+                        +---------------+
+      |                                         |
+      +-- tx.send(value) ---> rx.borrow() ------+
+```
+
+Example from [scale_group.rs](mdc:src/cluster_mgr/src/cli/task/group/scale_group.rs):
+
+```rust
+// Channel for getting candidate nodes, RedisOpTask to ScaleOpTask
+let (redis_op_tx, redis_op_rx) = watch::channel(empty_cluster_nodes.clone());
+
+// Channel for getting cluster config information, ScaleOpTask to TxConfUpdateTask
+let (scale_op_tx, scale_op_rx) = watch::channel(empty_cluster_nodes_with_config.clone());
+```
+
+### TaskResultPair Pattern
+
+Tasks return results through the `TaskResultPair` structure:
+
+```
++-------------+     +------------------+
+| TaskExecutor | --> | TaskResultEnum  |
++-------------+     | - Success(value) |
+                    | - Error(message) |
+                    +------------------+
+```
+
+This pattern standardizes error handling and success reporting across all tasks.
+
+## Task Composition in Groups
+
+TaskGroups compose multiple tasks with barrier-based execution control:
+
+### Sequential Composition
+
+For tasks that must run in sequence:
+
+```
++-------+     +-------+     +-------+
+| Task1 | --> | Task2 | --> | Task3 |
++-------+     +-------+     +-------+
+   |              |             |
+   +--- Barrier --+--- Barrier -+
+```
+
+Implementation pattern in TaskGroups:
+
+```rust
+// Example from various TaskGroup implementations
+let mut barrier = Vec::new();
+// First barrier group (sequential step 1)
+barrier.push(task_list_1.len());
+// Second barrier group (sequential step 2)
+barrier.push(task_list_2.len());
+```
+
+### Parallelized Composition
+
+For tasks that can run in parallel:
+
+```
+            +-------+
+            | Task1 |        Barrier Group 1
+            +-------+           (size=1)
+                |
+                v
+============== BARRIER ================
+                |
++---------------+---------------+
+|               |               |
+v               v               v
++-------+   +-------+   +-------+
+| Task2 |   | Task3 |   | Task4 |   Barrier Group 2
++-------+   +-------+   +-------+     (size=3)
+    |           |           |
+    |           |           |
+    +-----------+-----------+
+                |
+                v
+============== BARRIER ================
+                |
+                v
+            +-------+
+            | Task5 |        Barrier Group 3
+            +-------+           (size=1)
+```
+
+Example from [task_controller.rs](mdc:src/cluster_mgr/src/cli/task/task_controller.rs):
+
+```rust
+// Split tasks based on barriers for parallel execution
+let split = TaskController::split_task(&task_execution_context);
+for task_split in split.into_iter() {
+    // Run this batch in parallel
+    let rs = self.run_task_split(...).await?;
+}
+```
+
+## Example Task Flow: Scaling Operation
+
+The scaling operation demonstrates a complex task composition:
+
+1. **RedisOpTask**: Retrieves current cluster topology
+2. **ScaleOpTask**: Performs the actual scaling operation using gRPC
+3. **CheckTxClusterScaleStatusTask**: Monitors scaling progress
+4. **DbScaleOpUpdateTask**: Updates database with scale operation results
+
+Each step communicates results to the next using channels and barriers.
+
+## Task Result Processing
+
+Tasks typically follow this pattern for handling and returning results:
+
+```rust
+// Common pattern in task implementations
+let mut task_result = HashMap::from([
+    (CMD.to_string(), TaskArgValue::Str("operation_name".to_string())),
+]);
+
+// Operation logic...
+
+// Return with standardized error handling
+if operation_successful {
+    task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
+    task_result.insert(
+        CMD_OUTPUT.to_string(), 
+        TaskArgValue::Str("Success".to_string()),
+    );
+    Ok(Some(task_result))
+} else {
+    task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+    task_result.insert(
+        CMD_OUTPUT.to_string(),
+        TaskArgValue::Str(error_msg.to_string()),
+    );
+    task_return_value!(
+        task_result,
+        |status_code: i32| -> CmdErr {
+            CmdErr::OperationErr(error_msg.to_string(), status_code.to_string())
+        },
+        "TaskName"
+    )
+}
+```
