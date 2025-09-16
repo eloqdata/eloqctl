@@ -83,6 +83,9 @@ export PATH="${CARGO_HOME}/bin:${PATH}"
 export CARGO_TARGET_DIR="${HOME}/.cargo-target"
 mkdir -p "${CARGO_TARGET_DIR}"
 
+# Disable AWS CLI pager to avoid interactive prompts in non-TTY CI environments
+export AWS_PAGER=""
+
 # Package dir in a writable location
 export ELOQCTL_PKG_DIR="${HOME}/eloqctl"
 mkdir -p "${ELOQCTL_PKG_DIR}"
