@@ -24,8 +24,8 @@ deployment:
     bthread_concurrency: 6
   storage_service:
     rocksdb: !S3
-      aws_id: "xxx"
-      aws_secret: "xxx"
+      aws_access_key_id: "xxx"
+      aws_secret_key: "xxx"
       region: "ap-northeast-1"
       bucket_name: "xxx"
       bucket_prefix: "xxx"

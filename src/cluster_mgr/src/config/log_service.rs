@@ -75,6 +75,8 @@ pub struct LogService {
     pub region: Option<String>,
     pub bucket_prefix: Option<String>,
     pub object_path: Option<String>,
+    pub target_file_size_base: Option<String>,
+    pub sst_file_cache_size: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -596,6 +598,16 @@ impl LogService {
                 parts.push(format!("-object_path={}", v));
             }
         }
+        if let Some(v) = &self.target_file_size_base {
+            if !v.is_empty() {
+                parts.push(format!("-target_file_size_base={}", v));
+            }
+        }
+        if let Some(v) = &self.sst_file_cache_size {
+            if !v.is_empty() {
+                parts.push(format!("-sst_file_cache_size={}", v));
+            }
+        }
         parts.join(" ")
     }
 }
@@ -637,6 +649,8 @@ mod tests {
             region: None,
             bucket_prefix: None,
             object_path: None,
+            target_file_size_base: None,
+            sst_file_cache_size: None,
         }
     }
 

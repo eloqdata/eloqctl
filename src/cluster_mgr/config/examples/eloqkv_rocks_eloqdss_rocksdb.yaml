@@ -25,8 +25,8 @@ deployment:
   storage_service:
     rocksdb: !ELOQDSS_ROCKSDB
       peer_host_ports: [127.0.0.1:9100]
-      # aws_id: ""
-      # aws_secret: ""
+      # aws_access_key_id: ""
+      # aws_secret_key: ""
       # region: "us-east-1"
       # bucket_name: ""
       # bucket_prefix: "eloqkv"

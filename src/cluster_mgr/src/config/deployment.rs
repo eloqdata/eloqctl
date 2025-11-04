@@ -717,8 +717,16 @@ impl Deployment {
                         ini.set(SECTION_STORE, "rocksdb_storage_path", Some(rocks_path));
                     }
                     RocksDB::S3(s3) => {
-                        ini.set(SECTION_STORE, "aws_access_key_id", Some(s3.aws_id));
-                        ini.set(SECTION_STORE, "aws_secret_key", Some(s3.aws_secret));
+                        ini.set(
+                            SECTION_STORE,
+                            "aws_access_key_id",
+                            Some(s3.aws_access_key_id.clone()),
+                        );
+                        ini.set(
+                            SECTION_STORE,
+                            "aws_secret_key",
+                            Some(s3.aws_secret_key.clone()),
+                        );
                         ini.set(
                             SECTION_STORE,
                             "kv_store_rocksdb_cloud_region",
@@ -750,8 +758,16 @@ impl Deployment {
                     }
                     RocksDB::MINIO(minio) => {
                         // MINIO uses S3-compatible API with endpoint and combined bucket name
-                        ini.set(SECTION_STORE, "aws_access_key_id", Some(minio.aws_id));
-                        ini.set(SECTION_STORE, "aws_secret_key", Some(minio.aws_secret));
+                        ini.set(
+                            SECTION_STORE,
+                            "aws_access_key_id",
+                            Some(minio.aws_access_key_id.clone()),
+                        );
+                        ini.set(
+                            SECTION_STORE,
+                            "aws_secret_key",
+                            Some(minio.aws_secret_key.clone()),
+                        );
                         ini.set(
                             SECTION_STORE,
                             "rocksdb_cloud_s3_endpoint_url",
@@ -1122,11 +1138,11 @@ impl Deployment {
             if let Some(crate::config::storage_service_config::RocksDB::EloqDssRocksdb(s)) =
                 &storage.rocksdb
             {
-                if let Some(v) = &s.aws_id {
+                if let Some(v) = &s.aws_access_key_id {
                     ini.set("store", "aws_access_key_id", Some(v.clone()));
                     store_fields_set = true;
                 }
-                if let Some(v) = &s.aws_secret {
+                if let Some(v) = &s.aws_secret_key {
                     ini.set("store", "aws_secret_key", Some(v.clone()));
                     store_fields_set = true;
                 }

@@ -28,8 +28,8 @@ deployment:
     endpoint_url: "http://127.0.0.1:9000"
   storage_service:
     rocksdb: !MINIO
-      aws_id: "minioadmin"
-      aws_secret: "minioadmin"
+      aws_access_key_id: "minioadmin"
+      aws_secret_key: "minioadmin"
       bucket_name: "eloqservice"
       bucket_prefix: "store"
       endpoint: "http://127.0.0.1:9000"

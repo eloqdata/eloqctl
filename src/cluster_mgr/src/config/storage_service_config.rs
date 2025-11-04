@@ -108,8 +108,10 @@ pub struct RocksLocal {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct RocksS3 {
-    pub aws_id: String,
-    pub aws_secret: String,
+    #[serde(alias = "aws_id")]
+    pub aws_access_key_id: String,
+    #[serde(alias = "aws_secret")]
+    pub aws_secret_key: String,
     pub region: String,
     pub bucket_name: String,
     pub bucket_prefix: String,
@@ -128,8 +130,10 @@ pub struct RocksGCP {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct RocksMinio {
-    pub aws_id: String,
-    pub aws_secret: String,
+    #[serde(alias = "aws_id")]
+    pub aws_access_key_id: String,
+    #[serde(alias = "aws_secret")]
+    pub aws_secret_key: String,
     pub bucket_name: String,
     pub bucket_prefix: String,
     pub endpoint: String,
@@ -209,8 +213,10 @@ pub struct EloqDss {
     /// Example: ["127.0.0.1:9100", "10.0.0.2:9100"]
     pub peer_host_ports: Vec<String>,
     /// Optional S3-like configuration for DSS RocksDBCloud
-    pub aws_id: Option<String>,
-    pub aws_secret: Option<String>,
+    #[serde(alias = "aws_id")]
+    pub aws_access_key_id: Option<String>,
+    #[serde(alias = "aws_secret")]
+    pub aws_secret_key: Option<String>,
     pub region: Option<String>,
     pub bucket_name: Option<String>,
     pub bucket_prefix: Option<String>,
