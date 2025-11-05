@@ -326,8 +326,11 @@ fn parse_datetime(s: &str) -> Result<DateTime<Utc>, String> {
 pub enum BackupCommand {
     #[strum(serialize = "start")]
     Start {
-        #[arg(long)]
-        path: String,
+        #[arg(
+            long,
+            help = "The full path to where the backup is stored. Required for local storage, optional for cloud (S3) storage."
+        )]
+        path: Option<String>,
         #[arg(long, value_name = "cluster password")]
         password: Option<String>,
         #[arg(long, value_name = "destination host")]

@@ -237,8 +237,8 @@ impl StorageService {
                     let bucket = format!("eloqkv-{}-{}", s3.bucket_prefix, s3.bucket_name);
                     Some((
                         bucket,
-                        s3.aws_id.clone(),
-                        s3.aws_secret.clone(),
+                        s3.aws_access_key_id.clone(),
+                        s3.aws_secret_key.clone(),
                         s3.region.clone(),
                         None,
                     ))
@@ -247,8 +247,8 @@ impl StorageService {
                     let bucket = format!("eloqkv-{}-{}", minio.bucket_prefix, minio.bucket_name);
                     Some((
                         bucket,
-                        minio.aws_id.clone(),
-                        minio.aws_secret.clone(),
+                        minio.aws_access_key_id.clone(),
+                        minio.aws_secret_key.clone(),
                         "us-east-1".to_string(),
                         Some(minio.endpoint.clone()),
                     ))

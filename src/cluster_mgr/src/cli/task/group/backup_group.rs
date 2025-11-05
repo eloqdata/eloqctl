@@ -49,14 +49,29 @@ impl TaskGroup for BackupTaskGroup {
                             .map(|s| s.is_rocksdb_cloud())
                             .unwrap_or(false);
 
+                        // Validate path: required for local storage, optional for cloud
+                        if !is_cloud {
+                            let path_value = path.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "--path is required for local storage. Please specify --path <PATH>"
+                                )
+                            })?;
+                            if path_value.is_empty() {
+                                return Err(anyhow::anyhow!(
+                                    "--path cannot be empty for local storage. Please specify --path <PATH>"
+                                ));
+                            }
+                        }
+
                         let mut mkdir_remote_dir: IndexMap<TaskId, TaskInstance> =
                             Default::default();
 
                         // Only create directory for LOCAL storage
                         if !is_cloud {
+                            let path_value = path.as_ref().unwrap(); // Safe because we validated above
                             let full_path = format!(
                                 "{}/{}/{}",
-                                path,
+                                path_value,
                                 cluster,
                                 BackupTask::format_string(snapshot_ts)
                             );
@@ -89,10 +104,12 @@ impl TaskGroup for BackupTaskGroup {
                         };
 
                         // For cloud storage, use empty path and empty dest_host/dest_user
+                        // For local storage, use the provided path
                         let (backup_path, backup_dest_host, backup_dest_user) = if is_cloud {
                             (String::new(), None, None)
                         } else {
-                            (path.clone(), dest_host.clone(), dest_user.clone())
+                            let path_value = path.as_ref().unwrap(); // Safe because we validated above
+                            (path_value.clone(), dest_host.clone(), dest_user.clone())
                         };
 
                         let backup_config = crate::cli::task::backup_task::BackupConfig {
