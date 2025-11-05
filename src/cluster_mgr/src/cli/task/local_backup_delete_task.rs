@@ -132,29 +132,27 @@ impl TaskExecutor for LocalBackupDeleteTask {
                 CMD_OUTPUT.to_string(),
                 TaskArgValue::Str(format!("Successfully deleted local backup: {}", self.cmd)),
             );
+        } else if self.force {
+            // With --force, still report success since SQLite record was deleted
+            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
+            task_result.insert(
+                CMD_OUTPUT.to_string(),
+                TaskArgValue::Str(format!(
+                    "Filesystem deletion failed but record removed from database (--force): status={}",
+                    status_code
+                )),
+            );
         } else {
-            if self.force {
-                // With --force, still report success since SQLite record was deleted
-                task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
-                task_result.insert(
-                    CMD_OUTPUT.to_string(),
-                    TaskArgValue::Str(format!(
-                        "Filesystem deletion failed but record removed from database (--force): status={}",
-                        status_code
-                    )),
-                );
-            } else {
-                // Without --force, report failure and keep SQLite record
-                let error_output = exec_cmd_rs
-                    .get(CMD_OUTPUT)
-                    .map(|v| TaskArgValue::into_inner_value::<String>(v.clone()))
-                    .unwrap_or_else(|| "Unknown error".to_string());
-                task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
-                task_result.insert(
-                    CMD_OUTPUT.to_string(),
-                    TaskArgValue::Str(format!("Failed to delete local backup: {}", error_output)),
-                );
-            }
+            // Without --force, report failure and keep SQLite record
+            let error_output = exec_cmd_rs
+                .get(CMD_OUTPUT)
+                .map(|v| TaskArgValue::into_inner_value::<String>(v.clone()))
+                .unwrap_or_else(|| "Unknown error".to_string());
+            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+            task_result.insert(
+                CMD_OUTPUT.to_string(),
+                TaskArgValue::Str(format!("Failed to delete local backup: {}", error_output)),
+            );
         }
 
         Ok(Some(task_result))
