@@ -1,3 +1,4 @@
+use crate::cli::task::backup_utils::split_manifests;
 use crate::cli::task::group::Config;
 use crate::cli::task::task_base::TaskMgr;
 use crate::cli::util::{cpu_arch, file_pg_bar, os_id, os_major_version};
@@ -675,10 +676,29 @@ impl CmdExecutor {
                                     "local"
                                 };
 
+                                // For cloud storage, parse and display all manifests
+                                let display_path: String = if dest_host.is_empty() {
+                                    // Cloud: show comma-separated list or formatted list
+                                    let manifests = split_manifests(snapshot_path);
+                                    if manifests.len() == 1 {
+                                        snapshot_path.clone() // Single manifest: show as-is
+                                    } else {
+                                        // Multiple manifests: show count and list
+                                        format!(
+                                            "[{} manifests]: {}",
+                                            manifests.len(),
+                                            manifests.join(", ")
+                                        )
+                                    }
+                                } else {
+                                    // Local: show path as-is
+                                    snapshot_path.clone()
+                                };
+
                                 (
                                     cluster_name,
                                     create_timestamp,
-                                    snapshot_path,
+                                    display_path,
                                     dest_host,
                                     dest_user,
                                     storage_type,
@@ -691,6 +711,7 @@ impl CmdExecutor {
                     BackupCommand::Remove { .. } => {}
                     BackupCommand::DumpAOF { .. } => {}
                     BackupCommand::DumpRDB { .. } => {}
+                    BackupCommand::Restore { .. } => {}
                 },
                 _ => {}
             },

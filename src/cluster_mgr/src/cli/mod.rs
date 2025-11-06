@@ -396,6 +396,21 @@ pub enum BackupCommand {
         #[arg(long)]
         thread_count: Option<String>,
     },
+    #[strum(serialize = "restore")]
+    Restore {
+        #[arg(
+            long,
+            value_name = "SNAPSHOT_TS",
+            help = "Snapshot timestamp to restore. Must match a snapshot_name in t_snapshot_info table.\n\
+            Accepted formats:\n\
+            - RFC 3339: '2024-11-14T15:01:00Z'\n\
+            - 'YYYY-MM-DD HH:MM:SS' (assumed UTC)\n\
+            - 'YYYY-MM-DDTHH:MM:SS' (assumed UTC)\n\
+            Example: '2025-11-05T03:45:45Z'",
+            value_parser = parse_datetime
+        )]
+        snapshot_ts: chrono::DateTime<chrono::Utc>,
+    },
 }
 
 #[derive(Subcommand, Clone, Debug, Hash, PartialEq, Eq, AsRefStr)]

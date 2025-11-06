@@ -1,9 +1,11 @@
 use crate::cli::task::backup_task::BackupTask;
+use crate::cli::task::backup_utils::{format_snapshots_for_deletion, split_manifests};
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{BackupTaskGroup, Config, TaskGroup};
 use crate::cli::task::local_backup_delete_task::LocalBackupDeleteTask;
 use crate::cli::task::s3_delete_task::S3DeleteTask;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
+use crate::cli::util::confirm_action;
 use crate::cli::{BackupCommand, SubCommand};
 use crate::config::DeploymentPackage;
 use crate::state::state_mgr::STATE_MGR;
@@ -172,6 +174,38 @@ impl TaskGroup for BackupTaskGroup {
                             success_task_entity.iter().collect()
                         };
 
+                        // Display backups to be deleted and ask for confirmation
+                        if !filtered_snapshots.is_empty() {
+                            println!("{}", format_snapshots_for_deletion(&filtered_snapshots));
+
+                            // Use blocking I/O for user confirmation
+                            // Spawn blocking task to avoid blocking the async runtime
+                            let prompt = "Do you want to proceed with deletion?";
+                            let confirmation_result =
+                                tokio::task::spawn_blocking(|| confirm_action(prompt))
+                                    .await
+                                    .map_err(|e| {
+                                        anyhow::anyhow!("Failed to get user confirmation: {}", e)
+                                    })??;
+
+                            if !confirmation_result {
+                                println!("Deletion cancelled by user.");
+                                // Return early without creating any tasks
+                                return Ok(TaskExecutionContext {
+                                    task_group: "backup".to_string(),
+                                    barrier: Some(vec![]),
+                                    executable: IndexMap::default(),
+                                });
+                            }
+                        } else {
+                            println!("No backups found to delete.");
+                            return Ok(TaskExecutionContext {
+                                task_group: "backup".to_string(),
+                                barrier: Some(vec![]),
+                                executable: IndexMap::default(),
+                            });
+                        }
+
                         // Step 3: Separate cloud and local backups
                         let cloud_backups: Vec<
                             &crate::state::snapshot_info_operation::SnapshotEntity,
@@ -201,48 +235,65 @@ impl TaskGroup for BackupTaskGroup {
                                             Default::default();
 
                                         for snapshot in &cloud_backups {
-                                            let manifest_filename = snapshot.snapshot_path.clone();
-                                            // Construct correct S3 path: eloqkv-{prefix}-{bucket_name}/rocksdb_cloud/CLOUDMANIFEST-{manifest_filename}
-                                            let s3_bucket = format!("{}", bucket);
-                                            let s3_key = format!(
-                                                "rocksdb_cloud/CLOUDMANIFEST-{}",
-                                                manifest_filename
-                                            );
-                                            let cluster_name_clone = cluster.clone();
-                                            let snapshot_ts_clone = snapshot.snapshot_ts;
-                                            let aws_id_clone = aws_id.clone();
-                                            let aws_secret_clone = aws_secret.clone();
-                                            let region_clone = region.clone();
-                                            let endpoint_clone = endpoint.clone();
+                                            // Parse comma-separated manifest list
+                                            let manifest_list =
+                                                split_manifests(&snapshot.snapshot_path);
 
-                                            let task_id = TaskId {
-                                                cmd: "backup".to_string(),
-                                                task: format!("delete-s3-{}", s3_key),
-                                                host: "_local".to_string(),
-                                            };
+                                            if manifest_list.is_empty() {
+                                                tracing::warn!(
+                                                    "No manifests found for snapshot: cluster={}, snapshot_ts={}",
+                                                    cluster,
+                                                    snapshot.snapshot_ts
+                                                );
+                                                continue;
+                                            }
 
-                                            // Create a custom task for S3 deletion
-                                            // Task will delete from SQLite only after successful S3 deletion (unless --force)
-                                            let s3_delete_task = S3DeleteTask::new(
-                                                task_id.clone(),
-                                                cluster_name_clone,
-                                                snapshot_ts_clone,
-                                                s3_bucket,
-                                                s3_key,
-                                                aws_id_clone,
-                                                aws_secret_clone,
-                                                region_clone,
-                                                endpoint_clone,
-                                                *force,
-                                            );
+                                            // Create deletion task for each manifest
+                                            for manifest_filename in manifest_list {
+                                                // Construct correct S3 path: eloqkv-{prefix}-{bucket_name}/rocksdb_cloud/CLOUDMANIFEST-{manifest_filename}
+                                                let s3_bucket = bucket.to_string();
+                                                let s3_key = format!(
+                                                    "rocksdb_cloud/CLOUDMANIFEST-{}",
+                                                    manifest_filename
+                                                );
+                                                let cluster_name_clone = cluster.clone();
+                                                let snapshot_ts_clone = snapshot.snapshot_ts;
+                                                let aws_id_clone = aws_id.clone();
+                                                let aws_secret_clone = aws_secret.clone();
+                                                let region_clone = region.clone();
+                                                let endpoint_clone = endpoint.clone();
 
-                                            let task_instance = TaskInstance {
-                                                task_input: HashMap::default(),
-                                                task: Box::new(s3_delete_task),
-                                                task_host: TaskHost::Local,
-                                            };
+                                                let task_id = TaskId {
+                                                    cmd: "backup".to_string(),
+                                                    task: format!("delete-s3-{}", s3_key),
+                                                    host: "_local".to_string(),
+                                                };
 
-                                            s3_delete_tasks.insert(task_id, task_instance);
+                                                // Create a custom task for S3 deletion
+                                                // Task will delete from SQLite only after successful S3 deletion (unless --force)
+                                                // Note: Each task will attempt to delete from SQLite, but only the last one will succeed
+                                                // This is acceptable since SQLite deletion is idempotent (same condition)
+                                                let s3_delete_task = S3DeleteTask::new(
+                                                    task_id.clone(),
+                                                    cluster_name_clone,
+                                                    snapshot_ts_clone,
+                                                    s3_bucket,
+                                                    s3_key,
+                                                    aws_id_clone,
+                                                    aws_secret_clone,
+                                                    region_clone,
+                                                    endpoint_clone,
+                                                    *force,
+                                                );
+
+                                                let task_instance = TaskInstance {
+                                                    task_input: HashMap::default(),
+                                                    task: Box::new(s3_delete_task),
+                                                    task_host: TaskHost::Local,
+                                                };
+
+                                                s3_delete_tasks.insert(task_id, task_instance);
+                                            }
                                         }
 
                                         barrier.push(s3_delete_tasks.len());
@@ -303,6 +354,172 @@ impl TaskGroup for BackupTaskGroup {
 
                         barrier.push(rm_remote_dir.len());
                         executable.extend(rm_remote_dir);
+                    }
+                    BackupCommand::Restore { snapshot_ts } => {
+                        // Step 1: Validate storage is cloud-based (S3) - from Phase 1
+                        let is_cloud = cluster_config
+                            .deployment
+                            .storage_service
+                            .as_ref()
+                            .map(|s| s.is_rocksdb_cloud())
+                            .unwrap_or(false);
+
+                        if !is_cloud {
+                            return Err(anyhow::anyhow!(
+                                "Restore command is only supported for cloud storage (S3). \
+                                Current storage type is not cloud-based. \
+                                Please use backup commands for local storage."
+                            ));
+                        }
+
+                        // Step 2: Validate storage is S3 (not GCS) - from Phase 1
+                        let is_s3 = cluster_config
+                            .deployment
+                            .storage_service
+                            .as_ref()
+                            .map(|s| s.is_rocksdb_s3())
+                            .unwrap_or(false);
+
+                        if !is_s3 {
+                            return Err(anyhow::anyhow!(
+                                "Restore command is only supported for S3 storage. \
+                                GCS storage restore is not yet supported."
+                            ));
+                        }
+
+                        // Step 3: Check if cluster is stopped (reusing status command logic) - from Phase 2
+                        use crate::cli::task::backup_utils::is_cluster_stopped;
+                        match is_cluster_stopped(cluster_config).await {
+                            Ok(false) => {
+                                return Err(anyhow::anyhow!(
+                                    "Cluster is currently running. Restore can only be performed when the cluster is stopped. \
+                                    Please stop the cluster first using: eloqctl stop {}",
+                                    cluster
+                                ));
+                            }
+                            Ok(true) => {
+                                tracing::info!("Cluster is stopped, proceeding with restore...");
+                            }
+                            Err(e) => {
+                                return Err(anyhow::anyhow!(
+                                    "Failed to check cluster status: {}. \
+                                    Please ensure the cluster is stopped before attempting restore.",
+                                    e
+                                ));
+                            }
+                        }
+
+                        // Step 4: Lookup snapshot by timestamp
+                        let snapshot = STATE_MGR.get_snapshot_by_ts(cluster, *snapshot_ts).await?;
+
+                        let snapshot = match snapshot {
+                            Some(s) => s,
+                            None => {
+                                return Err(anyhow::anyhow!(
+                                    "Snapshot not found for cluster '{}' with timestamp '{}'. \
+                                    Please verify the snapshot_ts using: eloqctl backup {} list",
+                                    cluster,
+                                    snapshot_ts.format("%Y-%m-%d %H:%M:%S UTC"),
+                                    cluster
+                                ));
+                            }
+                        };
+
+                        // Step 5: Validate snapshot is for cloud storage
+                        if !snapshot.dest_host.is_empty() {
+                            return Err(anyhow::anyhow!(
+                                "Snapshot is for local storage, not cloud storage. \
+                                Restore command only supports cloud storage snapshots."
+                            ));
+                        }
+
+                        // Step 6: Validate snapshot status is Finished
+                        if snapshot.snapshot_status != 0 {
+                            return Err(anyhow::anyhow!(
+                                "Snapshot status is not 'Finished' (status: {}). \
+                                Only finished snapshots can be restored.",
+                                snapshot.snapshot_status
+                            ));
+                        }
+
+                        // Step 7: Display snapshot info and ask for confirmation
+                        use crate::cli::task::backup_utils::format_snapshot_for_restore;
+
+                        println!("{}", format_snapshot_for_restore(&snapshot));
+
+                        // Use blocking I/O for user confirmation
+                        let prompt = "Do you want to proceed with restore?";
+                        let confirmation_result =
+                            tokio::task::spawn_blocking(|| confirm_action(prompt))
+                                .await
+                                .map_err(|e| {
+                                    anyhow::anyhow!("Failed to get user confirmation: {}", e)
+                                })??;
+
+                        if !confirmation_result {
+                            println!("Restore cancelled by user.");
+                            return Ok(TaskExecutionContext {
+                                task_group: "backup".to_string(),
+                                barrier: Some(vec![]),
+                                executable: IndexMap::default(),
+                            });
+                        }
+
+                        tracing::info!(
+                            "User confirmed restore operation for snapshot: {}",
+                            snapshot_ts.format("%Y-%m-%d %H:%M:%S UTC")
+                        );
+
+                        // Step 8: Create and execute restore task
+                        use crate::cli::task::s3_restore_task::S3RestoreTask;
+
+                        // Get S3 configuration
+                        let (bucket, aws_id, aws_secret, region, endpoint) = cluster_config
+                            .deployment
+                            .storage_service
+                            .as_ref()
+                            .and_then(|s| s.get_s3_config())
+                            .ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "Failed to get S3 configuration for restore operation"
+                                )
+                            })?;
+
+                        // Create restore task
+                        let task_id = TaskId {
+                            cmd: "backup".to_string(),
+                            task: format!(
+                                "restore-{}",
+                                snapshot.snapshot_ts.format("%Y%m%d%H%M%S")
+                            ),
+                            host: "_local".to_string(),
+                        };
+
+                        let restore_task = S3RestoreTask::new(
+                            task_id.clone(),
+                            cluster.clone(),
+                            snapshot.clone(),
+                            bucket,
+                            aws_id,
+                            aws_secret,
+                            region,
+                            endpoint,
+                        );
+
+                        let task_instance = TaskInstance {
+                            task_input: HashMap::default(),
+                            task: Box::new(restore_task),
+                            task_host: TaskHost::Local,
+                        };
+
+                        let mut executable = IndexMap::new();
+                        executable.insert(task_id, task_instance);
+
+                        return Ok(TaskExecutionContext {
+                            task_group: "backup".to_string(),
+                            barrier: Some(vec![1]), // Single task
+                            executable,
+                        });
                     }
                     BackupCommand::DumpAOF {
                         rocksdb_path,

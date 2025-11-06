@@ -3,6 +3,7 @@ use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::{Credentials, Region};
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
+use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
 use aws_sdk_s3::Client as S3Client;
 use tracing::info;
 
@@ -89,5 +90,84 @@ pub async fn delete_s3_object(client: &S3Client, bucket: &str, key: &str) -> Res
         .context(format!("Failed to delete s3://{}/{}", bucket, key))?;
 
     info!("Successfully deleted S3 object: s3://{}/{}", bucket, key);
+    Ok(())
+}
+
+/// List S3 objects with given prefix
+/// Returns vector of object keys matching the prefix
+pub async fn list_s3_objects(client: &S3Client, bucket: &str, prefix: &str) -> Result<Vec<String>> {
+    info!("Listing S3 objects with prefix: s3://{}/{}", bucket, prefix);
+
+    let mut objects = Vec::new();
+    let mut continuation_token: Option<String> = None;
+
+    loop {
+        let mut request = client.list_objects_v2().bucket(bucket).prefix(prefix);
+
+        if let Some(token) = continuation_token {
+            request = request.continuation_token(token);
+        }
+
+        let response: ListObjectsV2Output = request.send().await.context(format!(
+            "Failed to list objects in s3://{}/{}",
+            bucket, prefix
+        ))?;
+
+        // contents() returns &[Object], not Option
+        for object in response.contents() {
+            if let Some(key) = object.key() {
+                objects.push(key.to_string());
+            }
+        }
+
+        // Check if there are more objects to fetch
+        // is_truncated() returns Option<bool>
+        if response.is_truncated().unwrap_or(false) {
+            continuation_token = response.next_continuation_token().map(|s| s.to_string());
+        } else {
+            break;
+        }
+    }
+
+    info!(
+        "Found {} objects with prefix s3://{}/{}",
+        objects.len(),
+        bucket,
+        prefix
+    );
+    Ok(objects)
+}
+
+/// Copy S3 object from source to destination
+/// Uses S3 copy operation (server-side copy, no download/upload)
+pub async fn copy_s3_object(
+    client: &S3Client,
+    bucket: &str,
+    source_key: &str,
+    dest_key: &str,
+) -> Result<()> {
+    info!(
+        "Copying S3 object: s3://{}/{} -> s3://{}/{}",
+        bucket, source_key, bucket, dest_key
+    );
+
+    let copy_source = format!("{}/{}", bucket, source_key);
+
+    client
+        .copy_object()
+        .bucket(bucket)
+        .copy_source(copy_source)
+        .key(dest_key)
+        .send()
+        .await
+        .context(format!(
+            "Failed to copy s3://{}/{} to s3://{}/{}",
+            bucket, source_key, bucket, dest_key
+        ))?;
+
+    info!(
+        "Successfully copied S3 object: s3://{}/{} -> s3://{}/{}",
+        bucket, source_key, bucket, dest_key
+    );
     Ok(())
 }

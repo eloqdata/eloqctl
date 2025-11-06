@@ -1,4 +1,5 @@
 mod backup_task;
+pub mod backup_utils;
 mod cassandra_ctl_task;
 mod cassandra_op_task;
 mod check_task;
@@ -27,6 +28,7 @@ pub mod monograph_tx_ctl_task;
 mod proxy_ctl_task;
 mod redis_op_task;
 pub mod s3_delete_task;
+pub mod s3_restore_task;
 pub mod s3_utils;
 pub mod scale_log_cleanup_task;
 pub mod scale_log_op_task;

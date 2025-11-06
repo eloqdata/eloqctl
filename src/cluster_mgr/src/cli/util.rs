@@ -1,4 +1,27 @@
+use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::io::{self, Write};
+
+/// Prompt user for confirmation to proceed with an action
+/// Uses blocking I/O since this is a user interaction
+///
+/// # Arguments
+/// * `prompt` - The confirmation prompt message (e.g., "Do you want to proceed with deletion?")
+///
+/// # Returns
+/// * `Ok(true)` if user confirms (enters "yes" or "y")
+/// * `Ok(false)` if user declines (enters anything else)
+/// * `Err` if there's an I/O error
+pub fn confirm_action(prompt: &str) -> Result<bool> {
+    print!("{} (yes/no): ", prompt);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    let input = input.trim().to_lowercase();
+    Ok(input == "yes" || input == "y")
+}
 
 pub fn os_id() -> String {
     let os_id = sysinfo::System::distribution_id();

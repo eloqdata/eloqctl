@@ -172,6 +172,29 @@ impl StateMgr {
         Ok(snapshot_status_entity)
     }
 
+    pub async fn get_snapshot_by_ts(
+        &self,
+        cluster: &str,
+        snapshot_ts: DateTime<Utc>,
+    ) -> Result<Option<SnapshotEntity>> {
+        let snapshot_info_operation =
+            self.get_state_operation::<SnapshotOperation>(SNAPSHOT_STATUS_STATE);
+
+        let snapshot_status_entity = snapshot_info_operation
+            .load(|| -> Option<QueryCondition> {
+                Some(QueryCondition {
+                    cond_text: "cluster_name = $1 AND snapshot_ts = $2".to_string(),
+                    bind_values: vec![
+                        StateValue::Varchar(cluster.to_string()),
+                        StateValue::Timestamp(snapshot_ts),
+                    ],
+                })
+            })
+            .await?;
+
+        Ok(snapshot_status_entity.first().cloned())
+    }
+
     pub async fn load_deployment_from_state(&self, cluster: &str) -> Result<Option<DeployConfig>> {
         let deployment_state = self.get_state_operation::<DeploymentOperation>(DEPLOYMENT_STATE);
         let deployment_entity_vec = deployment_state

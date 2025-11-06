@@ -1,3 +1,4 @@
+use crate::cli::task::backup_utils::{extract_all_manifests, join_manifests};
 use crate::cli::task::grpc::cc_request::ClusterBackupResponse;
 use crate::cli::task::grpc::GrpcClient;
 use crate::cli::task::redis_op_task::parse_cluster_nodes;
@@ -320,15 +321,11 @@ impl TaskExecutor for BackupTask {
                     }
 
                     if dest_host.is_empty() {
-                        // Cloud storage - get manifest filename from response
-                        response
-                            .backup_infos
-                            .first()
-                            .and_then(|info| info.backup_files.first())
-                            .cloned()
-                            .unwrap_or_default()
+                        // Cloud storage - get ALL manifest filenames from ALL node groups
+                        let all_manifests = extract_all_manifests(response);
+                        join_manifests(&all_manifests)
                     } else {
-                        // Local storage - use existing path construction
+                        // Local storage - use existing path construction (single path)
                         format!(
                             "{}/{}/{}",
                             self.back_up_config.path.clone(),
@@ -443,20 +440,17 @@ impl TaskExecutor for BackupTask {
                             // Extract manifest filename from response for cloud storage
                             // final_response is only Some when status is "finished" (from line 414-416)
                             let snapshot_path = if dest_host.is_empty() {
-                                // Cloud storage - get manifest filename from response
-                                // Only extract when response indicates finished status
+                                // Cloud storage - get ALL manifest filenames
                                 final_response
                                     .as_ref()
                                     .filter(|r| r.result.to_lowercase() == "finished")
-                                    .and_then(|r| {
-                                        r.backup_infos
-                                            .first()
-                                            .and_then(|info| info.backup_files.first())
-                                            .cloned()
+                                    .map(|r| {
+                                        let all_manifests = extract_all_manifests(r);
+                                        join_manifests(&all_manifests)
                                     })
                                     .unwrap_or_default()
                             } else {
-                                // Local storage - use existing path construction
+                                // Local storage - use existing path construction (single path)
                                 format!(
                                     "{}/{}/{}",
                                     self.back_up_config.path.clone(),
