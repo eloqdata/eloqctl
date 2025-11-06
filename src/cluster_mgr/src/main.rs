@@ -7,7 +7,16 @@ use tracing::{error, info};
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
-    let cmd = Command::parse();
+    let args: Vec<String> = std::env::args().collect();
+    if args
+        .iter()
+        .any(|arg| arg == "-v" || arg == "-V" || arg == "--version")
+    {
+        println!("eloqctl version output 1.0.0");
+        return;
+    }
+
+    let cmd = Command::parse_from(&args);
     let home = CmdExecutor::home_init(cmd.home).expect("home dir init failed");
     if let Some(sub) = cmd.subcmd {
         let log_path = home.join("logs").join(format!("last-{}.log", sub.as_ref()));

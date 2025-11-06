@@ -727,29 +727,25 @@ impl Deployment {
                             "aws_secret_key",
                             Some(s3.aws_secret_key.clone()),
                         );
+                        ini.set(SECTION_STORE, "rocksdb_cloud_region", Some(s3.region));
                         ini.set(
                             SECTION_STORE,
-                            "kv_store_rocksdb_cloud_region",
-                            Some(s3.region),
-                        );
-                        ini.set(
-                            SECTION_STORE,
-                            "kv_store_rocksdb_cloud_bucket_name",
+                            "rocksdb_cloud_bucket_name",
                             Some(s3.bucket_name),
                         );
                         ini.set(
                             SECTION_STORE,
-                            "kv_store_rocksdb_cloud_bucket_prefix",
+                            "rocksdb_cloud_bucket_prefix",
                             Some(s3.bucket_prefix),
                         );
                         ini.set(
                             SECTION_STORE,
-                            "kv_store_rocksdb_target_file_size_base",
+                            "rocksdb_target_file_size_base",
                             Some(s3.target_file_size_base),
                         );
                         ini.set(
                             SECTION_STORE,
-                            "kv_store_rocksdb_cloud_sst_file_cache_size",
+                            "rocksdb_cloud_sst_file_cache_size",
                             Some(s3.sst_file_cache_size),
                         );
                     }
@@ -777,29 +773,25 @@ impl Deployment {
                         ini.set(SECTION_STORE, "rocksdb_cloud_bucket_name", Some(bucket));
                     }
                     RocksDB::GCS(gcs) => {
+                        ini.set(SECTION_STORE, "rocksdb_cloud_region", Some(gcs.region));
                         ini.set(
                             SECTION_STORE,
-                            "kv_store_rocksdb_cloud_region",
-                            Some(gcs.region),
-                        );
-                        ini.set(
-                            SECTION_STORE,
-                            "kv_store_rocksdb_cloud_bucket_name",
+                            "rocksdb_cloud_bucket_name",
                             Some(gcs.bucket_name),
                         );
                         ini.set(
                             SECTION_STORE,
-                            "kv_store_rocksdb_cloud_bucket_prefix",
+                            "rocksdb_cloud_bucket_prefix",
                             Some(gcs.bucket_prefix),
                         );
                         ini.set(
                             SECTION_STORE,
-                            "kv_store_rocksdb_target_file_size_base",
+                            "rocksdb_target_file_size_base",
                             Some(gcs.target_file_size_base),
                         );
                         ini.set(
                             SECTION_STORE,
-                            "kv_store_rocksdb_cloud_sst_file_cache_size",
+                            "rocksdb_cloud_sst_file_cache_size",
                             Some(gcs.sst_file_cache_size),
                         );
                     }
