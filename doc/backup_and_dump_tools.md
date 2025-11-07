@@ -75,6 +75,42 @@ Force deletion: Delete records from metadata table regardless of S3/file deletio
 - **Without `--force`** (default): Metadata records are only deleted after successful S3 or filesystem deletion. If deletion fails, the record remains in the database.
 - **With `--force`**: Metadata records are deleted regardless of file deletion result. Useful for cleaning up orphaned records.
 
+## Restore backup of a cluster
+
+**Note**: This command is only supported for cloud storage (S3) backups. Local storage backups cannot be restored using this command.
+
+Restore a cluster to a previous snapshot state. This operation will override the current database data with the snapshot data.
+
+```
+eloqctl backup ${cluster_name} restore --snapshot-ts <TIMESTAMP>
+```
+
+**Prerequisites:**
+- The cluster must be stopped before performing restore. Use `eloqctl stop --cluster ${cluster_name}` to stop the cluster first.
+- The snapshot must exist in the metadata table. Use `eloqctl backup ${cluster_name} list` to see available snapshots.
+- The snapshot must have status "Finished" (status: 0).
+- The snapshot must be for cloud storage (S3), not local storage.
+
+Options:
+
+* **\--snapshot-ts <TIMESTAMP>**:  
+The timestamp of the snapshot to restore. Must match a snapshot timestamp from `eloqctl backup ${cluster_name} list`. Accepted formats:
+- RFC 3339: '2024-11-14T15:01:00Z'
+- 'YYYY-MM-DD HH:MM:SS' (assumed UTC)
+- 'YYYY-MM-DDTHH:MM:SS' (assumed UTC)
+
+**Example:**
+```
+eloqctl backup eloqkv-cluster restore --snapshot-ts 2024-11-14T15:01:00Z
+```
+**Warning:** This operation will permanently override the current database state with the snapshot data. Make sure you have a backup of the current state if needed.
+
+**Error Cases:**
+- If the cluster is running, the command will fail with an error message instructing you to stop the cluster first.
+- If the snapshot is not found, the command will fail with an error message suggesting to use `eloqctl backup ${cluster_name} list` to see available snapshots.
+- If the snapshot is for local storage, the command will fail with an error message indicating that only cloud storage snapshots are supported.
+- If the snapshot status is not "Finished", the command will fail with an error message indicating that only finished snapshots can be restored.
+
 ## Convert existing backup to AOF file
 
 ```
