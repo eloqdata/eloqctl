@@ -124,6 +124,8 @@ pub struct MonographService {
     pub requirepass: Option<String>,
     pub enable_cache_replacement: Option<String>,
     pub client_port: Option<u16>, // only used in mysql
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_standby_lag: Option<u32>,
 }
 
 impl MonographService {
@@ -790,6 +792,34 @@ impl Deployment {
                                 Some(val.clone()),
                             );
                         }
+                        if let Some(val) = &s3.rocksdb_max_write_buffer_number {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_max_write_buffer_number",
+                                Some(val.clone()),
+                            );
+                        }
+                        if let Some(val) = &s3.rocksdb_write_buffer_size {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_write_buffer_size",
+                                Some(val.clone()),
+                            );
+                        }
+                        if let Some(val) = &s3.rocksdb_enable_stats {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_enable_stats",
+                                Some(val.clone()),
+                            );
+                        }
+                        if let Some(val) = &s3.rocksdb_stats_dump_period_sec {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_stats_dump_period_sec",
+                                Some(val.clone()),
+                            );
+                        }
                     }
                     RocksDB::EloqDssRocksdb(_eloq_dss) => {
                         // DSS-specific RocksDB config is managed by DSS ini; no KV store fields here
@@ -942,12 +972,28 @@ impl Deployment {
                     Some(voter_ip_port_list),
                 );
             }
+
+            if let Some(max_standby_lag) = &self.tx_service.max_standby_lag {
+                ini.set(
+                    SECTION_CLUSTER,
+                    "max_standby_lag",
+                    Some(max_standby_lag.to_string()),
+                );
+            }
         } else {
             ini.set(
                 SECTION_CLUSTER,
                 "ip_port_list",
                 Some(format!("{}:{}", "127.0.0.1", "6379")),
             );
+
+            if let Some(max_standby_lag) = &self.tx_service.max_standby_lag {
+                ini.set(
+                    SECTION_CLUSTER,
+                    "max_standby_lag",
+                    Some(max_standby_lag.to_string()),
+                );
+            }
         }
 
         if self.is_empty(&ini, SECTION_METRIC, "enable_metrics") {

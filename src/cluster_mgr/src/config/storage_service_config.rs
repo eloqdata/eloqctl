@@ -129,6 +129,14 @@ pub struct RocksS3 {
     pub rocksdb_level0_slowdown_writes_trigger: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rocksdb_level0_file_num_compaction_trigger: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_max_write_buffer_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_write_buffer_size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_enable_stats: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_stats_dump_period_sec: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

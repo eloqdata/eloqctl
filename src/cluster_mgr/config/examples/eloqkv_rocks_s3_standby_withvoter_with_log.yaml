@@ -15,6 +15,7 @@ deployment:
     tx_host_ports: [10.0.0.1:6379]
     standby_host_ports: [10.0.0.2:6379]
     voter_host_ports: [10.0.0.3:6379]
+    max_standby_lag: 750
   log_service:
     nodes:
       - host: 10.0.0.3
@@ -43,6 +44,10 @@ deployment:
       rocksdb_level0_stop_writes_trigger: "3000"
       rocksdb_level0_slowdown_writes_trigger: "2000"
       rocksdb_level0_file_num_compaction_trigger: "10"
+      rocksdb_max_write_buffer_number: "16"
+      rocksdb_write_buffer_size: "128MB"
+      rocksdb_enable_stats: "true"
+      rocksdb_stats_dump_period_sec: "600"
   monitor:
     data_dir: ""
     eloq_metrics:
