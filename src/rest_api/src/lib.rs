@@ -1,4 +1,4 @@
-#![feature(async_closure)]
+// #![feature(async_closure)]
 // #![feature(once_cell)]
 
 use actix_web::error;

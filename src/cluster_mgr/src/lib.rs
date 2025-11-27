@@ -1,5 +1,5 @@
 #![feature(variant_count)]
-#![feature(async_closure)]
+// #![feature(async_closure)]
 #![feature(proc_macro_hygiene)]
 #![feature(stmt_expr_attributes)]
 #![feature(coroutines)]
