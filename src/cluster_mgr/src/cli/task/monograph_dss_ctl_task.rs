@@ -45,17 +45,31 @@ impl DssCtlCmd {
         let Some(storage_service) = &config.deployment.storage_service else {
             return vec![];
         };
-        let Some(crate::config::storage_service_config::RocksDB::EloqDssRocksdb(eloq_dss)) =
-            &storage_service.rocksdb
-        else {
+
+        // Get peer_host_ports from either EloqDssRocksdb or DataStoreService Remote mode
+        let peer_host_ports =
+            if let Some(crate::config::storage_service_config::RocksDB::EloqDssRocksdb(eloq_dss)) =
+                &storage_service.rocksdb
+            {
+                eloq_dss.peer_host_ports.clone()
+            } else if let Some(dss) = &storage_service.eloqdss {
+                if dss.is_remote_mode() {
+                    dss.peer_host_ports.clone().unwrap_or_default()
+                } else {
+                    return vec![];
+                }
+            } else {
+                return vec![];
+            };
+
+        if peer_host_ports.is_empty() {
             return vec![];
-        };
+        }
 
         let tx_home = config.deployment.tx_srv_home();
         let dss_bin = format!("{}/bin/dss_server", tx_home);
 
-        eloq_dss
-            .peer_host_ports
+        peer_host_ports
             .iter()
             .map(|peer| {
                 let (host, port) = parse_host_port(peer).expect("invalid dss host:port");

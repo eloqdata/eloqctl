@@ -877,6 +877,62 @@ impl Deployment {
                         );
                     }
                 },
+                StorageProvider::EloqDSS => {
+                    if let Some(dss) = storage.eloqdss.as_ref() {
+                        // Only embed DataStoreService config in EloqKv.ini for Local mode
+                        // Remote mode config will be written to EloqDss.ini via build_dss_config()
+                        if dss.is_local_mode() {
+                            match dss.backend_config() {
+                                crate::config::storage_service_config::DataStoreServiceBackend::EloqStore(config) => {
+                                    if let Some(worker_num) = config.eloq_store_worker_num {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_worker_num",
+                                            Some(worker_num.to_string()),
+                                        );
+                                    }
+                                    if let Some(data_path_list) = &config.eloq_store_data_path_list {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_data_path_list",
+                                            Some(data_path_list.clone()),
+                                        );
+                                    }
+                                    if let Some(cloud_path) = &config.eloq_store_cloud_store_path {
+                                        if !cloud_path.is_empty() {
+                                            ini.set(
+                                                SECTION_STORE,
+                                                "eloq_store_cloud_store_path",
+                                                Some(cloud_path.clone()),
+                                            );
+                                        }
+                                    }
+                                    if let Some(cloud_worker_count) = config.eloq_store_cloud_worker_count {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_cloud_worker_count",
+                                            Some(cloud_worker_count.to_string()),
+                                        );
+                                    }
+                                }
+                                // For future backends, add appropriate handling here
+                            }
+                        } else {
+                            // For Remote mode, only write the eloq_dss_peer_node to the [store] section
+                            // Using the first peer_host_port as the eloq_dss_peer_node
+                            // The backend configuration will be written to EloqDss.ini
+                            if let Some(peer_host_ports) = &dss.peer_host_ports {
+                                if !peer_host_ports.is_empty() {
+                                    ini.set(
+                                        SECTION_STORE,
+                                        "eloq_dss_peer_node",
+                                        Some(peer_host_ports[0].clone()),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
             }
         } else {
             let rocks_path = {
@@ -1274,6 +1330,72 @@ impl Deployment {
                         Some(v.clone()),
                     );
                     store_fields_set = true;
+                }
+            }
+            // Handle DataStoreService Remote mode (EloqStore backend)
+            if let Some(dss) = &storage.eloqdss {
+                if dss.is_remote_mode() {
+                    match dss.backend_config() {
+                        crate::config::storage_service_config::DataStoreServiceBackend::EloqStore(config) => {
+                            if let Some(worker_num) = config.eloq_store_worker_num {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_worker_num",
+                                    Some(worker_num.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(data_path_list) = &config.eloq_store_data_path_list {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_data_path_list",
+                                    Some(data_path_list.clone()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(cloud_path) = &config.eloq_store_cloud_store_path {
+                                if !cloud_path.is_empty() {
+                                    ini.set(
+                                        "store",
+                                        "eloq_store_cloud_store_path",
+                                        Some(cloud_path.clone()),
+                                    );
+                                    store_fields_set = true;
+                                }
+                            }
+                            if let Some(cloud_worker_count) = config.eloq_store_cloud_worker_count {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_cloud_worker_count",
+                                    Some(cloud_worker_count.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                        }
+                        // For future backends, add appropriate handling here
+                    }
+                }
+            }
+        }
+
+        // After populating store section, remove any leftover ${OVERRIDE} placeholders.
+        if let Some(store_section) = ini.get_map() {
+            if let Some(store_map) = store_section.get("store") {
+                let store_pairs: Vec<(String, Option<String>)> = store_map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+
+                let mut has_real_value = false;
+                for (key, value) in store_pairs {
+                    if value.as_deref() == Some("${OVERRIDE}") {
+                        ini.remove_key("store", key.as_str());
+                    } else {
+                        has_real_value = true;
+                    }
+                }
+                if !has_real_value {
+                    ini.remove_section("store");
                 }
             }
         }

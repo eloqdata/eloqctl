@@ -139,6 +139,9 @@ pub enum StorageProvider {
     Dynamodb,
     #[strum(serialize = "rocksdb")]
     Rocksdb,
+    #[strum(serialize = "eloqdss")]
+    #[clap(name = "eloqdss")]
+    EloqDSS,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]

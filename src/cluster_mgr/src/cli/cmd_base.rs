@@ -953,6 +953,7 @@ impl CmdExecutor {
                                 cassandra: Some(Cassandra { host, kind }),
                                 dynamodb: None,
                                 rocksdb: None,
+                                eloqdss: None,
                             });
                         } else {
                             deploy.storage_service.as_mut().unwrap().cassandra =
@@ -968,12 +969,57 @@ impl CmdExecutor {
                                 rocksdb: Some(RocksDB::LOCAL(RocksLocal {
                                     path: Some("/tmp".to_string()),
                                 })),
+                                eloqdss: None,
                             });
                         } else {
                             deploy.storage_service.as_mut().unwrap().rocksdb =
                                 Some(RocksDB::LOCAL(RocksLocal {
                                     path: Some("/tmp".to_string()),
                                 }));
+                        }
+                    }
+                    StorageProvider::EloqDSS => {
+                        // Create a default DataStoreService with Local mode and EloqStore backend
+                        use crate::config::storage_service_config::{
+                            DataStoreService, DataStoreServiceBackend, EloqStoreConfig,
+                        };
+
+                        // Try to get values from existing YAML config, otherwise use defaults
+                        let (worker_num, data_path_list) = if let Some(existing_dss) = deploy
+                            .storage_service
+                            .as_ref()
+                            .and_then(|s| s.eloqdss.as_ref())
+                        {
+                            // Extract values from existing config if available
+                            match existing_dss.backend_config() {
+                                DataStoreServiceBackend::EloqStore(config) => (
+                                    config.eloq_store_worker_num,
+                                    config.eloq_store_data_path_list.clone(),
+                                ),
+                            }
+                        } else {
+                            // Use defaults if not in YAML
+                            (Some(4), Some("/tmp".to_string()))
+                        };
+
+                        let default_dss = DataStoreService {
+                            backend: DataStoreServiceBackend::EloqStore(EloqStoreConfig {
+                                eloq_store_worker_num: worker_num,
+                                eloq_store_data_path_list: data_path_list,
+                                eloq_store_cloud_store_path: None,
+                                eloq_store_cloud_worker_count: None,
+                            }),
+                            peer_host_ports: None,
+                        };
+                        if deploy.storage_service.is_none() {
+                            deploy.storage_service = Some(StorageService {
+                                cassandra: None,
+                                dynamodb: None,
+                                rocksdb: None,
+                                eloqdss: Some(default_dss),
+                            });
+                        } else {
+                            deploy.storage_service.as_mut().unwrap().eloqdss = Some(default_dss);
                         }
                     }
                 }

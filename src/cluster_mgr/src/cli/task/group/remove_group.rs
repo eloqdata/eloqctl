@@ -132,6 +132,7 @@ impl TaskGroup for RemoveTaskGroup {
                     bail!("drop dynamodb keyspace is not implemented")
                 }
                 StorageProvider::Rocksdb => {}
+                StorageProvider::EloqDSS => {}
             }
         }
 

@@ -182,7 +182,24 @@ impl UploadTaskBuilder for MonographUploadBuilder {
         // If DSS is enabled, ensure EloqDss.ini template is present under upload/{cluster}
         // and then generate per-host DSS ini files from template and values.
         if let Some(storage) = &cluster_config.deployment.storage_service {
-            if matches!(storage.rocksdb, Some(RocksDB::EloqDssRocksdb(_))) {
+            // Collect DSS hosts from both EloqDssRocksdb and DataStoreService Remote mode
+            let mut dss_hosts = Vec::new();
+
+            // Get hosts from EloqDssRocksdb
+            if let Some(RocksDB::EloqDssRocksdb(dss_cfg)) = &storage.rocksdb {
+                dss_hosts.extend(dss_cfg.peer_host_ports.clone());
+            }
+
+            // Get hosts from DataStoreService Remote mode
+            if let Some(dss) = &storage.eloqdss {
+                if dss.is_remote_mode() {
+                    if let Some(peer_ports) = dss.peer_host_ports.clone() {
+                        dss_hosts.extend(peer_ports);
+                    }
+                }
+            }
+
+            if !dss_hosts.is_empty() {
                 let dss_template_src =
                     config_template(ELOQDSS_TEMPLATE_INI).expect("get DSS template error");
                 let dss_template_dest = upload_dir()
@@ -190,17 +207,6 @@ impl UploadTaskBuilder for MonographUploadBuilder {
                     .join(ELOQDSS_TEMPLATE_INI);
                 // Best-effort copy; ignore error if already exists
                 let _ = fs::copy(&dss_template_src, &dss_template_dest);
-
-                let dss_hosts = cluster_config
-                    .deployment
-                    .storage_service
-                    .as_ref()
-                    .and_then(|s| s.rocksdb.as_ref())
-                    .and_then(|r| match r {
-                        RocksDB::EloqDssRocksdb(s) => Some(s.peer_host_ports.clone()),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
 
                 for hp in dss_hosts {
                     let parts: Vec<&str> = hp.split(':').collect();

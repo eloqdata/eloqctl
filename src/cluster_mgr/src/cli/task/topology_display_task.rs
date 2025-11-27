@@ -203,7 +203,7 @@ impl TaskExecutor for TopologyDisplayTask {
             }
         }
 
-        // Append DSS (RocksDBCloud) service host/port if configured
+        // Append DSS service host/port if configured (RocksDBCloud or DataStoreService Remote mode)
         if let Ok(Some(deploy_cfg)) = STATE_MGR
             .load_deployment_from_state(self.cluster_name.as_str())
             .await
@@ -225,6 +225,31 @@ impl TaskExecutor for TopologyDisplayTask {
                             "\n\nDSS Service for {}:\n{}",
                             self.cluster_name, dss_table
                         ));
+                    }
+                }
+
+                // Display DSS for DataStoreService Remote mode
+                if let Some(ds_service) = &storage.eloqdss {
+                    if ds_service.is_remote_mode() {
+                        if let Some(peer_ports) = ds_service.peer_host_ports.as_ref() {
+                            if !peer_ports.is_empty() {
+                                let mut dss_table = Table::new();
+                                dss_table.set_format(*format::consts::FORMAT_NO_LINESEP_WITH_TITLE);
+                                dss_table.set_titles(row!["Host", "Port"]);
+
+                                for hp in peer_ports {
+                                    if let Some((h, p)) = hp.split_once(':') {
+                                        dss_table
+                                            .add_row(Row::new(vec![Cell::new(h), Cell::new(p)]));
+                                    }
+                                }
+
+                                output.push_str(&format!(
+                                    "\n\nDSS Service (DataStoreService) for {}:\n{}",
+                                    self.cluster_name, dss_table
+                                ));
+                            }
+                        }
                     }
                 }
             }

@@ -258,11 +258,15 @@ impl CtrlDBTaskGroup {
         }
         if store {
             if let Some(storage) = &deployment.storage_service {
-                // Stop DSS if using EloqDssRocksdb
+                // Stop DSS if using EloqDssRocksdb or DataStoreService Remote mode
                 if matches!(
                     storage.rocksdb,
                     Some(crate::config::storage_service_config::RocksDB::EloqDssRocksdb(_))
-                ) {
+                ) || storage
+                    .eloqdss
+                    .as_ref()
+                    .map_or(false, |ds| ds.is_remote_mode())
+                {
                     let stop_dss = MonographDssCtlTask::from_config(cmd.clone(), config);
                     if !stop_dss.is_empty() {
                         barrier.push(stop_dss.len());
@@ -299,12 +303,16 @@ impl CtrlDBTaskGroup {
                 barrier.push(start_nodes.len());
                 executable.extend(start_nodes);
             } else {
-                // Start DSS only when rocksdb is ELOQDSS_ROCKSDB
+                // Start DSS only when rocksdb is ELOQDSS_ROCKSDB or DataStoreService Remote mode
                 if let Some(storage) = &deployment.storage_service {
                     if matches!(
                         storage.rocksdb,
                         Some(crate::config::storage_service_config::RocksDB::EloqDssRocksdb(_))
-                    ) {
+                    ) || storage
+                        .eloqdss
+                        .as_ref()
+                        .map_or(false, |ds| ds.is_remote_mode())
+                    {
                         use crate::cli::task::monograph_dss_ctl_task::MonographDssCtlTask;
                         let start_dss = MonographDssCtlTask::from_config(start_cmd.clone(), config);
                         barrier.push(start_dss.len());
@@ -382,12 +390,16 @@ impl CtrlDBTaskGroup {
         let deployment = &config.deployment;
         let mut executable = IndexMap::new();
 
-        // DSS status (when rocksdb is EloqDssRocksdb)
+        // DSS status (when rocksdb is EloqDssRocksdb or DataStoreService Remote mode)
         if let Some(storage) = &deployment.storage_service {
             if matches!(
                 storage.rocksdb,
                 Some(crate::config::storage_service_config::RocksDB::EloqDssRocksdb(_))
-            ) {
+            ) || storage
+                .eloqdss
+                .as_ref()
+                .map_or(false, |ds| ds.is_remote_mode())
+            {
                 let dss_tasks = MonographDssCtlTask::from_config(cmd.clone(), config);
                 if !dss_tasks.is_empty() {
                     executable.extend(dss_tasks);
