@@ -5,3 +5,4 @@ wget
 curl
 unzip
 rsync
+rclone

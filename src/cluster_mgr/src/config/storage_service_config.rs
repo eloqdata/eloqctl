@@ -329,6 +329,32 @@ pub enum DataStoreServiceBackend {
     // BigTable(BigTableBackendConfig),
 }
 
+/// Cloud storage configuration for EloqStore
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct EloqStoreCloudConfig {
+    /// Cloud storage type (e.g., "s3", "azure", "gcs")
+    #[serde(default = "default_cloud_type")]
+    pub cloud_type: String,
+    /// Cloud provider (e.g., "Minio", "AWS", "Other")
+    #[serde(default = "default_cloud_provider")]
+    pub cloud_provider: String,
+    /// Access key ID for object storage (S3/MinIO)
+    pub access_key_id: String,
+    /// Secret access key for object storage (S3/MinIO)
+    pub secret_access_key: String,
+    /// Endpoint URL for object storage (e.g., http://127.0.0.1:9900 for MinIO)
+    pub endpoint: String,
+}
+
+fn default_cloud_type() -> String {
+    "s3".to_string()
+}
+
+fn default_cloud_provider() -> String {
+    "Minio".to_string()
+}
+
 /// Configuration for EloqStore backend
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -336,9 +362,23 @@ pub struct EloqStoreConfig {
     pub eloq_store_worker_num: Option<u32>,
     pub eloq_store_data_path_list: Option<String>,
     /// Cloud store path for cloud mode (empty or None means local mode)
+    /// Format: "remote:path" where remote is rclone config name
     pub eloq_store_cloud_store_path: Option<String>,
     /// Cloud worker count for cloud mode
     pub eloq_store_cloud_worker_count: Option<u32>,
+    /// Data append mode for EloqStore (default: false)
+    #[serde(default = "default_eloq_store_data_append_mode")]
+    pub eloq_store_data_append_mode: Option<bool>,
+    /// Rclone daemon ports (comma-separated), one rclone process per port
+    pub eloq_store_cloud_store_daemon_ports: Option<String>,
+    /// Cloud storage configuration (required when cloud_store_path is set)
+    /// Using #[serde(flatten)] to flatten the nested structure in YAML
+    #[serde(flatten)]
+    pub eloq_store_cloud_config: Option<EloqStoreCloudConfig>,
+}
+
+fn default_eloq_store_data_append_mode() -> Option<bool> {
+    Some(false)
 }
 
 /// DataStoreService configuration
@@ -391,5 +431,55 @@ impl DataStoreService {
         } else {
             false // Local mode doesn't need DSS process
         }
+    }
+}
+
+impl EloqStoreConfig {
+    /// Returns true if cloud mode is enabled (cloud_store_path is not empty)
+    pub fn is_cloud_mode(&self) -> bool {
+        self.eloq_store_cloud_store_path
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// Parse cloud_store_path into (remote_name, path)
+    /// Format: "remote:path"
+    pub fn parse_cloud_store_path(&self) -> Option<(String, String)> {
+        self.eloq_store_cloud_store_path.as_ref().and_then(|s| {
+            s.split_once(':')
+                .map(|(remote, path)| (remote.to_string(), path.to_string()))
+        })
+    }
+
+    /// Get rclone daemon ports as Vec<String>
+    pub fn get_daemon_ports(&self) -> Vec<String> {
+        self.eloq_store_cloud_store_daemon_ports
+            .as_ref()
+            .map(|s| s.split(',').map(|p| p.trim().to_string()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Get cloud config (returns None if not in cloud mode)
+    pub fn get_cloud_config(&self) -> Option<&EloqStoreCloudConfig> {
+        self.eloq_store_cloud_config.as_ref()
+    }
+
+    /// Compute default eloq_store_data_path for a given eloq_data_path
+    ///
+    /// # Arguments
+    /// * `eloq_data_path` - EloqKV data path, format: `{tx_srv_home}/data/port-{port}`
+    ///
+    /// # Returns
+    /// Default data path: `{eloq_data_path}/eloq_dss/eloqstore_data`
+    ///
+    /// # Example
+    /// ```
+    /// let eloq_data_path = "/tmp/eloqkv_data";
+    /// let default_path = EloqStoreConfig::compute_default_eloq_store_data_path(eloq_data_path);
+    /// // Returns: "/tmp/eloqkv_data/eloq_dss/eloqstore_data"
+    /// ```
+    pub fn compute_default_eloq_store_data_path(eloq_data_path: &str) -> String {
+        format!("{}/eloq_dss/eloqstore_data", eloq_data_path)
     }
 }

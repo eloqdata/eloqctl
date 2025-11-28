@@ -897,7 +897,21 @@ impl Deployment {
                                             "eloq_store_data_path_list",
                                             Some(data_path_list.clone()),
                                         );
+                                    } else {
+                                        // Compute default value if not specified
+                                        // Only write to ini file, don't modify memory
+                                        use crate::config::storage_service_config::EloqStoreConfig;
+                                        let eloq_data_path = format!("{}/data/port-{}", self.tx_srv_home(), port);
+                                        let default_data_path = EloqStoreConfig::compute_default_eloq_store_data_path(&eloq_data_path);
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_data_path_list",
+                                            Some(default_data_path),
+                                        );
                                     }
+                                    // EloqStore Cloud mode configuration
+                                    // When cloud_store_path is set, EloqStore operates in cloud mode
+                                    // using rclone to interact with object storage (S3/MinIO)
                                     if let Some(cloud_path) = &config.eloq_store_cloud_store_path {
                                         if !cloud_path.is_empty() {
                                             ini.set(
@@ -912,6 +926,20 @@ impl Deployment {
                                             SECTION_STORE,
                                             "eloq_store_cloud_worker_count",
                                             Some(cloud_worker_count.to_string()),
+                                        );
+                                    }
+                                    if let Some(cloud_store_daemon_ports) = &config.eloq_store_cloud_store_daemon_ports {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_cloud_store_daemon_ports",
+                                            Some(cloud_store_daemon_ports.clone()),
+                                        );
+                                    }
+                                    if let Some(data_append_mode) = config.eloq_store_data_append_mode {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_data_append_mode",
+                                            Some(data_append_mode.to_string()),
                                         );
                                     }
                                 }
@@ -1353,7 +1381,23 @@ impl Deployment {
                                     Some(data_path_list.clone()),
                                 );
                                 store_fields_set = true;
+                            } else {
+                                // Compute default value if not specified
+                                // Only write to ini file, don't modify memory
+                                // In Remote mode, use DSS port as EloqKV port to compute default path
+                                use crate::config::storage_service_config::EloqStoreConfig;
+                                let eloq_data_path = format!("{}/data/port-{}", self.tx_srv_home(), port);
+                                let default_data_path = EloqStoreConfig::compute_default_eloq_store_data_path(&eloq_data_path);
+                                ini.set(
+                                    "store",
+                                    "eloq_store_data_path_list",
+                                    Some(default_data_path),
+                                );
+                                store_fields_set = true;
                             }
+                            // EloqStore Cloud mode configuration
+                            // When cloud_store_path is set, EloqStore operates in cloud mode
+                            // using rclone to interact with object storage (S3/MinIO)
                             if let Some(cloud_path) = &config.eloq_store_cloud_store_path {
                                 if !cloud_path.is_empty() {
                                     ini.set(
@@ -1369,6 +1413,22 @@ impl Deployment {
                                     "store",
                                     "eloq_store_cloud_worker_count",
                                     Some(cloud_worker_count.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(cloud_store_daemon_ports) = &config.eloq_store_cloud_store_daemon_ports {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_cloud_store_daemon_ports",
+                                    Some(cloud_store_daemon_ports.clone()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(data_append_mode) = config.eloq_store_data_append_mode {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_data_append_mode",
+                                    Some(data_append_mode.to_string()),
                                 );
                                 store_fields_set = true;
                             }

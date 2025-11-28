@@ -63,14 +63,57 @@ impl TaskGroup for InstallDBTaskGroup {
                     executable.extend(cassandra_start);
                 }
             } else if let Some(dss) = &storage_service.eloqdss {
-                // Start DSS server first if using managed remote mode DataStoreService (i.e., not external)
-                if dss.is_remote_mode() && !dss.is_external() {
-                    use crate::cli::task::monograph_dss_ctl_task::MonographDssCtlTask;
-                    let start_dss = MonographDssCtlTask::from_config(install_cmd, cluster_config);
-                    if !start_dss.is_empty() {
-                        barrier.push(start_dss.len());
-                        executable.extend(start_dss);
-                    }
+                // Handle DataStoreService: check backend type and handle accordingly
+                use crate::config::storage_service_config::DataStoreServiceBackend;
+                match dss.backend_config() {
+                    DataStoreServiceBackend::EloqStore(eloq_store_config) => {
+                        // EloqStore backend: handle rclone tasks if cloud mode is enabled
+                        if eloq_store_config.is_cloud_mode() {
+                            use crate::cli::task::rclone_config_task::RcloneConfigTask;
+                            use crate::cli::task::rclone_ctl_task::RcloneCtlTask;
+                            use crate::cli::task::rclone_dir_task::RcloneDirTask;
+
+                            // 1. Create rclone config
+                            let rclone_config_tasks =
+                                RcloneConfigTask::build_tasks(install_cmd.clone(), config);
+                            if !rclone_config_tasks.is_empty() {
+                                barrier.push(rclone_config_tasks.len());
+                                executable.extend(rclone_config_tasks);
+                            }
+
+                            // 2. Create rclone directory
+                            let rclone_dir_tasks =
+                                RcloneDirTask::build_tasks(install_cmd.clone(), config);
+                            if !rclone_dir_tasks.is_empty() {
+                                barrier.push(rclone_dir_tasks.len());
+                                executable.extend(rclone_dir_tasks);
+                            }
+
+                            // 3. Start rclone service (must be before DSS for Remote Internal mode,
+                            // or before bootstrap for Local mode)
+                            let rclone_start_tasks =
+                                RcloneCtlTask::from_config(install_cmd.clone(), config);
+                            if !rclone_start_tasks.is_empty() {
+                                barrier.push(rclone_start_tasks.len());
+                                executable.extend(rclone_start_tasks);
+                            }
+                        }
+
+                        // Start DSS server if using managed remote mode DataStoreService (i.e., not external)
+                        // This must be after rclone is started for Remote Internal mode
+                        // Note: Data directory cleanup for EloqStore Cloud mode is handled in Start flow,
+                        // not in bootstrap/install flow. See CtrlDBTaskGroup::start_tasks for details.
+                        if dss.is_remote_mode() && !dss.is_external() {
+                            use crate::cli::task::monograph_dss_ctl_task::MonographDssCtlTask;
+                            let start_dss =
+                                MonographDssCtlTask::from_config(install_cmd, cluster_config);
+                            if !start_dss.is_empty() {
+                                barrier.push(start_dss.len());
+                                executable.extend(start_dss);
+                            }
+                        }
+                    } // Future backends can be handled here, e.g.:
+                      // DataStoreServiceBackend::BigTable(_) => { ... }
                 }
             }
         }

@@ -1,10 +1,12 @@
 use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
 use crate::cli::task::codis_task::{self, CodisTask};
+use crate::cli::task::eloq_store_data_clean_task::EloqStoreDataCleanTask;
 use crate::cli::task::group::{Config, CtrlDBTaskGroup, MonitorCtlTaskGroup, TaskGroup};
 use crate::cli::task::monograph_dss_ctl_task::MonographDssCtlTask;
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
+use crate::cli::task::rclone_ctl_task::RcloneCtlTask;
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::task_utils::{stop_with_failover, stop_with_hot_standby};
@@ -62,6 +64,17 @@ impl TaskGroup for CtrlDBTaskGroup {
                     if let Some(dss) = &storage.eloqdss {
                         if dss.is_remote_mode() && !dss.is_external() {
                             should_stop_store = true;
+                        } else {
+                            // Also set should_stop_store to true if EloqStore Cloud mode is enabled
+                            use crate::config::storage_service_config::DataStoreServiceBackend;
+                            match dss.backend_config() {
+                                DataStoreServiceBackend::EloqStore(eloq_store_config) => {
+                                    if eloq_store_config.is_cloud_mode() && !dss.is_external() {
+                                        // For stop rclone service
+                                        should_stop_store = true;
+                                    }
+                                } // Future backends can be handled here.
+                            }
                         }
                     }
                 }
@@ -118,6 +131,19 @@ impl TaskGroup for CtrlDBTaskGroup {
                             if let Some(dss) = &storage.eloqdss {
                                 if dss.is_remote_mode() && !dss.is_external() {
                                     final_store = true;
+                                } else {
+                                    // Also set store to true if EloqStore Cloud mode is enabled
+                                    use crate::config::storage_service_config::DataStoreServiceBackend;
+                                    match dss.backend_config() {
+                                        DataStoreServiceBackend::EloqStore(eloq_store_config) => {
+                                            if eloq_store_config.is_cloud_mode()
+                                                && !dss.is_external()
+                                            {
+                                                // For stop rclone service
+                                                final_store = true;
+                                            }
+                                        } // Future backends can be handled here.
+                                    }
                                 }
                             }
                         }
@@ -287,24 +313,46 @@ impl CtrlDBTaskGroup {
         }
         if store {
             if let Some(storage) = &deployment.storage_service {
-                // Stop DSS if using EloqDssRocksdb or DataStoreService Remote mode (only if not external)
-                if matches!(
+                if let Some(dss) = &storage.eloqdss {
+                    // EloqDSS storage provider
+                    // Stop DSS if in Remote Internal mode (not external)
+                    if dss.is_remote_mode() && !dss.is_external() {
+                        let stop_dss = MonographDssCtlTask::from_config(cmd.clone(), config);
+                        if !stop_dss.is_empty() {
+                            barrier.push(stop_dss.len());
+                            executable.extend(stop_dss);
+                        }
+                    }
+
+                    use crate::config::storage_service_config::DataStoreServiceBackend;
+                    match dss.backend_config() {
+                        DataStoreServiceBackend::EloqStore(eloq_store_config) => {
+                            if eloq_store_config.is_cloud_mode() {
+                                // Stop Rclone service if EloqStore Cloud mode is enabled
+                                // Rclone must be stopped after DSS, as DSS depends on rclone service
+                                let config_for_rclone = Config::Cluster(config.clone());
+                                let stop_rclone =
+                                    RcloneCtlTask::from_config(cmd.clone(), &config_for_rclone);
+                                if !stop_rclone.is_empty() {
+                                    barrier.push(stop_rclone.len());
+                                    executable.extend(stop_rclone);
+                                }
+                            }
+                        } // Future backends can be handled here, e.g.:
+                          // DataStoreServiceBackend::BigTable(_) => { ... }
+                    }
+                } else if matches!(
                     storage.rocksdb,
                     Some(crate::config::storage_service_config::RocksDB::EloqDssRocksdb(_))
-                ) || storage
-                    .eloqdss
-                    .as_ref()
-                    .map_or(false, |ds| ds.is_remote_mode() && !ds.is_external())
-                {
+                ) {
+                    // RocksDB storage provider (EloqDssRocksdb)
                     let stop_dss = MonographDssCtlTask::from_config(cmd.clone(), config);
                     if !stop_dss.is_empty() {
                         barrier.push(stop_dss.len());
                         executable.extend(stop_dss);
                     }
-                }
-
-                // Stop Cassandra if configured
-                if storage.inner_cass().is_some() {
+                } else if storage.inner_cass().is_some() {
+                    // Cassandra storage provider
                     let tasks = CassandraCtlTask::from_config(cmd, config);
                     barrier.push(tasks.len());
                     executable.extend(tasks);
@@ -332,6 +380,47 @@ impl CtrlDBTaskGroup {
                 barrier.push(start_nodes.len());
                 executable.extend(start_nodes);
             } else {
+                if let Some(storage) = &deployment.storage_service {
+                    if let Some(dss) = &storage.eloqdss {
+                        use crate::config::storage_service_config::DataStoreServiceBackend;
+                        match dss.backend_config() {
+                            DataStoreServiceBackend::EloqStore(eloq_store_config) => {
+                                if eloq_store_config.is_cloud_mode() {
+                                    // Start Rclone service if EloqStore Cloud mode is enabled
+                                    // Rclone must be started before DSS, as DSS depends on rclone service
+                                    let config_for_rclone = Config::Cluster(config.clone());
+                                    let start_rclone = RcloneCtlTask::from_config(
+                                        start_cmd.clone(),
+                                        &config_for_rclone,
+                                    );
+                                    if !start_rclone.is_empty() {
+                                        barrier.push(start_rclone.len());
+                                        executable.extend(start_rclone);
+                                    }
+
+                                    // Clean EloqStore data directories
+                                    // This is called from both Start flow and Launch flow (Launch calls Start flow).
+                                    // Local mode: clean on EloqKV nodes before starting EloqKV (always clean)
+                                    // Remote Internal mode: clean on DSS nodes before starting DSS
+                                    //   - In Start/Restart flow: DSS is not running, so cleanup will execute
+                                    //   - In Launch flow: DSS is already running (started in bootstrap),
+                                    //     so cleanup will be skipped after checking process status
+                                    let config_for_clean = Config::Cluster(config.clone());
+                                    let clean_data_tasks = EloqStoreDataCleanTask::build_tasks(
+                                        start_cmd.clone(),
+                                        &config_for_clean,
+                                    );
+                                    if !clean_data_tasks.is_empty() {
+                                        barrier.push(clean_data_tasks.len());
+                                        executable.extend(clean_data_tasks);
+                                    }
+                                }
+                            } // Future backends can be handled here, e.g.:
+                              // DataStoreServiceBackend::BigTable(_) => { ... }
+                        }
+                    }
+                }
+
                 // Start DSS only when rocksdb is ELOQDSS_ROCKSDB or DataStoreService Remote mode (only if not external)
                 if let Some(storage) = &deployment.storage_service {
                     if matches!(
