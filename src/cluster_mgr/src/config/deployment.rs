@@ -1254,6 +1254,19 @@ impl Deployment {
                     ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
                 }
             }
+
+            // Fix the value of eloq_store_worker_num to be same as core_number
+            if ini.get(SECTION_STORE, "eloq_store_worker_num").is_some() {
+                if let Some(core_number_str) = ini.get(SECTION_LOCAL, "core_number") {
+                    if let Ok(core_number) = core_number_str.parse::<u16>() {
+                        ini.set(
+                            SECTION_STORE,
+                            "eloq_store_worker_num",
+                            Some(core_number.to_string()),
+                        );
+                    }
+                }
+            }
         } else {
             // Create the redis_local.ini file in the cluster's monitor directory
             cnf_path = upload_dir()
