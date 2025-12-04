@@ -191,21 +191,30 @@ impl StorageService {
     pub fn pretty_name(&self) -> String {
         let provider = self.provider().unwrap();
         if provider == StorageProvider::EloqDSS {
-            return "eloqdss".to_owned();
-        }
-        let mut name = provider.to_string();
-        if let Some(rocks) = &self.rocksdb {
-            name = match rocks {
-                RocksDB::LOCAL(_) => name,
-                RocksDB::S3(_) => "rocks_s3".to_owned(),
-                RocksDB::GCS(_) => "rocks_gcs".to_owned(),
-                // Treat MINIO as S3 for naming/downloading purposes
-                RocksDB::MINIO(_) => "rocks_s3".to_owned(),
-                // DSS RocksDB tarball path key
-                RocksDB::EloqDssRocksdb(_) => "eloqdss_rocksdb".to_owned(),
+            // Return the name depending on the backend type
+            if let Some(dss) = &self.eloqdss {
+                match dss.backend_config() {
+                    DataStoreServiceBackend::EloqStore(_) => "eloqdss_eloqstore".to_owned(),
+                    // future backends can be added here
+                }
+            } else {
+                "eloqdss".to_owned()
             }
+        } else {
+            let mut name = provider.to_string();
+            if let Some(rocks) = &self.rocksdb {
+                name = match rocks {
+                    RocksDB::LOCAL(_) => name,
+                    RocksDB::S3(_) => "rocks_s3".to_owned(),
+                    RocksDB::GCS(_) => "rocks_gcs".to_owned(),
+                    // Treat MINIO as S3 for naming/downloading purposes
+                    RocksDB::MINIO(_) => "rocks_s3".to_owned(),
+                    // DSS RocksDB tarball path key
+                    RocksDB::EloqDssRocksdb(_) => "eloqdss_rocksdb".to_owned(),
+                }
+            }
+            name
         }
-        name
     }
 
     pub fn gen_cassandra_env(&self, cluster_name: &str, install_dir: String) -> Result<PathBuf> {

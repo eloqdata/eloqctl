@@ -143,6 +143,43 @@ impl TaskGroup for UpdateClusterTaskGroup {
             barrier.push(probe.len());
             executable.extend(probe);
         }
+
+        // Add EloqStore Cloud mode data cleaning logic before starting txservice
+        if let Some(storage_service) = &deployment.storage_service {
+            if let Some(dss) = &storage_service.eloqdss {
+                use crate::cli::task::eloq_store_data_clean_task::EloqStoreDataCleanTask;
+                use crate::cli::task::rclone_ctl_task::RcloneCtlTask;
+                use crate::config::storage_service_config::DataStoreServiceBackend;
+                match dss.backend_config() {
+                    DataStoreServiceBackend::EloqStore(eloq_store_config) => {
+                        if eloq_store_config.is_cloud_mode() {
+                            // Start Rclone service if EloqStore Cloud mode is enabled
+                            // Rclone must be started before cleaning data, as it may be needed
+                            let config_for_rclone = Config::Cluster(cluster_config.clone());
+                            let start_rclone =
+                                RcloneCtlTask::from_config(start_cmd.clone(), &config_for_rclone);
+                            if !start_rclone.is_empty() {
+                                barrier.push(start_rclone.len());
+                                executable.extend(start_rclone);
+                            }
+
+                            // Clean EloqStore data directories before starting txservice
+                            // This ensures clean state after binary update
+                            let config_for_clean = Config::Cluster(cluster_config.clone());
+                            let clean_data_tasks = EloqStoreDataCleanTask::build_tasks(
+                                start_cmd.clone(),
+                                &config_for_clean,
+                            );
+                            if !clean_data_tasks.is_empty() {
+                                barrier.push(clean_data_tasks.len());
+                                executable.extend(clean_data_tasks);
+                            }
+                        }
+                    } // Future backends can be handled here
+                }
+            }
+        }
+
         let start_tx =
             MonographTxCtlTask::from_config(start_cmd.clone(), cluster_config, ServerType::Tx);
         barrier.push(start_tx.len());
