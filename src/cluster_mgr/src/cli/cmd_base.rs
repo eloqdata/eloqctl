@@ -1010,7 +1010,6 @@ impl CmdExecutor {
                                 eloq_store_cloud_store_path: None,
                                 eloq_store_cloud_worker_count: None,
                                 eloq_store_cloud_config: None,
-                                eloq_store_cloud_store_daemon_ports: None,
                                 eloq_store_data_append_mode: None,
                             }),
                             peer_host_ports: None,

@@ -137,29 +137,8 @@ impl TaskGroup for RemoveTaskGroup {
                     if let Some(dss) = &store.eloqdss {
                         use crate::config::storage_service_config::DataStoreServiceBackend;
                         match dss.backend_config() {
-                            DataStoreServiceBackend::EloqStore(eloq_store_config) => {
-                                // EloqStore backend: clean up rclone resources if cloud mode is enabled
-                                if eloq_store_config.is_cloud_mode() {
-                                    use crate::cli::task::rclone_config_task::RcloneConfigTask;
-                                    use crate::cli::task::rclone_dir_task::RcloneDirTask;
-
-                                    // 1. Rclone directory purge (rclone purge remote:path)
-                                    // 2. Rclone directory remove (rclone rmdir remote:path)
-                                    let rclone_dir_tasks =
-                                        RcloneDirTask::build_tasks(cmd_arg.clone(), config);
-                                    if !rclone_dir_tasks.is_empty() {
-                                        barrier.push(rclone_dir_tasks.len());
-                                        executable.extend(rclone_dir_tasks);
-                                    }
-
-                                    // 3. Rclone config delete (rclone config delete {remote_name})
-                                    let rclone_config_tasks =
-                                        RcloneConfigTask::build_tasks(cmd_arg.clone(), config);
-                                    if !rclone_config_tasks.is_empty() {
-                                        barrier.push(rclone_config_tasks.len());
-                                        executable.extend(rclone_config_tasks);
-                                    }
-                                }
+                            DataStoreServiceBackend::EloqStore(_eloq_store_config) => {
+                                // EloqStore backend: no rclone cleanup needed
                             } // Future backends can be handled here, e.g.:
                               // DataStoreServiceBackend::BigTable(_) => { ... }
                         }

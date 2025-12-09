@@ -6,7 +6,6 @@ use crate::cli::task::monograph_dss_ctl_task::MonographDssCtlTask;
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
-use crate::cli::task::rclone_ctl_task::RcloneCtlTask;
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::task_utils::{stop_with_failover, stop_with_hot_standby};
@@ -70,7 +69,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                             match dss.backend_config() {
                                 DataStoreServiceBackend::EloqStore(eloq_store_config) => {
                                     if eloq_store_config.is_cloud_mode() && !dss.is_external() {
-                                        // For stop rclone service
+                                        // For EloqStore Cloud mode, stop DSS service
                                         should_stop_store = true;
                                     }
                                 } // Future backends can be handled here.
@@ -139,7 +138,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                                             if eloq_store_config.is_cloud_mode()
                                                 && !dss.is_external()
                                             {
-                                                // For stop rclone service
+                                                // For EloqStore Cloud mode, stop DSS service
                                                 final_store = true;
                                             }
                                         } // Future backends can be handled here.
@@ -326,18 +325,8 @@ impl CtrlDBTaskGroup {
 
                     use crate::config::storage_service_config::DataStoreServiceBackend;
                     match dss.backend_config() {
-                        DataStoreServiceBackend::EloqStore(eloq_store_config) => {
-                            if eloq_store_config.is_cloud_mode() {
-                                // Stop Rclone service if EloqStore Cloud mode is enabled
-                                // Rclone must be stopped after DSS, as DSS depends on rclone service
-                                let config_for_rclone = Config::Cluster(config.clone());
-                                let stop_rclone =
-                                    RcloneCtlTask::from_config(cmd.clone(), &config_for_rclone);
-                                if !stop_rclone.is_empty() {
-                                    barrier.push(stop_rclone.len());
-                                    executable.extend(stop_rclone);
-                                }
-                            }
+                        DataStoreServiceBackend::EloqStore(_eloq_store_config) => {
+                            // EloqStore backend: no rclone tasks needed
                         } // Future backends can be handled here, e.g.:
                           // DataStoreServiceBackend::BigTable(_) => { ... }
                     }
@@ -386,18 +375,6 @@ impl CtrlDBTaskGroup {
                         match dss.backend_config() {
                             DataStoreServiceBackend::EloqStore(eloq_store_config) => {
                                 if eloq_store_config.is_cloud_mode() {
-                                    // Start Rclone service if EloqStore Cloud mode is enabled
-                                    // Rclone must be started before DSS, as DSS depends on rclone service
-                                    let config_for_rclone = Config::Cluster(config.clone());
-                                    let start_rclone = RcloneCtlTask::from_config(
-                                        start_cmd.clone(),
-                                        &config_for_rclone,
-                                    );
-                                    if !start_rclone.is_empty() {
-                                        barrier.push(start_rclone.len());
-                                        executable.extend(start_rclone);
-                                    }
-
                                     // Clean EloqStore data directories
                                     // This is called from both Start flow and Launch flow (Launch calls Start flow).
                                     // Local mode: clean on EloqKV nodes before starting EloqKV (always clean)

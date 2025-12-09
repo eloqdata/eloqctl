@@ -911,9 +911,10 @@ impl Deployment {
                                     }
                                     // EloqStore Cloud mode configuration
                                     // When cloud_store_path is set, EloqStore operates in cloud mode
-                                    // using rclone to interact with object storage (S3/MinIO)
+                                    // using direct S3/MinIO access
                                     if let Some(cloud_path) = &config.eloq_store_cloud_store_path {
                                         if !cloud_path.is_empty() {
+                                            // Write bucket-name
                                             ini.set(
                                                 SECTION_STORE,
                                                 "eloq_store_cloud_store_path",
@@ -928,11 +929,32 @@ impl Deployment {
                                             Some(cloud_worker_count.to_string()),
                                         );
                                     }
-                                    if let Some(cloud_store_daemon_ports) = &config.eloq_store_cloud_store_daemon_ports {
+                                    // Write EloqStoreCloudConfig fields if cloud mode is enabled
+                                    if let Some(cloud_config) = &config.eloq_store_cloud_config {
                                         ini.set(
                                             SECTION_STORE,
-                                            "eloq_store_cloud_store_daemon_ports",
-                                            Some(cloud_store_daemon_ports.clone()),
+                                            "eloq_store_cloud_provider",
+                                            Some(cloud_config.eloq_store_cloud_provider.clone()),
+                                        );
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_cloud_access_key",
+                                            Some(cloud_config.eloq_store_cloud_access_key.clone()),
+                                        );
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_cloud_secret_key",
+                                            Some(cloud_config.eloq_store_cloud_secret_key.clone()),
+                                        );
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_cloud_endpoint",
+                                            Some(cloud_config.eloq_store_cloud_endpoint.clone()),
+                                        );
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_cloud_region",
+                                            Some(cloud_config.eloq_store_cloud_region.clone()),
                                         );
                                     }
                                     if let Some(data_append_mode) = config.eloq_store_data_append_mode {
@@ -1385,7 +1407,6 @@ impl Deployment {
                                     "eloq_store_worker_num",
                                     Some(worker_num.to_string()),
                                 );
-                                store_fields_set = true;
                             }
                             if let Some(data_path_list) = &config.eloq_store_data_path_list {
                                 ini.set(
@@ -1410,7 +1431,7 @@ impl Deployment {
                             }
                             // EloqStore Cloud mode configuration
                             // When cloud_store_path is set, EloqStore operates in cloud mode
-                            // using rclone to interact with object storage (S3/MinIO)
+                            // using direct S3/MinIO access
                             if let Some(cloud_path) = &config.eloq_store_cloud_store_path {
                                 if !cloud_path.is_empty() {
                                     ini.set(
@@ -1429,11 +1450,32 @@ impl Deployment {
                                 );
                                 store_fields_set = true;
                             }
-                            if let Some(cloud_store_daemon_ports) = &config.eloq_store_cloud_store_daemon_ports {
+                            // Write EloqStoreCloudConfig fields if cloud mode is enabled
+                            if let Some(cloud_config) = &config.eloq_store_cloud_config {
                                 ini.set(
                                     "store",
-                                    "eloq_store_cloud_store_daemon_ports",
-                                    Some(cloud_store_daemon_ports.clone()),
+                                    "eloq_store_cloud_provider",
+                                    Some(cloud_config.eloq_store_cloud_provider.clone()),
+                                );
+                                ini.set(
+                                    "store",
+                                    "eloq_store_cloud_access_key",
+                                    Some(cloud_config.eloq_store_cloud_access_key.clone()),
+                                );
+                                ini.set(
+                                    "store",
+                                    "eloq_store_cloud_secret_key",
+                                    Some(cloud_config.eloq_store_cloud_secret_key.clone()),
+                                );
+                                ini.set(
+                                    "store",
+                                    "eloq_store_cloud_endpoint",
+                                    Some(cloud_config.eloq_store_cloud_endpoint.clone()),
+                                );
+                                ini.set(
+                                    "store",
+                                    "eloq_store_cloud_region",
+                                    Some(cloud_config.eloq_store_cloud_region.clone()),
                                 );
                                 store_fields_set = true;
                             }
