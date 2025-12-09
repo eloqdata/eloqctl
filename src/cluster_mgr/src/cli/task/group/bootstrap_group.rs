@@ -104,32 +104,44 @@ impl TaskGroup for InstallDBTaskGroup {
                 false
             };
 
-        let num_hosts_to_process = if process_only_first_host_port {
-            1
+        // Check if we should skip bootstrap for eloqdss single node
+        let mut skip_bootstrap = false;
+        if cluster_config.product() == Product::EloqKV {
+            if let Some(storage_service) = &cluster_config.deployment.storage_service {
+                skip_bootstrap = storage_service.eloqdss.is_some() && host_ports.len() == 1
+            }
+        }
+
+        if !skip_bootstrap {
+            let num_hosts_to_process = if process_only_first_host_port {
+                1
+            } else {
+                host_ports.len()
+            };
+
+            let bootstrap_tasks: IndexMap<TaskId, TaskInstance> = host_ports
+                .iter()
+                .take(num_hosts_to_process)
+                .map(|host_port| {
+                    let mut parts = host_port.split(':');
+                    let bootstrap_host = parts.next().unwrap().to_string();
+                    let bootstrap_port = parts.next().unwrap().to_string();
+
+                    let install_db_host = TaskHost::Remote {
+                        user: conn_user.clone(),
+                        port: ssh_port as usize,
+                        host: bootstrap_host,
+                    };
+                    MonographInstall::from_config(cluster_config, install_db_host, bootstrap_port)
+                })
+                .flat_map(|map| map.into_iter())
+                .collect();
+
+            barrier.push(bootstrap_tasks.len());
+            executable.extend(bootstrap_tasks);
         } else {
-            host_ports.len()
-        };
-
-        let bootstrap_tasks: IndexMap<TaskId, TaskInstance> = host_ports
-            .iter()
-            .take(num_hosts_to_process)
-            .map(|host_port| {
-                let mut parts = host_port.split(':');
-                let bootstrap_host = parts.next().unwrap().to_string();
-                let bootstrap_port = parts.next().unwrap().to_string();
-
-                let install_db_host = TaskHost::Remote {
-                    user: conn_user.clone(),
-                    port: ssh_port as usize,
-                    host: bootstrap_host,
-                };
-                MonographInstall::from_config(cluster_config, install_db_host, bootstrap_port)
-            })
-            .flat_map(|map| map.into_iter())
-            .collect();
-
-        barrier.push(bootstrap_tasks.len());
-        executable.extend(bootstrap_tasks);
+            info!("InstallDBTaskGroup: Skipping bootstrap for eloqdss single node deployment");
+        }
 
         if cluster_config.product() == Product::EloqSQL {
             if cluster_config.deployment.tx_service.tx_host_ports.len() > 1 {
