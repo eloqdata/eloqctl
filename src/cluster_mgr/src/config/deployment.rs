@@ -1196,7 +1196,7 @@ impl Deployment {
                     let bucket = format!("{}-{}", minio.bucket_prefix, minio.bucket_name);
                     ini.set(
                         SECTION_LOCAL,
-                        "txlog_rocksdb_cloud_endpoint_url",
+                        "txlog_rocksdb_cloud_s3_endpoint_url",
                         Some(minio.endpoint.clone()),
                     );
                     ini.set(
@@ -1313,7 +1313,7 @@ impl Deployment {
                     let bucket = format!("{}-{}", minio.bucket_prefix, minio.bucket_name);
                     ini.set(
                         SECTION_LOCAL,
-                        "txlog_rocksdb_cloud_endpoint_url",
+                        "txlog_rocksdb_cloud_s3_endpoint_url",
                         Some(minio.endpoint.clone()),
                     );
                     ini.set(
