@@ -821,6 +821,9 @@ impl Deployment {
                         if let Some(val) = &s3.rocksdb_storage_path {
                             ini.set(SECTION_STORE, "rocksdb_storage_path", Some(val.clone()));
                         }
+                        if let Some(val) = &s3.object_path {
+                            ini.set(SECTION_STORE, "rocksdb_cloud_object_path", Some(val.clone()));
+                        }
                     }
                     RocksDB::EloqDssRocksdb(_eloq_dss) => {
                         // DSS-specific RocksDB config is managed by DSS ini; no KV store fields here
@@ -852,6 +855,9 @@ impl Deployment {
                             "rocksdb_cloud_bucket_prefix",
                             Some(minio.bucket_prefix),
                         );
+                        if let Some(val) = &minio.object_path {
+                            ini.set(SECTION_STORE, "rocksdb_cloud_object_path", Some(val.clone()));
+                        }
                     }
                     RocksDB::GCS(gcs) => {
                         ini.set(SECTION_STORE, "rocksdb_cloud_region", Some(gcs.region));
@@ -875,6 +881,9 @@ impl Deployment {
                             "rocksdb_cloud_sst_file_cache_size",
                             Some(gcs.sst_file_cache_size),
                         );
+                        if let Some(val) = &gcs.object_path {
+                            ini.set(SECTION_STORE, "rocksdb_cloud_object_path", Some(val.clone()));
+                        }
                     }
                 },
                 StorageProvider::EloqDSS => {
@@ -1392,6 +1401,10 @@ impl Deployment {
                         "rocksdb_cloud_sst_file_cache_size",
                         Some(v.clone()),
                     );
+                    store_fields_set = true;
+                }
+                if let Some(v) = &s.object_path {
+                    ini.set("store", "rocksdb_cloud_object_path", Some(v.clone()));
                     store_fields_set = true;
                 }
             }
