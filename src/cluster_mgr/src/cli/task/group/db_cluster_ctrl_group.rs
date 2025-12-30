@@ -104,12 +104,12 @@ impl TaskGroup for CtrlDBTaskGroup {
                     cluster,
                     nodes: Vec::new(),
                 };
-                let (b, exe) = self.start_tasks(start_cmd, cluster_config);
+                let (b, exe) = self.start_tasks(start_cmd, cluster_config, false);
                 barrier.extend(b);
                 executable.extend(exe);
                 (barrier, executable)
             }
-            SubCommand::Start { .. } => self.start_tasks(cmd, cluster_config),
+            SubCommand::Start { .. } => self.start_tasks(cmd, cluster_config, false),
             SubCommand::Stop {
                 cluster,
                 tx,
@@ -352,10 +352,11 @@ impl CtrlDBTaskGroup {
         (barrier, executable)
     }
 
-    fn start_tasks(
+    pub fn start_tasks(
         &self,
         start_cmd: SubCommand,
         config: &DeployConfig,
+        skip_log_service: bool,
     ) -> (Vec<usize>, IndexMap<TaskId, TaskInstance>) {
         let deployment = &config.deployment;
         let mut barrier = vec![];
@@ -417,47 +418,52 @@ impl CtrlDBTaskGroup {
                 }
 
                 // Check log service configuration and log decision
-                if let Some(log_svc) = &deployment.log_service {
-                    let log_nodes_count = log_svc.nodes.len();
-                    let log_hosts: Vec<String> = log_svc
-                        .nodes
-                        .iter()
-                        .map(|n| format!("{}:{}", n.host, n.port))
-                        .collect();
-                    info!(
-                        "Log service is configured with {} node(s): {:?}. Starting log service...",
-                        log_nodes_count, log_hosts
-                    );
-                    let start_log = MonographLogCtlTask::from_config(start_cmd.clone(), config);
-                    if start_log.is_empty() {
-                        warn!(
-                            "Log service is configured but no start tasks were generated. \
-                             This may indicate a configuration error."
-                        );
-                    } else {
-                        barrier.push(start_log.len());
-                        executable.extend(start_log);
+                // Skip if log service was already started earlier (e.g., during launch before bootstrap)
+                if !skip_log_service {
+                    if let Some(log_svc) = &deployment.log_service {
+                        let log_nodes_count = log_svc.nodes.len();
+                        let log_hosts: Vec<String> = log_svc
+                            .nodes
+                            .iter()
+                            .map(|n| format!("{}:{}", n.host, n.port))
+                            .collect();
                         info!(
-                            "Added {} log service start task(s) to execution plan",
-                            start_log.len()
+                            "Log service is configured with {} node(s): {:?}. Starting log service...",
+                            log_nodes_count, log_hosts
                         );
-                    }
+                        let start_log = MonographLogCtlTask::from_config(start_cmd.clone(), config);
+                        if start_log.is_empty() {
+                            warn!(
+                                "Log service is configured but no start tasks were generated. \
+                                 This may indicate a configuration error."
+                            );
+                        } else {
+                            let start_log_len = start_log.len();
+                            barrier.push(start_log_len);
+                            executable.extend(start_log);
+                            info!(
+                                "Added log service start task(s) to execution plan"
+                            );
+                        }
 
-                    let probe = MonographLogProbeTask::from_config(config);
-                    if !probe.is_empty() {
-                        barrier.push(probe.len());
-                        executable.extend(probe);
-                        info!(
-                            "Added {} log service probe task(s) to execution plan",
-                            probe.len()
+                        let probe = MonographLogProbeTask::from_config(config);
+                        if !probe.is_empty() {
+                            let probe_len = probe.len();
+                            barrier.push(probe_len);
+                            executable.extend(probe);
+                            info!(
+                                "Added log service probe task(s) to execution plan"
+                            );
+                        }
+                    } else {
+                        warn!(
+                            "Log service is not configured in deployment. \
+                             Log service will not be started. \
+                             To start log service, add 'log_service' configuration to your deployment YAML."
                         );
                     }
                 } else {
-                    warn!(
-                        "Log service is not configured in deployment. \
-                         Log service will not be started. \
-                         To start log service, add 'log_service' configuration to your deployment YAML."
-                    );
+                    info!("Skipping log service startup (already started earlier in launch sequence)");
                 }
 
                 let start_tx =
