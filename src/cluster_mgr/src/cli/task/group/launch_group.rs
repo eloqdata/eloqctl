@@ -5,6 +5,8 @@ use crate::cli::task::group::{
     CheckTaskGroup, Config, CtrlDBTaskGroup, DeploymentTaskGroup, InstallDBTaskGroup,
     InstallDepPkgTaskGroup, LaunchTaskGroup, MonitorCtlTaskGroup, TaskGroup,
 };
+use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
+use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::task_base::{
     merge_execution, TaskExecutionContext, TaskHost, TaskId, TaskInstance,
@@ -16,7 +18,7 @@ use crate::config::{config_template, CONFIG_PATH_DIR, SSH_PYTHON_SCRIPT};
 use std::collections::HashMap;
 use std::env;
 use tokio::sync::watch;
-use tracing::info;
+use tracing::{info, warn};
 
 #[async_trait::async_trait]
 impl TaskGroup for LaunchTaskGroup {
@@ -95,6 +97,57 @@ impl TaskGroup for LaunchTaskGroup {
             );
         }
 
+        // Start log service before bootstrap (InstallDBTaskGroup) for EloqKV
+        // Log service must be running before eloqkv bootstrap
+        let log_service_startup = if cluster_config.deployment.log_service.is_some()
+            && cluster_config.deployment.storage_service.is_some()
+        {
+            let start_cmd = SubCommand::Start {
+                cluster: cluster_config.deployment.cluster_name.clone(),
+                nodes: Vec::new(),
+            };
+            let mut log_barrier = vec![];
+            let mut log_executable = IndexMap::new();
+
+            let start_log = MonographLogCtlTask::from_config(
+                start_cmd.clone(),
+                cluster_config,
+            );
+            if start_log.is_empty() {
+                warn!(
+                    "Launch: Log service is configured but no start tasks were generated. \
+                     This may indicate a configuration error."
+                );
+            } else {
+                let start_log_len = start_log.len();
+                log_barrier.push(start_log_len);
+                log_executable.extend(start_log);
+                info!(
+                    "Launch: Added {} log service start task(s) before bootstrap",
+                    start_log_len
+                );
+            }
+
+            let probe = MonographLogProbeTask::from_config(cluster_config);
+            if !probe.is_empty() {
+                let probe_len = probe.len();
+                log_barrier.push(probe_len);
+                log_executable.extend(probe);
+                info!(
+                    "Launch: Added {} log service probe task(s) before bootstrap",
+                    probe_len
+                );
+            }
+
+            TaskExecutionContext {
+                task_group: "log-service-startup".to_string(),
+                barrier: Some(log_barrier),
+                executable: log_executable,
+            }
+        } else {
+            TaskExecutionContext::dummy()
+        };
+
         let exe_ctx = vec![
             dep_tasks,
             CheckTaskGroup
@@ -113,6 +166,7 @@ impl TaskGroup for LaunchTaskGroup {
                     config,
                 )
                 .await?,
+            log_service_startup,
             if cluster_config.deployment.storage_service.is_some() {
                 InstallDBTaskGroup
                     .tasks(
@@ -125,15 +179,21 @@ impl TaskGroup for LaunchTaskGroup {
             } else {
                 TaskExecutionContext::dummy()
             },
-            CtrlDBTaskGroup
-                .tasks(
-                    SubCommand::Start {
-                        cluster: cluster_config.deployment.cluster_name.clone(),
-                        nodes: Vec::new(),
-                    },
-                    config,
-                )
-                .await?,
+            {
+                // Create start tasks with skip_log_service=true since log service
+                // was already started before bootstrap
+                let start_cmd = SubCommand::Start {
+                    cluster: cluster_config.deployment.cluster_name.clone(),
+                    nodes: Vec::new(),
+                };
+                let (start_barrier, start_executable) =
+                    CtrlDBTaskGroup.start_tasks(start_cmd, cluster_config, true);
+                TaskExecutionContext {
+                    task_group: "cluster-control-start".to_string(),
+                    barrier: Some(start_barrier),
+                    executable: start_executable,
+                }
+            },
             MonitorCtlTaskGroup
                 .tasks(
                     SubCommand::Monitor {
