@@ -822,7 +822,11 @@ impl Deployment {
                             ini.set(SECTION_STORE, "rocksdb_storage_path", Some(val.clone()));
                         }
                         if let Some(val) = &s3.object_path {
-                            ini.set(SECTION_STORE, "rocksdb_cloud_object_path", Some(val.clone()));
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_cloud_object_path",
+                                Some(val.clone()),
+                            );
                         }
                     }
                     RocksDB::EloqDssRocksdb(_eloq_dss) => {
@@ -856,7 +860,11 @@ impl Deployment {
                             Some(minio.bucket_prefix),
                         );
                         if let Some(val) = &minio.object_path {
-                            ini.set(SECTION_STORE, "rocksdb_cloud_object_path", Some(val.clone()));
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_cloud_object_path",
+                                Some(val.clone()),
+                            );
                         }
                     }
                     RocksDB::GCS(gcs) => {
@@ -882,7 +890,11 @@ impl Deployment {
                             Some(gcs.sst_file_cache_size),
                         );
                         if let Some(val) = &gcs.object_path {
-                            ini.set(SECTION_STORE, "rocksdb_cloud_object_path", Some(val.clone()));
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_cloud_object_path",
+                                Some(val.clone()),
+                            );
                         }
                     }
                 },
