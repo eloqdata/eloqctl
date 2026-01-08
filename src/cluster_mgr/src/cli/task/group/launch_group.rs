@@ -109,10 +109,7 @@ impl TaskGroup for LaunchTaskGroup {
             let mut log_barrier = vec![];
             let mut log_executable = IndexMap::new();
 
-            let start_log = MonographLogCtlTask::from_config(
-                start_cmd.clone(),
-                cluster_config,
-            );
+            let start_log = MonographLogCtlTask::from_config(start_cmd.clone(), cluster_config);
             if start_log.is_empty() {
                 warn!(
                     "Launch: Log service is configured but no start tasks were generated. \

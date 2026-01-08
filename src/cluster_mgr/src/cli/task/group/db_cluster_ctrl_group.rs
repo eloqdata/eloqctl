@@ -441,9 +441,7 @@ impl CtrlDBTaskGroup {
                             let start_log_len = start_log.len();
                             barrier.push(start_log_len);
                             executable.extend(start_log);
-                            info!(
-                                "Added log service start task(s) to execution plan"
-                            );
+                            info!("Added log service start task(s) to execution plan");
                         }
 
                         let probe = MonographLogProbeTask::from_config(config);
@@ -451,9 +449,7 @@ impl CtrlDBTaskGroup {
                             let probe_len = probe.len();
                             barrier.push(probe_len);
                             executable.extend(probe);
-                            info!(
-                                "Added log service probe task(s) to execution plan"
-                            );
+                            info!("Added log service probe task(s) to execution plan");
                         }
                     } else {
                         warn!(
@@ -463,7 +459,9 @@ impl CtrlDBTaskGroup {
                         );
                     }
                 } else {
-                    info!("Skipping log service startup (already started earlier in launch sequence)");
+                    info!(
+                        "Skipping log service startup (already started earlier in launch sequence)"
+                    );
                 }
 
                 let start_tx =
