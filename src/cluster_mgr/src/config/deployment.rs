@@ -1199,7 +1199,7 @@ impl Deployment {
 
             ini = self.build_eloqkv_config(true, port_get.clone())?;
 
-            // If storage is MINIO, add txlog cloud settings to [local]
+            // If storage is MINIO, add txlog cloud settings to [local].
             if let Some(storage) = self.storage_service.as_ref() {
                 if let Some(RocksDB::MINIO(minio)) = storage.rocksdb.as_ref() {
                     let bucket = format!("{}-{}", minio.bucket_prefix, minio.bucket_name);
