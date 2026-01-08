@@ -373,7 +373,7 @@ fn default_eloq_store_cloud_provider() -> String {
 pub struct EloqStoreConfig {
     pub eloq_store_worker_num: Option<u32>,
     pub eloq_store_data_path_list: Option<String>,
-    /// Cloud store path for cloud mode (empty or None means local mode)
+    /// Cloud store path for cloud mode (empty or None means local mode).
     /// Format: bucket-name
     pub eloq_store_cloud_store_path: Option<String>,
     /// Cloud worker count for cloud mode
