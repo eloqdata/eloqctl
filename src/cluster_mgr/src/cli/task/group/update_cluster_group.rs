@@ -11,6 +11,7 @@ use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
 use indexmap::IndexMap;
+use tracing::info;
 
 #[async_trait::async_trait]
 impl TaskGroup for UpdateClusterTaskGroup {
@@ -152,16 +153,27 @@ impl TaskGroup for UpdateClusterTaskGroup {
                 match dss.backend_config() {
                     DataStoreServiceBackend::EloqStore(eloq_store_config) => {
                         if eloq_store_config.is_cloud_mode() {
-                            // Clean EloqStore data directories before starting txservice
-                            // This ensures clean state after binary update
-                            let config_for_clean = Config::Cluster(cluster_config.clone());
-                            let clean_data_tasks = EloqStoreDataCleanTask::build_tasks(
-                                start_cmd.clone(),
-                                &config_for_clean,
-                            );
-                            if !clean_data_tasks.is_empty() {
-                                barrier.push(clean_data_tasks.len());
-                                executable.extend(clean_data_tasks);
+                            // Check if we should skip cleanup based on eloq_store_reuse_local_files
+                            // If eloq_store_reuse_local_files is true, skip cleanup to reuse local files
+                            let should_skip_cleanup = eloq_store_config
+                                .get_cloud_config()
+                                .and_then(|cloud_config| cloud_config.eloq_store_reuse_local_files)
+                                .unwrap_or(false);
+
+                            if !should_skip_cleanup {
+                                // Clean EloqStore data directories before starting txservice
+                                // This ensures clean state after binary update
+                                let config_for_clean = Config::Cluster(cluster_config.clone());
+                                let clean_data_tasks = EloqStoreDataCleanTask::build_tasks(
+                                    start_cmd.clone(),
+                                    &config_for_clean,
+                                );
+                                if !clean_data_tasks.is_empty() {
+                                    barrier.push(clean_data_tasks.len());
+                                    executable.extend(clean_data_tasks);
+                                }
+                            } else {
+                                info!("Skipping EloqStore data cleanup because eloq_store_reuse_local_files is enabled");
                             }
                         }
                     } // Future backends can be handled here

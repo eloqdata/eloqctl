@@ -377,21 +377,32 @@ impl CtrlDBTaskGroup {
                         match dss.backend_config() {
                             DataStoreServiceBackend::EloqStore(eloq_store_config) => {
                                 if eloq_store_config.is_cloud_mode() {
-                                    // Clean EloqStore data directories
-                                    // This is called from both Start flow and Launch flow (Launch calls Start flow).
-                                    // Local mode: clean on EloqKV nodes before starting EloqKV (always clean)
-                                    // Remote Internal mode: clean on DSS nodes before starting DSS
-                                    //   - In Start/Restart flow: DSS is not running, so cleanup will execute
-                                    //   - In Launch flow: DSS is already running (started in bootstrap),
-                                    //     so cleanup will be skipped after checking process status
-                                    let config_for_clean = Config::Cluster(config.clone());
-                                    let clean_data_tasks = EloqStoreDataCleanTask::build_tasks(
-                                        start_cmd.clone(),
-                                        &config_for_clean,
-                                    );
-                                    if !clean_data_tasks.is_empty() {
-                                        barrier.push(clean_data_tasks.len());
-                                        executable.extend(clean_data_tasks);
+                                    // Check if we should skip cleanup based on eloq_store_reuse_local_files
+                                    // If eloq_store_reuse_local_files is true, skip cleanup to reuse local files
+                                    let should_skip_cleanup = eloq_store_config
+                                        .get_cloud_config()
+                                        .and_then(|cloud_config| cloud_config.eloq_store_reuse_local_files)
+                                        .unwrap_or(false);
+
+                                    if !should_skip_cleanup {
+                                        // Clean EloqStore data directories
+                                        // This is called from both Start flow and Launch flow (Launch calls Start flow).
+                                        // Local mode: clean on EloqKV nodes before starting EloqKV
+                                        // Remote Internal mode: clean on DSS nodes before starting DSS
+                                        //   - In Start/Restart flow: DSS is not running, so cleanup will execute
+                                        //   - In Launch flow: DSS is already running (started in bootstrap),
+                                        //     so cleanup will be skipped after checking process status
+                                        let config_for_clean = Config::Cluster(config.clone());
+                                        let clean_data_tasks = EloqStoreDataCleanTask::build_tasks(
+                                            start_cmd.clone(),
+                                            &config_for_clean,
+                                        );
+                                        if !clean_data_tasks.is_empty() {
+                                            barrier.push(clean_data_tasks.len());
+                                            executable.extend(clean_data_tasks);
+                                        }
+                                    } else {
+                                        info!("Skipping EloqStore data cleanup because eloq_store_reuse_local_files is enabled");
                                     }
                                 }
                             } // Future backends can be handled here, e.g.:

@@ -361,6 +361,12 @@ pub struct EloqStoreCloudConfig {
     pub eloq_store_cloud_endpoint: String,
     /// Region for object storage (e.g., "us-east-1")
     pub eloq_store_cloud_region: String,
+    pub eloq_store_cloud_verify_ssl: Option<bool>,
+    pub eloq_store_max_cloud_concurrency: Option<u32>,
+    pub eloq_store_cloud_request_threads: Option<u32>,
+    pub eloq_store_prewarm_cloud_cache: Option<bool>,
+    pub eloq_store_prewarm_task_count: Option<u32>,
+    pub eloq_store_reuse_local_files: Option<bool>,
 }
 
 fn default_eloq_store_cloud_provider() -> String {
@@ -373,11 +379,32 @@ fn default_eloq_store_cloud_provider() -> String {
 pub struct EloqStoreConfig {
     pub eloq_store_worker_num: Option<u32>,
     pub eloq_store_data_path_list: Option<String>,
+    pub eloq_store_open_files_limit: Option<u32>,
+    pub eloq_store_data_page_restart_interval: Option<u32>,
+    pub eloq_store_index_page_restart_interval: Option<u32>,
+    pub eloq_store_init_page_count: Option<u32>,
+    pub eloq_store_skip_verify_checksum: Option<bool>,
+    pub eloq_store_buffer_pool_size: Option<String>,
+    pub eloq_store_manifest_limit: Option<u32>,
+    pub eloq_store_io_queue_size: Option<u32>,
+    pub eloq_store_max_inflight_write: Option<u32>,
+    pub eloq_store_max_write_batch_pages: Option<u32>,
+    pub eloq_store_buf_ring_size: Option<u32>,
+    pub eloq_store_coroutine_stack_size: Option<u32>,
+    pub eloq_store_num_retained_archives: Option<u32>,
+    pub eloq_store_archive_interval_secs: Option<u32>,
+    pub eloq_store_max_archive_tasks: Option<u32>,
+    pub eloq_store_file_amplify_factor: Option<u32>,
+    pub eloq_store_local_space_limit: Option<String>,
+    pub eloq_store_reserve_space_ratio: Option<f32>,
+    pub eloq_store_data_page_size: Option<u32>,
+    pub eloq_store_pages_per_file_shift: Option<u32>,
+    pub eloq_store_overflow_pointers: Option<u32>,
+    pub eloq_store_enable_compression: Option<bool>,
+    pub eloq_store_max_upload_batch: Option<u32>,
     /// Cloud store path for cloud mode (empty or None means local mode).
     /// Format: bucket-name
     pub eloq_store_cloud_store_path: Option<String>,
-    /// Cloud worker count for cloud mode
-    pub eloq_store_cloud_worker_count: Option<u32>,
     /// Data append mode for EloqStore (default: false)
     #[serde(default = "default_eloq_store_data_append_mode")]
     pub eloq_store_data_append_mode: Option<bool>,
@@ -388,7 +415,7 @@ pub struct EloqStoreConfig {
 }
 
 fn default_eloq_store_data_append_mode() -> Option<bool> {
-    Some(false)
+    Some(true)
 }
 
 /// DataStoreService configuration

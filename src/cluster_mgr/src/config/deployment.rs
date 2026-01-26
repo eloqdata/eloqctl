@@ -950,13 +950,166 @@ impl Deployment {
                                             );
                                         }
                                     }
-                                    if let Some(cloud_worker_count) =
-                                        config.eloq_store_cloud_worker_count
-                                    {
+                                    // EloqStoreConfig additional fields
+                                    if let Some(value) = config.eloq_store_open_files_limit {
                                         ini.set(
                                             SECTION_STORE,
-                                            "eloq_store_cloud_worker_count",
-                                            Some(cloud_worker_count.to_string()),
+                                            "eloq_store_open_files_limit",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_data_page_restart_interval {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_data_page_restart_interval",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_index_page_restart_interval {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_index_page_restart_interval",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_init_page_count {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_init_page_count",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_skip_verify_checksum {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_skip_verify_checksum",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = &config.eloq_store_buffer_pool_size {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_buffer_pool_size",
+                                            Some(value.clone()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_manifest_limit {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_manifest_limit",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_io_queue_size {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_io_queue_size",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_max_inflight_write {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_max_inflight_write",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_max_write_batch_pages {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_max_write_batch_pages",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_buf_ring_size {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_buf_ring_size",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_coroutine_stack_size {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_coroutine_stack_size",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_num_retained_archives {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_num_retained_archives",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_archive_interval_secs {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_archive_interval_secs",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_max_archive_tasks {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_max_archive_tasks",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_file_amplify_factor {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_file_amplify_factor",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = &config.eloq_store_local_space_limit {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_local_space_limit",
+                                            Some(value.clone()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_reserve_space_ratio {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_reserve_space_ratio",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_data_page_size {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_data_page_size",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_pages_per_file_shift {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_pages_per_file_shift",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_overflow_pointers {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_overflow_pointers",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_enable_compression {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_enable_compression",
+                                            Some(value.to_string()),
+                                        );
+                                    }
+                                    if let Some(value) = config.eloq_store_max_upload_batch {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_max_upload_batch",
+                                            Some(value.to_string()),
                                         );
                                     }
                                     // Write EloqStoreCloudConfig fields if cloud mode is enabled
@@ -986,6 +1139,48 @@ impl Deployment {
                                             "eloq_store_cloud_region",
                                             Some(cloud_config.eloq_store_cloud_region.clone()),
                                         );
+                                        if let Some(value) = cloud_config.eloq_store_cloud_verify_ssl {
+                                            ini.set(
+                                                SECTION_STORE,
+                                                "eloq_store_cloud_verify_ssl",
+                                                Some(value.to_string()),
+                                            );
+                                        }
+                                        if let Some(value) = cloud_config.eloq_store_max_cloud_concurrency {
+                                            ini.set(
+                                                SECTION_STORE,
+                                                "eloq_store_max_cloud_concurrency",
+                                                Some(value.to_string()),
+                                            );
+                                        }
+                                        if let Some(value) = cloud_config.eloq_store_cloud_request_threads {
+                                            ini.set(
+                                                SECTION_STORE,
+                                                "eloq_store_cloud_request_threads",
+                                                Some(value.to_string()),
+                                            );
+                                        }
+                                        if let Some(value) = cloud_config.eloq_store_prewarm_cloud_cache {
+                                            ini.set(
+                                                SECTION_STORE,
+                                                "eloq_store_prewarm_cloud_cache",
+                                                Some(value.to_string()),
+                                            );
+                                        }
+                                        if let Some(value) = cloud_config.eloq_store_prewarm_task_count {
+                                            ini.set(
+                                                SECTION_STORE,
+                                                "eloq_store_prewarm_task_count",
+                                                Some(value.to_string()),
+                                            );
+                                        }
+                                        if let Some(value) = cloud_config.eloq_store_reuse_local_files {
+                                            ini.set(
+                                                SECTION_STORE,
+                                                "eloq_store_reuse_local_files",
+                                                Some(value.to_string()),
+                                            );
+                                        }
                                     }
                                     if let Some(data_append_mode) =
                                         config.eloq_store_data_append_mode
@@ -1481,11 +1676,188 @@ impl Deployment {
                                     store_fields_set = true;
                                 }
                             }
-                            if let Some(cloud_worker_count) = config.eloq_store_cloud_worker_count {
+                            // EloqStoreConfig additional fields
+                            if let Some(value) = config.eloq_store_open_files_limit {
                                 ini.set(
                                     "store",
-                                    "eloq_store_cloud_worker_count",
-                                    Some(cloud_worker_count.to_string()),
+                                    "eloq_store_open_files_limit",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_data_page_restart_interval {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_data_page_restart_interval",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_index_page_restart_interval {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_index_page_restart_interval",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_init_page_count {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_init_page_count",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_skip_verify_checksum {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_skip_verify_checksum",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = &config.eloq_store_buffer_pool_size {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_buffer_pool_size",
+                                    Some(value.clone()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_manifest_limit {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_manifest_limit",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_io_queue_size {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_io_queue_size",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_max_inflight_write {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_max_inflight_write",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_max_write_batch_pages {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_max_write_batch_pages",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_buf_ring_size {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_buf_ring_size",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_coroutine_stack_size {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_coroutine_stack_size",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_num_retained_archives {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_num_retained_archives",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_archive_interval_secs {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_archive_interval_secs",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_max_archive_tasks {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_max_archive_tasks",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_file_amplify_factor {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_file_amplify_factor",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = &config.eloq_store_local_space_limit {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_local_space_limit",
+                                    Some(value.clone()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_reserve_space_ratio {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_reserve_space_ratio",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_data_page_size {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_data_page_size",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_pages_per_file_shift {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_pages_per_file_shift",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_overflow_pointers {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_overflow_pointers",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_enable_compression {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_enable_compression",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_max_upload_batch {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_max_upload_batch",
+                                    Some(value.to_string()),
                                 );
                                 store_fields_set = true;
                             }
@@ -1516,6 +1888,48 @@ impl Deployment {
                                     "eloq_store_cloud_region",
                                     Some(cloud_config.eloq_store_cloud_region.clone()),
                                 );
+                                if let Some(value) = cloud_config.eloq_store_cloud_verify_ssl {
+                                    ini.set(
+                                        "store",
+                                        "eloq_store_cloud_verify_ssl",
+                                        Some(value.to_string()),
+                                    );
+                                }
+                                if let Some(value) = cloud_config.eloq_store_max_cloud_concurrency {
+                                    ini.set(
+                                        "store",
+                                        "eloq_store_max_cloud_concurrency",
+                                        Some(value.to_string()),
+                                    );
+                                }
+                                if let Some(value) = cloud_config.eloq_store_cloud_request_threads {
+                                    ini.set(
+                                        "store",
+                                        "eloq_store_cloud_request_threads",
+                                        Some(value.to_string()),
+                                    );
+                                }
+                                if let Some(value) = cloud_config.eloq_store_prewarm_cloud_cache {
+                                    ini.set(
+                                        "store",
+                                        "eloq_store_prewarm_cloud_cache",
+                                        Some(value.to_string()),
+                                    );
+                                }
+                                if let Some(value) = cloud_config.eloq_store_prewarm_task_count {
+                                    ini.set(
+                                        "store",
+                                        "eloq_store_prewarm_task_count",
+                                        Some(value.to_string()),
+                                    );
+                                }
+                                if let Some(value) = cloud_config.eloq_store_reuse_local_files {
+                                    ini.set(
+                                        "store",
+                                        "eloq_store_reuse_local_files",
+                                        Some(value.to_string()),
+                                    );
+                                }
                                 store_fields_set = true;
                             }
                             if let Some(data_append_mode) = config.eloq_store_data_append_mode {
