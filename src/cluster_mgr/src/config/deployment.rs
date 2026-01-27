@@ -973,14 +973,18 @@ impl Deployment {
                                             Some(value.to_string()),
                                         );
                                     }
-                                    if let Some(value) = config.eloq_store_data_page_restart_interval {
+                                    if let Some(value) =
+                                        config.eloq_store_data_page_restart_interval
+                                    {
                                         ini.set(
                                             SECTION_STORE,
                                             "eloq_store_data_page_restart_interval",
                                             Some(value.to_string()),
                                         );
                                     }
-                                    if let Some(value) = config.eloq_store_index_page_restart_interval {
+                                    if let Some(value) =
+                                        config.eloq_store_index_page_restart_interval
+                                    {
                                         ini.set(
                                             SECTION_STORE,
                                             "eloq_store_index_page_restart_interval",
@@ -1154,42 +1158,54 @@ impl Deployment {
                                             "eloq_store_cloud_region",
                                             Some(cloud_config.eloq_store_cloud_region.clone()),
                                         );
-                                        if let Some(value) = cloud_config.eloq_store_cloud_verify_ssl {
+                                        if let Some(value) =
+                                            cloud_config.eloq_store_cloud_verify_ssl
+                                        {
                                             ini.set(
                                                 SECTION_STORE,
                                                 "eloq_store_cloud_verify_ssl",
                                                 Some(value.to_string()),
                                             );
                                         }
-                                        if let Some(value) = cloud_config.eloq_store_max_cloud_concurrency {
+                                        if let Some(value) =
+                                            cloud_config.eloq_store_max_cloud_concurrency
+                                        {
                                             ini.set(
                                                 SECTION_STORE,
                                                 "eloq_store_max_cloud_concurrency",
                                                 Some(value.to_string()),
                                             );
                                         }
-                                        if let Some(value) = cloud_config.eloq_store_cloud_request_threads {
+                                        if let Some(value) =
+                                            cloud_config.eloq_store_cloud_request_threads
+                                        {
                                             ini.set(
                                                 SECTION_STORE,
                                                 "eloq_store_cloud_request_threads",
                                                 Some(value.to_string()),
                                             );
                                         }
-                                        if let Some(value) = cloud_config.eloq_store_prewarm_cloud_cache {
+                                        if let Some(value) =
+                                            cloud_config.eloq_store_prewarm_cloud_cache
+                                        {
                                             ini.set(
                                                 SECTION_STORE,
                                                 "eloq_store_prewarm_cloud_cache",
                                                 Some(value.to_string()),
                                             );
                                         }
-                                        if let Some(value) = cloud_config.eloq_store_prewarm_task_count {
+                                        if let Some(value) =
+                                            cloud_config.eloq_store_prewarm_task_count
+                                        {
                                             ini.set(
                                                 SECTION_STORE,
                                                 "eloq_store_prewarm_task_count",
                                                 Some(value.to_string()),
                                             );
                                         }
-                                        if let Some(value) = cloud_config.eloq_store_reuse_local_files {
+                                        if let Some(value) =
+                                            cloud_config.eloq_store_reuse_local_files
+                                        {
                                             ini.set(
                                                 SECTION_STORE,
                                                 "eloq_store_reuse_local_files",
