@@ -120,9 +120,8 @@ impl TaskGroup for InstallDBTaskGroup {
                     .map(|ports| !ports.is_empty())
                     .unwrap_or(false);
 
-                skip_bootstrap = storage_service.eloqdss.is_some()
-                    && host_ports.len() == 1
-                    && !has_standby;
+                skip_bootstrap =
+                    storage_service.eloqdss.is_some() && host_ports.len() == 1 && !has_standby;
             }
         }
 
