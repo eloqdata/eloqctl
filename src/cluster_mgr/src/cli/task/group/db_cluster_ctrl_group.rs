@@ -381,7 +381,9 @@ impl CtrlDBTaskGroup {
                                     // If eloq_store_reuse_local_files is true, skip cleanup to reuse local files
                                     let should_skip_cleanup = eloq_store_config
                                         .get_cloud_config()
-                                        .and_then(|cloud_config| cloud_config.eloq_store_reuse_local_files)
+                                        .and_then(|cloud_config| {
+                                            cloud_config.eloq_store_reuse_local_files
+                                        })
                                         .unwrap_or(false);
 
                                     if !should_skip_cleanup {
