@@ -122,7 +122,8 @@ pub fn format_snapshots_for_deletion(snapshots: &[&SnapshotEntity]) -> String {
 
 /// Format snapshot info for restore confirmation display
 /// Shows detailed information about the snapshot to be restored
-pub fn format_snapshot_for_restore(snapshot: &SnapshotEntity) -> String {
+/// is_eloqstore_cloud: if true, snapshot_path contains backup_ts; if false, contains manifest filenames
+pub fn format_snapshot_for_restore(snapshot: &SnapshotEntity, is_eloqstore_cloud: bool) -> String {
     let mut output = String::new();
 
     output.push_str("\n========================================\n");
@@ -151,15 +152,26 @@ pub fn format_snapshot_for_restore(snapshot: &SnapshotEntity) -> String {
         output.push_str("\n  ⚠️  WARNING: Snapshot status is not 'Finished'. Restore may fail!\n");
     }
 
-    // Parse and display manifest information
-    let manifests = split_manifests(&snapshot.snapshot_path);
-    if !manifests.is_empty() {
-        output.push_str(&format!("  Manifest Files: {}\n", manifests.len()));
-        for (idx, manifest) in manifests.iter().enumerate() {
-            output.push_str(&format!("    {}. {}\n", idx + 1, manifest));
+    // Display information based on storage type
+    if is_eloqstore_cloud {
+        // EloqStore: snapshot_path contains backup_ts
+        let backup_ts = snapshot.snapshot_path.trim();
+        if !backup_ts.is_empty() {
+            output.push_str(&format!("  Backup Timestamp: {}\n", backup_ts));
+        } else {
+            output.push_str("  ⚠️  WARNING: No backup timestamp found in snapshot!\n");
         }
     } else {
-        output.push_str("  ⚠️  WARNING: No manifest files found in snapshot!\n");
+        // RocksDB: snapshot_path contains manifest filenames
+        let manifests = split_manifests(&snapshot.snapshot_path);
+        if !manifests.is_empty() {
+            output.push_str(&format!("  Manifest Files: {}\n", manifests.len()));
+            for (idx, manifest) in manifests.iter().enumerate() {
+                output.push_str(&format!("    {}. {}\n", idx + 1, manifest));
+            }
+        } else {
+            output.push_str("  ⚠️  WARNING: No manifest files found in snapshot!\n");
+        }
     }
 
     output.push('\n');

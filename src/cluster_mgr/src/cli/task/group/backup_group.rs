@@ -506,7 +506,29 @@ impl TaskGroup for BackupTaskGroup {
                         // Step 7: Display snapshot info and ask for confirmation
                         use crate::cli::task::backup_utils::format_snapshot_for_restore;
 
-                        println!("{}", format_snapshot_for_restore(&snapshot));
+                        // Determine storage type for display
+                        let is_eloqstore_cloud = cluster_config
+                            .deployment
+                            .storage_service
+                            .as_ref()
+                            .map(|s| {
+                                s.eloqdss
+                                    .as_ref()
+                                    .map(|dss| {
+                                        matches!(
+                                            dss.backend_config(),
+                                            DataStoreServiceBackend::EloqStore(config)
+                                                if config.is_cloud_mode()
+                                        )
+                                    })
+                                    .unwrap_or(false)
+                            })
+                            .unwrap_or(false);
+
+                        println!(
+                            "{}",
+                            format_snapshot_for_restore(&snapshot, is_eloqstore_cloud)
+                        );
 
                         // Use blocking I/O for user confirmation
                         let prompt = "Do you want to proceed with restore?";
