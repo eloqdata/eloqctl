@@ -62,6 +62,18 @@ pub fn extract_all_manifests(response: &ClusterBackupResponse) -> Vec<String> {
     manifests
 }
 
+/// Extract backup_ts from ClusterBackupResponse for EloqStore
+/// Returns the first non-zero backup_ts found, or None if not found
+/// For EloqStore, backup_files is empty but backup_ts contains the timestamp
+pub fn extract_backup_ts(response: &ClusterBackupResponse) -> Option<String> {
+    for backup_info in &response.backup_infos {
+        if backup_info.backup_ts != 0 {
+            return Some(backup_info.backup_ts.to_string());
+        }
+    }
+    None
+}
+
 /// Format snapshots for deletion confirmation display
 pub fn format_snapshots_for_deletion(snapshots: &[&SnapshotEntity]) -> String {
     if snapshots.is_empty() {

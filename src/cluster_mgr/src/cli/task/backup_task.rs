@@ -1,9 +1,10 @@
-use crate::cli::task::backup_utils::{extract_all_manifests, join_manifests};
+use crate::cli::task::backup_utils::{extract_all_manifests, extract_backup_ts, join_manifests};
 use crate::cli::task::grpc::cc_request::ClusterBackupResponse;
 use crate::cli::task::grpc::GrpcClient;
 use crate::cli::task::redis_op_task::parse_cluster_nodes;
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::config::storage_service_config::DataStoreServiceBackend;
 use crate::state::snapshot_info_operation::{SnapshotEntity, SnapshotOperation};
 use crate::state::state_base::StateOperation;
 use crate::state::state_mgr::{SNAPSHOT_STATUS_STATE, STATE_MGR};
@@ -54,6 +55,33 @@ impl BackupTask {
 
     pub fn format_string(current_date_time: DateTime<Utc>) -> String {
         current_date_time.format("%Y-%m-%d-%H-%M-%S").to_string()
+    }
+
+    /// Check if the cluster uses EloqStore cloud storage
+    async fn is_eloqstore_cloud(&self) -> bool {
+        match STATE_MGR
+            .load_deployment_from_state(&self.cluster_name)
+            .await
+        {
+            Ok(Some(config)) => config
+                .deployment
+                .storage_service
+                .as_ref()
+                .map(|s| {
+                    s.eloqdss
+                        .as_ref()
+                        .map(|dss| {
+                            matches!(
+                                dss.backend_config(),
+                                DataStoreServiceBackend::EloqStore(eloq_config)
+                                    if eloq_config.is_cloud_mode()
+                            )
+                        })
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false),
+            _ => false,
+        }
     }
 
     // save to sqlite inside eloqctl
@@ -312,29 +340,6 @@ impl TaskExecutor for BackupTask {
                     }
                 }
 
-                // Helper function to extract manifest filename from response
-                // Only extracts when status is "finished" (should only be called when finished)
-                let extract_manifest_filename = |response: &ClusterBackupResponse| -> String {
-                    // Safety check: only extract manifest filename when backup is finished
-                    if response.result.to_lowercase() != "finished" {
-                        return String::new();
-                    }
-
-                    if dest_host.is_empty() {
-                        // Cloud storage - get ALL manifest filenames from ALL node groups
-                        let all_manifests = extract_all_manifests(response);
-                        join_manifests(&all_manifests)
-                    } else {
-                        // Local storage - use existing path construction (single path)
-                        format!(
-                            "{}/{}/{}",
-                            self.back_up_config.path.clone(),
-                            self.cluster_name.clone(),
-                            Self::format_string(self.back_up_config.snapshot_ts)
-                        )
-                    }
-                };
-
                 if trigger_backup_succeed && backup_finished {
                     // Print full response message content
                     if let Some(ref response) = trigger_response {
@@ -351,21 +356,37 @@ impl TaskExecutor for BackupTask {
                         info!("Backup finished. Full response: {:#?}", response);
                     }
 
-                    let snapshot_path = trigger_response
-                        .as_ref()
-                        .map(extract_manifest_filename)
-                        .unwrap_or_else(|| {
-                            if self.back_up_config.path.is_empty() {
-                                String::new()
-                            } else {
-                                format!(
-                                    "{}/{}/{}",
-                                    self.back_up_config.path.clone(),
-                                    self.cluster_name.clone(),
-                                    Self::format_string(self.back_up_config.snapshot_ts)
-                                )
-                            }
-                        });
+                    // Extract snapshot_path based on storage type
+                    let snapshot_path = if dest_host.is_empty() {
+                        // Cloud storage - check storage type and extract accordingly
+                        let is_eloqstore = self.is_eloqstore_cloud().await;
+                        trigger_response
+                            .as_ref()
+                            .filter(|r| r.result.to_lowercase() == "finished")
+                            .map(|r| {
+                                if is_eloqstore {
+                                    // EloqStore: extract backup_ts
+                                    extract_backup_ts(r).unwrap_or_default()
+                                } else {
+                                    // RocksDB: extract manifest filenames
+                                    let all_manifests = extract_all_manifests(r);
+                                    join_manifests(&all_manifests)
+                                }
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        // Local storage - use existing path construction (single path)
+                        if self.back_up_config.path.is_empty() {
+                            String::new()
+                        } else {
+                            format!(
+                                "{}/{}/{}",
+                                self.back_up_config.path.clone(),
+                                self.cluster_name.clone(),
+                                Self::format_string(self.back_up_config.snapshot_ts)
+                            )
+                        }
+                    };
 
                     self.save_snapshot_info(
                         self.back_up_config.snapshot_ts,
@@ -470,13 +491,20 @@ impl TaskExecutor for BackupTask {
                             // Extract manifest filename from response for cloud storage
                             // final_response is only Some when status is "finished" (from line 414-416)
                             let snapshot_path = if dest_host.is_empty() {
-                                // Cloud storage - get ALL manifest filenames
+                                // Cloud storage - check storage type and extract accordingly
+                                let is_eloqstore = self.is_eloqstore_cloud().await;
                                 final_response
                                     .as_ref()
                                     .filter(|r| r.result.to_lowercase() == "finished")
                                     .map(|r| {
-                                        let all_manifests = extract_all_manifests(r);
-                                        join_manifests(&all_manifests)
+                                        if is_eloqstore {
+                                            // EloqStore: extract backup_ts
+                                            extract_backup_ts(r).unwrap_or_default()
+                                        } else {
+                                            // RocksDB: extract manifest filenames
+                                            let all_manifests = extract_all_manifests(r);
+                                            join_manifests(&all_manifests)
+                                        }
                                     })
                                     .unwrap_or_default()
                             } else {

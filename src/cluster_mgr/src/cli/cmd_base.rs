@@ -658,6 +658,31 @@ impl CmdExecutor {
                         let success_task_entity =
                             STATE_MGR.list_snapshots(cluster.to_string()).await?;
 
+                        // Try to load cluster config to determine storage type
+                        let cluster_config = self
+                            .state_mgr
+                            .load_deployment_from_state(&cluster)
+                            .await?
+                            .ok_or_else(|| anyhow!("cluster {} not found", cluster))?;
+
+                        let is_eloqstore_cloud = cluster_config
+                            .deployment
+                            .storage_service
+                            .as_ref()
+                            .map(|s| {
+                                s.eloqdss
+                                    .as_ref()
+                                    .map(|dss| {
+                                        matches!(
+                                            dss.backend_config(),
+                                            DataStoreServiceBackend::EloqStore(config)
+                                                if config.is_cloud_mode()
+                                        )
+                                    })
+                                    .unwrap_or(false)
+                            })
+                            .unwrap_or(false);
+
                         let success_task_vec = success_task_entity
                             .iter()
                             .filter(|snapshot_info_entity| {
@@ -677,19 +702,30 @@ impl CmdExecutor {
                                     "local"
                                 };
 
-                                // For cloud storage, parse and display all manifests
+                                // For cloud storage, parse and display appropriately
                                 let display_path: String = if dest_host.is_empty() {
-                                    // Cloud: show comma-separated list or formatted list
-                                    let manifests = split_manifests(snapshot_path);
-                                    if manifests.len() == 1 {
-                                        snapshot_path.clone() // Single manifest: show as-is
+                                    if is_eloqstore_cloud {
+                                        // EloqStore: snapshot_path stores backup_ts (timestamp)
+                                        if snapshot_path.trim().is_empty() {
+                                            "backup_ts: (empty)".to_string()
+                                        } else {
+                                            format!("backup_ts: {}", snapshot_path.trim())
+                                        }
                                     } else {
-                                        // Multiple manifests: show count and list
-                                        format!(
-                                            "[{} manifests]: {}",
-                                            manifests.len(),
-                                            manifests.join(", ")
-                                        )
+                                        // RocksDB S3: show comma-separated list or formatted list
+                                        let manifests = split_manifests(snapshot_path);
+                                        if manifests.is_empty() {
+                                            "[0 manifests]: ".to_string()
+                                        } else if manifests.len() == 1 {
+                                            snapshot_path.clone() // Single manifest: show as-is
+                                        } else {
+                                            // Multiple manifests: show count and list
+                                            format!(
+                                                "[{} manifests]: {}",
+                                                manifests.len(),
+                                                manifests.join(", ")
+                                            )
+                                        }
                                     }
                                 } else {
                                     // Local: show path as-is
