@@ -108,10 +108,27 @@ impl EloqStoreCloudRestoreTask {
             Ok(ProcessResult::Restored)
         } else {
             // No backup manifest found - this partition was created after backup
-            // Delete all current database manifests (without backup_ts)
+            // Delete only current database manifests (format: manifest_<term>, without _<timestamp> suffix)
+            // Do NOT delete other backup manifests (format: manifest_<term>_<other_ts>)
             let current_manifests: Vec<String> = all_manifests
                 .iter()
-                .filter(|m| !m.contains(&backup_manifest_pattern))
+                .filter(|m| {
+                    // Extract filename from key
+                    if let Some(filename) = m.split('/').last() {
+                        // Current database manifest format: manifest_<term> (no _<timestamp> suffix)
+                        // Backup manifest format: manifest_<term>_<backup_ts>
+                        // Check if filename matches current manifest format (no underscore after term)
+                        if let Some(term_part) = filename.strip_prefix("manifest_") {
+                            // If term_part contains underscore, it's a backup manifest (format: <term>_<ts>)
+                            // If term_part doesn't contain underscore, it's a current manifest (format: <term>)
+                            !term_part.contains('_') && term_part.parse::<u64>().is_ok()
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                })
                 .cloned()
                 .collect();
 
