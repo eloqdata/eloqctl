@@ -12,6 +12,8 @@ pub mod db_update_log_task;
 pub mod db_update_task;
 mod download_task;
 mod eloq_store_data_clean_task;
+mod eloqstore_cloud_delete_task;
+mod eloqstore_cloud_restore_task;
 mod exec_custom_cmd;
 pub mod failover_op_task;
 pub mod group;

@@ -1,5 +1,6 @@
 use crate::cli::task::backup_task::BackupTask;
 use crate::cli::task::backup_utils::{format_snapshots_for_deletion, split_manifests};
+use crate::cli::task::eloqstore_cloud_delete_task::EloqStoreCloudDeleteTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{BackupTaskGroup, Config, TaskGroup};
 use crate::cli::task::local_backup_delete_task::LocalBackupDeleteTask;
@@ -7,11 +8,50 @@ use crate::cli::task::s3_delete_task::S3DeleteTask;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::util::confirm_action;
 use crate::cli::{BackupCommand, SubCommand};
+use crate::config::storage_service_config::{DataStoreServiceBackend, StorageService};
 use crate::config::DeploymentPackage;
 use crate::state::state_mgr::STATE_MGR;
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use std::collections::HashMap;
+
+/// Check if EloqStore is configured in cloud mode
+fn is_eloqstore_cloud(storage_service: &StorageService) -> bool {
+    storage_service
+        .eloqdss
+        .as_ref()
+        .map(|dss| {
+            matches!(
+                dss.backend_config(),
+                DataStoreServiceBackend::EloqStore(config) if config.is_cloud_mode()
+            )
+        })
+        .unwrap_or(false)
+}
+
+/// Get EloqStore S3 configuration
+/// Returns (bucket, aws_id, aws_secret, region, endpoint)
+fn get_eloqstore_s3_config(
+    storage_service: &StorageService,
+) -> Option<(String, String, String, String, Option<String>)> {
+    storage_service
+        .eloqdss
+        .as_ref()
+        .and_then(|dss| match dss.backend_config() {
+            DataStoreServiceBackend::EloqStore(config) if config.is_cloud_mode() => {
+                let cloud_config = config.get_cloud_config()?;
+                let bucket = config.parse_cloud_store_path()?;
+                Some((
+                    bucket,
+                    cloud_config.eloq_store_cloud_access_key.clone(),
+                    cloud_config.eloq_store_cloud_secret_key.clone(),
+                    cloud_config.eloq_store_cloud_region.clone(),
+                    Some(cloud_config.eloq_store_cloud_endpoint.clone()),
+                ))
+            }
+            _ => None,
+        })
+}
 
 #[async_trait::async_trait]
 impl TaskGroup for BackupTaskGroup {
@@ -43,13 +83,22 @@ impl TaskGroup for BackupTaskGroup {
                     } => {
                         let snapshot_ts = Utc::now();
 
-                        // Check if storage is cloud-based
-                        let is_cloud = cluster_config
+                        // Check if storage is cloud-based (RocksDB or EloqStore)
+                        let is_rocksdb_cloud = cluster_config
                             .deployment
                             .storage_service
                             .as_ref()
                             .map(|s| s.is_rocksdb_cloud())
                             .unwrap_or(false);
+
+                        let is_eloqstore_cloud = cluster_config
+                            .deployment
+                            .storage_service
+                            .as_ref()
+                            .map(is_eloqstore_cloud)
+                            .unwrap_or(false);
+
+                        let is_cloud = is_rocksdb_cloud || is_eloqstore_cloud;
 
                         // Validate path: required for local storage, optional for cloud
                         if !is_cloud {
@@ -176,7 +225,19 @@ impl TaskGroup for BackupTaskGroup {
 
                         // Display backups to be deleted and ask for confirmation
                         if !filtered_snapshots.is_empty() {
-                            println!("{}", format_snapshots_for_deletion(&filtered_snapshots));
+                            // Load cluster config for display formatting
+                            let cluster_config_for_display = STATE_MGR
+                                .load_deployment_from_state(cluster)
+                                .await?
+                                .ok_or_else(|| anyhow::anyhow!("cluster {} not found", cluster))?;
+
+                            println!(
+                                "{}",
+                                format_snapshots_for_deletion(
+                                    &filtered_snapshots,
+                                    Some(&cluster_config_for_display)
+                                )
+                            );
 
                             // Use blocking I/O for user confirmation
                             // Spawn blocking task to avoid blocking the async runtime
@@ -300,6 +361,61 @@ impl TaskGroup for BackupTaskGroup {
                                         executable.extend(s3_delete_tasks);
                                     }
                                 }
+                                // Check EloqStore cloud storage
+                                else if is_eloqstore_cloud(storage) {
+                                    if let Some((bucket, aws_id, aws_secret, region, endpoint)) =
+                                        get_eloqstore_s3_config(storage)
+                                    {
+                                        // Create EloqStore deletion tasks
+                                        let mut eloqstore_delete_tasks: IndexMap<
+                                            TaskId,
+                                            TaskInstance,
+                                        > = Default::default();
+
+                                        for snapshot in &cloud_backups {
+                                            // Extract backup_ts from snapshot_path
+                                            let backup_ts = snapshot.snapshot_path.trim();
+                                            if backup_ts.is_empty() {
+                                                tracing::warn!(
+                                                    "No backup timestamp found for EloqStore snapshot: cluster={}, snapshot_ts={}",
+                                                    cluster,
+                                                    snapshot.snapshot_ts
+                                                );
+                                                continue;
+                                            }
+
+                                            let task_id = TaskId {
+                                                cmd: "backup".to_string(),
+                                                task: format!("delete-eloqstore-{}", backup_ts),
+                                                host: "_local".to_string(),
+                                            };
+
+                                            let delete_task = EloqStoreCloudDeleteTask::new(
+                                                task_id.clone(),
+                                                cluster.clone(),
+                                                snapshot.snapshot_ts,
+                                                backup_ts.to_string(),
+                                                bucket.clone(),
+                                                aws_id.clone(),
+                                                aws_secret.clone(),
+                                                region.clone(),
+                                                endpoint.clone(),
+                                                *force,
+                                            );
+
+                                            let task_instance = TaskInstance {
+                                                task_input: HashMap::default(),
+                                                task: Box::new(delete_task),
+                                                task_host: TaskHost::Local,
+                                            };
+
+                                            eloqstore_delete_tasks.insert(task_id, task_instance);
+                                        }
+
+                                        barrier.push(eloqstore_delete_tasks.len());
+                                        executable.extend(eloqstore_delete_tasks);
+                                    }
+                                }
                             }
                         }
 
@@ -356,13 +472,22 @@ impl TaskGroup for BackupTaskGroup {
                         executable.extend(rm_remote_dir);
                     }
                     BackupCommand::Restore { snapshot_ts } => {
-                        // Step 1: Validate storage is cloud-based (S3) - from Phase 1
-                        let is_cloud = cluster_config
+                        // Step 1: Validate storage is cloud-based (S3) - support both RocksDB and EloqStore
+                        let is_rocksdb_cloud = cluster_config
                             .deployment
                             .storage_service
                             .as_ref()
                             .map(|s| s.is_rocksdb_cloud())
                             .unwrap_or(false);
+
+                        let is_eloqstore_cloud = cluster_config
+                            .deployment
+                            .storage_service
+                            .as_ref()
+                            .map(is_eloqstore_cloud)
+                            .unwrap_or(false);
+
+                        let is_cloud = is_rocksdb_cloud || is_eloqstore_cloud;
 
                         if !is_cloud {
                             return Err(anyhow::anyhow!(
@@ -372,13 +497,17 @@ impl TaskGroup for BackupTaskGroup {
                             ));
                         }
 
-                        // Step 2: Validate storage is S3 (not GCS) - from Phase 1
-                        let is_s3 = cluster_config
+                        // Step 2: Validate storage is S3 (not GCS) - support both RocksDB S3 and EloqStore cloud
+                        let is_rocksdb_s3 = cluster_config
                             .deployment
                             .storage_service
                             .as_ref()
                             .map(|s| s.is_rocksdb_s3())
                             .unwrap_or(false);
+
+                        let is_eloqstore_cloud_s3 = is_eloqstore_cloud; // EloqStore cloud always uses S3-compatible API
+
+                        let is_s3 = is_rocksdb_s3 || is_eloqstore_cloud_s3;
 
                         if !is_s3 {
                             return Err(anyhow::anyhow!(
@@ -445,7 +574,29 @@ impl TaskGroup for BackupTaskGroup {
                         // Step 7: Display snapshot info and ask for confirmation
                         use crate::cli::task::backup_utils::format_snapshot_for_restore;
 
-                        println!("{}", format_snapshot_for_restore(&snapshot));
+                        // Determine storage type for display
+                        let is_eloqstore_cloud = cluster_config
+                            .deployment
+                            .storage_service
+                            .as_ref()
+                            .map(|s| {
+                                s.eloqdss
+                                    .as_ref()
+                                    .map(|dss| {
+                                        matches!(
+                                            dss.backend_config(),
+                                            DataStoreServiceBackend::EloqStore(config)
+                                                if config.is_cloud_mode()
+                                        )
+                                    })
+                                    .unwrap_or(false)
+                            })
+                            .unwrap_or(false);
+
+                        println!(
+                            "{}",
+                            format_snapshot_for_restore(&snapshot, is_eloqstore_cloud)
+                        );
 
                         // Use blocking I/O for user confirmation
                         let prompt = "Do you want to proceed with restore?";
@@ -471,19 +622,30 @@ impl TaskGroup for BackupTaskGroup {
                         );
 
                         // Step 8: Create and execute restore task
-                        use crate::cli::task::s3_restore_task::S3RestoreTask;
-
-                        // Get S3 configuration
-                        let (bucket, aws_id, aws_secret, region, endpoint) = cluster_config
+                        // Determine storage type and get appropriate configuration
+                        let storage_service = cluster_config
                             .deployment
                             .storage_service
                             .as_ref()
-                            .and_then(|s| s.get_s3_config())
                             .ok_or_else(|| {
-                                anyhow::anyhow!(
-                                    "Failed to get S3 configuration for restore operation"
-                                )
+                                anyhow::anyhow!("Storage service configuration not found")
                             })?;
+
+                        let (bucket, aws_id, aws_secret, region, endpoint, is_eloqstore) =
+                            if let Some((b, id, secret, r, e)) = storage_service.get_s3_config() {
+                                // RocksDB S3 configuration
+                                (b, id, secret, r, e, false)
+                            } else if let Some((b, id, secret, r, e)) =
+                                get_eloqstore_s3_config(storage_service)
+                            {
+                                // EloqStore cloud configuration
+                                (b, id, secret, r, e, true)
+                            } else {
+                                return Err(anyhow::anyhow!(
+                                    "Failed to get S3 configuration for restore operation. \
+                                    Neither RocksDB S3 nor EloqStore cloud configuration found."
+                                ));
+                            };
 
                         // Create restore task
                         let task_id = TaskId {
@@ -495,21 +657,42 @@ impl TaskGroup for BackupTaskGroup {
                             host: "_local".to_string(),
                         };
 
-                        let restore_task = S3RestoreTask::new(
-                            task_id.clone(),
-                            cluster.clone(),
-                            snapshot.clone(),
-                            bucket,
-                            aws_id,
-                            aws_secret,
-                            region,
-                            endpoint,
-                        );
-
-                        let task_instance = TaskInstance {
-                            task_input: HashMap::default(),
-                            task: Box::new(restore_task),
-                            task_host: TaskHost::Local,
+                        let task_instance = if is_eloqstore {
+                            // Use EloqStore cloud restore task
+                            use crate::cli::task::eloqstore_cloud_restore_task::EloqStoreCloudRestoreTask;
+                            let restore_task = EloqStoreCloudRestoreTask::new(
+                                task_id.clone(),
+                                cluster.clone(),
+                                snapshot.clone(),
+                                bucket,
+                                aws_id,
+                                aws_secret,
+                                region,
+                                endpoint,
+                            );
+                            TaskInstance {
+                                task_input: HashMap::default(),
+                                task: Box::new(restore_task),
+                                task_host: TaskHost::Local,
+                            }
+                        } else {
+                            // Use RocksDB S3 restore task
+                            use crate::cli::task::s3_restore_task::S3RestoreTask;
+                            let restore_task = S3RestoreTask::new(
+                                task_id.clone(),
+                                cluster.clone(),
+                                snapshot.clone(),
+                                bucket,
+                                aws_id,
+                                aws_secret,
+                                region,
+                                endpoint,
+                            );
+                            TaskInstance {
+                                task_input: HashMap::default(),
+                                task: Box::new(restore_task),
+                                task_host: TaskHost::Local,
+                            }
                         };
 
                         let mut executable = IndexMap::new();
