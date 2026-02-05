@@ -34,8 +34,17 @@ pub const SCALED_CLUSTER_CONFIG: &str = "cluster_config";
 
 pub const ASAN_OPTIONS: &str = "abort_on_error=1:disable_coredump=0:halt_on_error=0:fast_unwind_on_malloc=0:leak_check_at_exit=0:detect_stack_use_after_return=1";
 
-pub fn export_asan(log: &str) -> String {
-    format!("export ASAN_OPTIONS={ASAN_OPTIONS}:log_path={log}")
+pub fn export_asan(log: &str, fast_unwind_on_malloc: bool) -> String {
+    let asan_options = build_asan_options(fast_unwind_on_malloc);
+    format!("export ASAN_OPTIONS={asan_options}:log_path={log}")
+}
+
+fn build_asan_options(fast_unwind_on_malloc: bool) -> String {
+    if fast_unwind_on_malloc {
+        ASAN_OPTIONS.replacen("fast_unwind_on_malloc=0", "fast_unwind_on_malloc=1", 1)
+    } else {
+        ASAN_OPTIONS.to_string()
+    }
 }
 
 macro_rules! extract_monitor_link {
@@ -413,7 +422,10 @@ impl DeployConfig {
         let install_dir = self.install_dir();
         let tx_home = self.deployment.tx_srv_home();
         let malloc = if let Some(Version::Debug) = self.deployment.version() {
-            export_asan(&self.deployment.asan_logs())
+            export_asan(
+                &self.deployment.asan_logs(),
+                self.deployment.uses_eloqstore_storage(),
+            )
         } else {
             format!("export LD_PRELOAD={tx_home}/lib/libmimalloc.so.2")
         };
@@ -439,6 +451,7 @@ impl DeployConfig {
             let all_start_cmd_by_hosts = log_srv.log_start_cmd();
             let log_home_dir = self.deployment.log_srv_home();
             let version = self.deployment.version.as_ref().unwrap();
+            let asan_options = build_asan_options(self.deployment.uses_eloqstore_storage());
             let cmd_scripts = all_start_cmd_by_hosts
                 .iter()
                 .flat_map(|(host, cmd_items)| {
@@ -457,7 +470,7 @@ impl DeployConfig {
                                     curr_member.port.to_string().as_str(),
                                 )
                                 .replace("${STORAGE_DIR}", curr_member.storage_path.as_str())
-                                .replace("${ASAN_OPTS}", ASAN_OPTIONS)
+                                .replace("${ASAN_OPTS}", &asan_options)
                                 .replace("${VERSION}", version)
                                 .replace(
                                     "${LOG_GROUP_REPLICA_NUM}",

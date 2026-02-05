@@ -124,7 +124,10 @@ impl TaskExecutor for MonographInstall {
                 // Check if ini_file is not empty before proceeding with bootstrap
                 if !ini_file.is_empty() {
                     let head = if let Some(Version::Debug) = self.config.deployment.version() {
-                        export_asan("logs/bootstrap-asan")
+                        export_asan(
+                            "logs/bootstrap-asan",
+                            self.config.deployment.uses_eloqstore_storage(),
+                        )
                     } else {
                         format!("export LD_PRELOAD={txsv_dir}/lib/libmimalloc.so.2")
                     };

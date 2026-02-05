@@ -328,6 +328,14 @@ impl Deployment {
         format!("{}/{LOG_SERVICE_HOME}", &self.install_dir())
     }
 
+    pub fn uses_eloqstore_storage(&self) -> bool {
+        self.storage_service
+            .as_ref()
+            .and_then(|storage| storage.eloqdss.as_ref())
+            .map(|dss| matches!(dss.backend_config(), DataStoreServiceBackend::EloqStore(_)))
+            .unwrap_or(false)
+    }
+
     pub fn cassandra_home(&self) -> String {
         format!("{}/cassandra", &self.install_dir())
     }
@@ -2390,7 +2398,7 @@ impl Deployment {
             "mkdir -p {logs_dir} ; export GLOG_log_dir={logs_dir} ; export GLOG_max_log_size=1024"
         );
         let mut ld_lib = if let Some(Version::Debug) = self.version() {
-            export_asan(&format!("{logs_dir}/asan"))
+            export_asan(&format!("{logs_dir}/asan"), self.uses_eloqstore_storage())
         } else {
             format!("export LD_PRELOAD={tx_dir}/lib/libmimalloc.so.2")
         };
@@ -2440,7 +2448,7 @@ impl Deployment {
             "mkdir -p {logs_dir} ; export GLOG_log_dir={logs_dir} ; export GLOG_max_log_size=1024"
         );
         let mut ld_lib = if let Some(Version::Debug) = self.version() {
-            export_asan(&format!("{logs_dir}/asan"))
+            export_asan(&format!("{logs_dir}/asan"), self.uses_eloqstore_storage())
         } else {
             format!("export LD_PRELOAD={tx_dir}/lib/libmimalloc.so.2")
         };
