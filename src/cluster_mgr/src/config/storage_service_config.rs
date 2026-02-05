@@ -200,7 +200,7 @@ impl StorageService {
             // Return the name depending on the backend type
             if let Some(dss) = &self.eloqdss {
                 match dss.backend_config() {
-                    DataStoreServiceBackend::EloqStore(_) => "eloqdss_eloqstore".to_owned(),
+                    DataStoreServiceBackend::EloqStore(_) => "eloqstore_s3".to_owned(),
                     // future backends can be added here
                 }
             } else {
