@@ -26,6 +26,7 @@ deployment:
   storage_service:
     eloqdss:
       backend: !eloqstore
+  # We recommend deploying monitoring-related services to a separate machine.
   monitor:
     data_dir: ""
     eloq_metrics:

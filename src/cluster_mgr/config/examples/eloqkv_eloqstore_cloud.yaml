@@ -34,6 +34,7 @@ deployment:
         eloq_store_cloud_secret_key: "xxxxxxxx"
         eloq_store_reuse_local_files: true
         eloq_store_prewarm_cloud_cache: true
+  # We recommend deploying monitoring-related services to a separate machine.
   monitor:
     data_dir: ""
     eloq_metrics:
