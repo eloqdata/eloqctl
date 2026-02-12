@@ -10,6 +10,8 @@ deployment:
   install_dir: "/home/${USER}"
   # If you want to write wal log in your cluster, uncomment enable_wal
   # enable_wal: true
+  # If you want to use io_uring, uncomment enable_io_uring
+  # enable_io_uring: true
   tx_service:
     tx_host_ports: [127.0.0.1:6389]
     enable_cache_replacement: on
@@ -24,9 +26,6 @@ deployment:
   storage_service:
     eloqdss:
       backend: !eloqstore
-        eloq_store_open_files_limit: 4096
-        eloq_store_buffer_pool_size: "1GB"
-        eloq_store_data_append_mode: true
   monitor:
     data_dir: ""
     eloq_metrics:
@@ -43,7 +42,3 @@ deployment:
     node_exporter:
       url: "https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz"
       port: 9200
-  hardware:
-    127.0.0.1:
-      cpu: 8
-      memory: 4096

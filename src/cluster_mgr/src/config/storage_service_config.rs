@@ -200,8 +200,24 @@ impl StorageService {
             // Return the name depending on the backend type
             if let Some(dss) = &self.eloqdss {
                 match dss.backend_config() {
-                    DataStoreServiceBackend::EloqStore(_) => "eloqstore_s3".to_owned(),
-                    // future backends can be added here
+                    DataStoreServiceBackend::EloqStore(config) => {
+                        if config.is_cloud_mode() {
+                            // Cloud mode: check provider
+                            if let Some(cloud_config) = config.get_cloud_config() {
+                                match cloud_config.eloq_store_cloud_provider.as_str() {
+                                    "aws" | "minio" => "eloqstore_s3".to_owned(),
+                                    "gcs" => "eloqstore_gcs".to_owned(),
+                                    _ => "eloqstore_s3".to_owned(), // default to s3 for unknown providers
+                                }
+                            } else {
+                                // Cloud mode but no cloud_config (shouldn't happen, but fallback)
+                                "eloqstore_s3".to_owned()
+                            }
+                        } else {
+                            // Local mode
+                            "eloqstore_local".to_owned()
+                        }
+                    } // future backends can be added here
                 }
             } else {
                 "eloqdss".to_owned()
@@ -405,17 +421,12 @@ pub struct EloqStoreConfig {
     /// Cloud store path for cloud mode (empty or None means local mode).
     /// Format: bucket-name
     pub eloq_store_cloud_store_path: Option<String>,
-    /// Data append mode for EloqStore (default: false)
-    #[serde(default = "default_eloq_store_data_append_mode")]
+    /// Data append mode for EloqStore
     pub eloq_store_data_append_mode: Option<bool>,
     /// Cloud storage configuration (required when cloud_store_path is set)
     /// Using #[serde(flatten)] to flatten the nested structure in YAML
     #[serde(flatten)]
     pub eloq_store_cloud_config: Option<EloqStoreCloudConfig>,
-}
-
-fn default_eloq_store_data_append_mode() -> Option<bool> {
-    Some(true)
 }
 
 /// DataStoreService configuration
