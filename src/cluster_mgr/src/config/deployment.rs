@@ -915,20 +915,21 @@ impl Deployment {
                         if dss.is_local_mode() {
                             match dss.backend_config() {
                                 DataStoreServiceBackend::EloqStore(config) => {
-                                    // Cloud access key and secret key
+                                    // Cloud access key and secret key (only for AWS/MinIO, not for GCS)
                                     if let Some(cloud_config) = &config.eloq_store_cloud_config {
-                                        ini.set(
-                                            SECTION_STORE,
-                                            "aws_secret_key",
-                                            Some(cloud_config.eloq_store_cloud_access_key.clone()),
-                                        );
-                                    }
-                                    if let Some(cloud_config) = &config.eloq_store_cloud_config {
-                                        ini.set(
-                                            SECTION_STORE,
-                                            "aws_access_key_id",
-                                            Some(cloud_config.eloq_store_cloud_secret_key.clone()),
-                                        );
+                                        let provider = cloud_config.eloq_store_cloud_provider.as_str();
+                                        if provider == "aws" || provider == "minio" {
+                                            ini.set(
+                                                SECTION_STORE,
+                                                "aws_secret_key",
+                                                Some(cloud_config.eloq_store_cloud_access_key.clone()),
+                                            );
+                                            ini.set(
+                                                SECTION_STORE,
+                                                "aws_access_key_id",
+                                                Some(cloud_config.eloq_store_cloud_secret_key.clone()),
+                                            );
+                                        }
                                     }
                                     if let Some(worker_num) = config.eloq_store_worker_num {
                                         ini.set(
