@@ -273,6 +273,8 @@ pub struct Deployment {
     pub checkpoint_interval: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub maxclients: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_variables: Option<HashMap<String, String>>,
 }
 
 impl Deployment {
@@ -917,17 +919,26 @@ impl Deployment {
                                 DataStoreServiceBackend::EloqStore(config) => {
                                     // Cloud access key and secret key (only for AWS/MinIO, not for GCS)
                                     if let Some(cloud_config) = &config.eloq_store_cloud_config {
-                                        let provider = cloud_config.eloq_store_cloud_provider.as_str();
+                                        let provider =
+                                            cloud_config.eloq_store_cloud_provider.as_str();
                                         if provider == "aws" || provider == "minio" {
                                             ini.set(
                                                 SECTION_STORE,
                                                 "aws_secret_key",
-                                                Some(cloud_config.eloq_store_cloud_access_key.clone()),
+                                                Some(
+                                                    cloud_config
+                                                        .eloq_store_cloud_access_key
+                                                        .clone(),
+                                                ),
                                             );
                                             ini.set(
                                                 SECTION_STORE,
                                                 "aws_access_key_id",
-                                                Some(cloud_config.eloq_store_cloud_secret_key.clone()),
+                                                Some(
+                                                    cloud_config
+                                                        .eloq_store_cloud_secret_key
+                                                        .clone(),
+                                                ),
                                             );
                                         }
                                     }
@@ -2447,6 +2458,19 @@ impl Deployment {
         Ok(cass_config_vec)
     }
 
+    /// Generate environment variable export statements from configuration
+    fn gen_env_exports(&self) -> String {
+        let mut env_exports = String::new();
+        if let Some(env_vars) = &self.environment_variables {
+            for (key, value) in env_vars {
+                // Escape quotes in value to prevent shell injection
+                let escaped_value = value.replace('"', "\\\"");
+                env_exports.push_str(&format!("export {}=\"{}\"; ", key, escaped_value));
+            }
+        }
+        env_exports
+    }
+
     pub fn srv_start_cmd(&self, port: &str, server_type: ServerType) -> String {
         if server_type == ServerType::Node {
             unreachable!()
@@ -2468,6 +2492,9 @@ impl Deployment {
             "; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH"
         ));
 
+        // Generate environment variable exports from configuration
+        let env_exports = self.gen_env_exports();
+
         // Get the current datetime
         let now = Local::now();
         // Format the datetime as "YYYYMMDD-HHMMSS.microseconds"
@@ -2487,7 +2514,7 @@ impl Deployment {
             }
             Product::EloqKV => {
                 format!(
-                    "cd {tx_dir}; mkdir -p logs/std-output; {glog}; {ld_lib} ; {tx_bin} --config={ini_file} --graceful_quit_on_sigterm=true > logs/std-output/std-out-{port}-{datetime} 2>&1 & cd logs/std-output ; ln -sf std-out-{port}-{datetime} std-out-{port} "
+                    "cd {tx_dir}; mkdir -p logs/std-output; {env_exports}{glog}; {ld_lib} ; {tx_bin} --config={ini_file} --graceful_quit_on_sigterm=true > logs/std-output/std-out-{port}-{datetime} 2>&1 & cd logs/std-output ; ln -sf std-out-{port}-{datetime} std-out-{port} "
                 )
             }
         }
@@ -2518,6 +2545,9 @@ impl Deployment {
             "; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH"
         ));
 
+        // Generate environment variable exports from configuration
+        let env_exports = self.gen_env_exports();
+
         // Get the current datetime
         let now = Local::now();
         // Format the datetime as "YYYYMMDD-HHMMSS.microseconds"
@@ -2537,7 +2567,7 @@ impl Deployment {
             }
             Product::EloqKV => {
                 format!(
-                    "cd {tx_dir}; mkdir -p logs/std-output; {glog}; {ld_lib} ; {tx_bin} --config={ini_file} --graceful_quit_on_sigterm=true > logs/std-output/std-out-{port}-{datetime} 2>&1 & cd logs/std-output ; ln -sf std-out-{port}-{datetime} std-out-{port} "
+                    "cd {tx_dir}; mkdir -p logs/std-output; {env_exports}{glog}; {ld_lib} ; {tx_bin} --config={ini_file} --graceful_quit_on_sigterm=true > logs/std-output/std-out-{port}-{datetime} 2>&1 & cd logs/std-output ; ln -sf std-out-{port}-{datetime} std-out-{port} "
                 )
             }
         }
