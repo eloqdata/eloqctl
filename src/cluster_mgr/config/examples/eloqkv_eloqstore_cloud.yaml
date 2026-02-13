@@ -12,6 +12,10 @@ deployment:
   # enable_wal: true
   # If you want to use io_uring, uncomment enable_io_uring
   # enable_io_uring: true
+  # If use the gcs as the cloud provider, the following two environment variables need to be set.
+  # environment_variables:
+  #  GOOGLE_CLOUD_PROJECT: "xxxxxxxx"
+  #  GOOGLE_APPLICATION_CREDENTIALS: "/path/to/service-account-key.json"
   tx_service:
     tx_host_ports: [127.0.0.1:6389]
     enable_cache_replacement: on
