@@ -39,15 +39,11 @@ pub fn export_asan(
     fast_unwind_on_malloc: bool,
     detect_stack_use_after_return: bool,
 ) -> String {
-    let asan_options =
-        build_asan_options(fast_unwind_on_malloc, detect_stack_use_after_return);
+    let asan_options = build_asan_options(fast_unwind_on_malloc, detect_stack_use_after_return);
     format!("export ASAN_OPTIONS={asan_options}:log_path={log}")
 }
 
-fn build_asan_options(
-    fast_unwind_on_malloc: bool,
-    detect_stack_use_after_return: bool,
-) -> String {
+fn build_asan_options(fast_unwind_on_malloc: bool, detect_stack_use_after_return: bool) -> String {
     let mut options = ASAN_OPTIONS.to_string();
     if fast_unwind_on_malloc {
         options = options.replacen("fast_unwind_on_malloc=0", "fast_unwind_on_malloc=1", 1);
