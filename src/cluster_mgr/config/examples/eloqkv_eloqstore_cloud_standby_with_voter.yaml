@@ -1,0 +1,52 @@
+connection:
+  username: "${USER}"
+  auth_type: "keypair"
+  auth:
+    keypair: "/home/${USER}/.ssh/id_rsa"
+deployment:
+  cluster_name: "eloqkv_with_hot_standby_and_voter"
+  product: "EloqKV"
+  version: "latest"
+  install_dir: "/home/${USER}"
+  # If you want to write wal log in your cluster, uncomment enable_wal
+  # enable_wal: true
+  # If you want to use io_uring, uncomment enable_io_uring
+  # enable_io_uring: true
+  # If use the gcs as the cloud provider, the following two environment variables need to be set.
+  # environment_variables:
+  #   GOOGLE_CLOUD_PROJECT: "xxxxxxxx"
+  #   GOOGLE_APPLICATION_CREDENTIALS: "/path/to/service-account-key.json"
+  tx_service:
+    tx_host_ports: [10.0.0.1:6379]
+    standby_host_ports: [10.0.0.2:6379]
+    voter_host_ports: [10.0.0.3:6379]
+    enable_cache_replacement: on
+
+  storage_service:
+    eloqdss:
+      backend: !eloqstore
+        eloq_store_cloud_store_path: "eloqkv-cluster-standby"
+        eloq_store_cloud_provider: "gcs"
+        eloq_store_cloud_region: "xxxxxxxx"
+        eloq_store_cloud_access_key: "xxxxxxxxx"
+        eloq_store_cloud_secret_key: "xxxxxxxx"
+        eloq_store_cloud_endpoint: "https://storage.googleapis.com"
+        eloq_store_reuse_local_files: true
+        eloq_store_prewarm_cloud_cache: true
+
+  monitor:
+    data_dir: ""
+    eloq_metrics:
+      path: "/eloq_metrics"
+      port: 18081
+    prometheus:
+      download_url: "https://github.com/prometheus/prometheus/releases/download/v2.42.0/prometheus-2.42.0.linux-amd64.tar.gz"
+      port: 9500
+      host: 10.0.0.4
+    grafana:
+      download_url: "https://dl.grafana.com/oss/release/grafana-9.3.6.linux-amd64.tar.gz"
+      port: 3301
+      host: 10.0.0.4
+    node_exporter:
+      url: "https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz"
+      port: 9200
