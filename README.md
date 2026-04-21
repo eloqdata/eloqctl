@@ -11,6 +11,18 @@ Monograph Waiter is a development and management tool for MonographDB that inclu
 
 > NOTE: Currently only fully tested on Ubuntu and sudo user privilege is required to run ``monograph_waiter``.
 
+## Install
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/install.sh | sh
+```
+
+Install a specific release tag:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/install.sh | sh -s -- v0.1.0
+```
+
 ## Build
 
 - If you do not have Rust installed, please follow the command below to install it.

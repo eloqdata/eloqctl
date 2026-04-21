@@ -1,16 +1,14 @@
 #!/bin/sh
 
 if [ -z "$1" ]; then
-    # echo "Usage: $0 <TAG>"
-    # exit 1
-    TAG="main"
+    TAG="latest"
 else
     TAG="$1"
 fi
 
 . /etc/os-release
 
-repo='https://download.eloqdata.com'
+repo='https://github.com/monographdb/eloq_waiter/releases'
 if [ -n "$MONO_MIRRORS" ]; then
     repo=$MONO_MIRRORS
 fi
@@ -35,8 +33,21 @@ mkdir -p "$bin_dir"
 
 install_binary() {
     echo "TAG: ${TAG}"
-    # Download the specific version using TAG
-    curl "$repo/eloqctl/${ARCH}/${TAG}/eloqctl-${TAG}-${OS_ID}-${ARCH}.tar.gz?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqctl.tar.gz" || return 1
+    release_tag="${TAG}"
+    if [ "$TAG" = "latest" ]; then
+        release_tag=$(curl -fsSL "https://api.github.com/repos/monographdb/eloq_waiter/releases/latest" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1) || return 1
+        if [ -z "${release_tag}" ]; then
+            echo "Failed to resolve latest release tag."
+            return 1
+        fi
+    fi
+    tarball="eloqctl-${release_tag}-${OS_ID}-${ARCH}.tar.gz"
+    if [ "$TAG" = "latest" ]; then
+        download_url="${repo}/latest/download/${tarball}"
+    else
+        download_url="${repo}/download/${TAG}/${tarball}"
+    fi
+    curl -fsSL "${download_url}?$(date "+%Y%m%d%H%M%S")" -o "/tmp/eloqctl.tar.gz" || return 1
     tar -zxf "/tmp/eloqctl.tar.gz" -C "$ELOQCTL_HOME" --strip-components 1 --overwrite || return 1
     return 0
 }
