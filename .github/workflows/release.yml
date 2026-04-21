@@ -32,12 +32,20 @@ jobs:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: protobuf-compiler pkg-config libssl-dev
+          version: release-ubuntu24-v1
+
+      - name: Ensure build dependencies are available
         run: |
           sudo apt-get update
-          sudo apt-get install -y protobuf-compiler pkg-config libssl-dev
+          sudo apt-get install -y --no-install-recommends protobuf-compiler pkg-config libssl-dev
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-04-21
 
       - name: Cache Rust build outputs
         uses: swatinem/rust-cache@v2
