@@ -34,8 +34,7 @@ mkdir -p "${PKG_DIR}/bin" "${OUTPUT_DIR}"
 
 pushd "${WORKSPACE_DIR}" >/dev/null
 
-cargo build --package cluster_mgr --release
-cargo build --package rest_api --release
+cargo build --package cluster_mgr --package rest_api --release
 
 "${WORKSPACE_DIR}/version.sh" >"${PKG_DIR}/version" 2>/dev/null || true
 cp -r "${WORKSPACE_DIR}/src/cluster_mgr/config" "${PKG_DIR}/"

@@ -37,10 +37,12 @@ jobs:
           sudo apt-get install -y protobuf-compiler pkg-config libssl-dev
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@master
 
       - name: Cache Rust build outputs
         uses: swatinem/rust-cache@v2
+        with:
+          shared-key: release-ubuntu24
 
       - name: Build release tarball
         env:
