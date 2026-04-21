@@ -40,6 +40,7 @@ fn failover_task_group(
         } else {
             panic!("Invalid command for failover task group");
         };
+    let redis_password = config.redis_password(password);
 
     // Get all Redis host:port combinations from the config
     let mut redis_host_ports = config.get_host_port_list(DeploymentPackage::MonographTx);
@@ -76,7 +77,7 @@ fn failover_task_group(
         redis_host_ports.clone(),
         "cluster topology".to_string(),
         pre_failover_tx,
-        password.clone(),
+        redis_password.clone(),
         true, // Skip checkpoint
     );
 
@@ -103,7 +104,7 @@ fn failover_task_group(
         new_leader_host,
         new_leader_port,
         pre_failover_rx,
-        password.clone(),
+        redis_password.clone(),
     );
 
     let failover_instance = TaskInstance {
@@ -127,7 +128,7 @@ fn failover_task_group(
         redis_host_ports,
         "cluster topology".to_string(),
         post_failover_tx,
-        password,
+        redis_password,
         true, // Skip checkpoint
     );
 

@@ -79,8 +79,8 @@ impl TaskGroup for UpdateConfigTaskGroup {
                 candidate_nodes,
                 "cluster topology".to_string(),
                 redis_op_tx,
-                password.clone(), // Pass the password here
-                true,             // Skip checkpoint
+                deploy_config.redis_password(password.clone()),
+                true, // Skip checkpoint
             );
 
             let redis_task_instance = TaskInstance {

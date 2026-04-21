@@ -176,7 +176,7 @@ impl TaskGroup for BackupTaskGroup {
                         let backup_config = crate::cli::task::backup_task::BackupConfig {
                             path: backup_path,
                             snapshot_ts,
-                            password: password.clone(),
+                            password: cluster_config.redis_password(password.clone()),
                             dest_host: backup_dest_host,
                             dest_user: backup_dest_user,
                         };

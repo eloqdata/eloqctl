@@ -86,7 +86,7 @@ eloqctl backup ${cluster_name} restore --snapshot-ts <TIMESTAMP>
 ```
 
 **Prerequisites:**
-- The cluster must be stopped before performing restore. Use `eloqctl stop --cluster ${cluster_name}` to stop the cluster first.
+- The cluster must be stopped before performing restore. Use `eloqctl stop ${cluster_name} --all` to stop the cluster first.
 - The snapshot must exist in the metadata table. Use `eloqctl backup ${cluster_name} list` to see available snapshots.
 - The snapshot must have status "Finished" (status: 0).
 - The snapshot must be for cloud storage (S3), not local storage.
@@ -201,4 +201,3 @@ Or with force option to clean up orphaned records:
 ```
 eloqctl backup eloqkv-cluster remove --until 1min --force
 ```
-

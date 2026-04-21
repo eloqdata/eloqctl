@@ -71,7 +71,8 @@ pub struct LogService {
     pub aws_access_key_id: Option<String>,
     pub aws_secret_key: Option<String>,
     pub bucket_name: Option<String>,
-    pub endpoint_url: Option<String>,
+    #[serde(alias = "endpoint_url")]
+    pub endpoint: Option<String>,
     pub region: Option<String>,
     pub bucket_prefix: Option<String>,
     pub object_path: Option<String>,
@@ -588,7 +589,7 @@ impl LogService {
                 parts.push(format!("-region={}", v));
             }
         }
-        if let Some(v) = &self.endpoint_url {
+        if let Some(v) = &self.endpoint {
             if !v.is_empty() {
                 parts.push(format!("-endpoint_url={}", v));
             }
@@ -616,6 +617,7 @@ impl LogService {
 mod tests {
     use crate::config::log_service::{LogReadiness, LogService, LogServiceNode};
     use itertools::Itertools;
+    use serde_yaml::from_str;
     use std::collections::HashMap;
 
     fn mock_log_service(
@@ -645,7 +647,7 @@ mod tests {
             aws_access_key_id: None,
             aws_secret_key: None,
             bucket_name: None,
-            endpoint_url: None,
+            endpoint: None,
             region: None,
             bucket_prefix: None,
             object_path: None,
@@ -693,5 +695,44 @@ mod tests {
         let members = log_srv.group_members();
         println!("test_memberships_multi_lg members = {members:#?}");
         assert_eq!(1, members.len());
+    }
+
+    #[test]
+    fn test_log_service_accepts_endpoint_and_endpoint_url() {
+        let endpoint_yaml = r#"
+image: null
+nodes:
+  - host: "127.0.0.1"
+    data_dir: ["/data/log"]
+    port: 9400
+replica: 1
+endpoint: "https://obs.example.com"
+"#;
+        let endpoint_url_yaml = r#"
+image: null
+nodes:
+  - host: "127.0.0.1"
+    data_dir: ["/data/log"]
+    port: 9400
+replica: 1
+endpoint_url: "https://obs.example.com"
+"#;
+
+        let endpoint_cfg: LogService = from_str(endpoint_yaml).unwrap();
+        let endpoint_url_cfg: LogService = from_str(endpoint_url_yaml).unwrap();
+
+        assert_eq!(
+            endpoint_cfg.endpoint.as_deref(),
+            Some("https://obs.example.com")
+        );
+        assert_eq!(
+            endpoint_url_cfg.endpoint.as_deref(),
+            Some("https://obs.example.com")
+        );
+        assert_eq!(
+            endpoint_cfg.rocks_cloud_flag(),
+            "-endpoint_url=https://obs.example.com"
+        );
+        assert_eq!(endpoint_cfg, endpoint_url_cfg);
     }
 }

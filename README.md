@@ -23,6 +23,44 @@ Install a specific release tag:
 curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/install.sh | sh -s -- v0.1.0
 ```
 
+## Quick Start
+
+Start a full EloqKV cluster from a topology file. `eloqctl launch` will start every service declared in the YAML, including tx nodes, `log_service`, storage, and `monitor` if it is configured:
+
+```shell
+eloqctl launch "$ELOQCTL_HOME/config/examples/eloqkv_cassandra.yaml" -s
+```
+
+Check the cluster status and get a client command:
+
+```shell
+eloqctl status eloqkv-cluster
+CLIENT=$(eloqctl -q connect eloqkv-cluster)
+eval "$CLIENT" ping
+```
+
+Stop the entire cluster, including tx, log, storage, and monitor services:
+
+```shell
+eloqctl stop eloqkv-cluster --all
+```
+
+If you do not want to use `launch`, the equivalent step-by-step flow is:
+
+```shell
+eloqctl run-deps /path/to/deployment.yaml
+eloqctl deploy /path/to/deployment.yaml
+eloqctl log-service start eloqkv-cluster
+eloqctl install eloqkv-cluster
+eloqctl start eloqkv-cluster
+eloqctl monitor start eloqkv-cluster
+eloqctl status eloqkv-cluster
+CLIENT=$(eloqctl -q connect eloqkv-cluster)
+eval "$CLIENT" ping
+```
+
+For EloqKV with a standalone `log_service`, start `log-service` before `install`, because bootstrap depends on the log service already being available.
+
 ## Build
 
 - If you do not have Rust installed, please follow the command below to install it.

@@ -192,7 +192,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                         cluster_config.deployment.tx_service.tx_host_ports.clone(),
                         "cluster topology".to_string(),
                         redis_tx.clone(),
-                        None,
+                        cluster_config.redis_password(None),
                         true,
                     );
                     barrier.push(1);

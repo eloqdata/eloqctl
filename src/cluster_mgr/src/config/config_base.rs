@@ -94,6 +94,10 @@ pub struct UnPackFileLocation {
 }
 
 impl DeployConfig {
+    pub fn redis_password(&self, cli_password: Option<String>) -> Option<String> {
+        cli_password.or_else(|| self.deployment.tx_service.requirepass.clone())
+    }
+
     fn unpack_links_map(&self) -> HashMap<DeploymentPackage, Vec<DownloadUrl>> {
         let all_hosts = self.get_host_as_map();
         let cassandra_opt = self
@@ -732,6 +736,7 @@ mod tests {
     use crate::config::monitor::MONITOR_JOB_NAME;
     use crate::config::{DeploymentPackage, CONFIG_PATH_DIR};
     use std::collections::HashMap;
+    use std::fs;
     use std::path::PathBuf;
 
     fn set_config_path_env_and_get() -> String {
@@ -741,12 +746,19 @@ mod tests {
         config_path.to_str().unwrap().to_string()
     }
 
+    fn load_test_config(example_name: &str) -> DeployConfig {
+        let config_path_string = set_config_path_env_and_get();
+        let example_path = format!("{config_path_string}/examples/{example_name}");
+        let content = fs::read_to_string(example_path)
+            .unwrap()
+            .replace("${USER}", &whoami::username())
+            .replace("${HOME}", &std::env::var("HOME").unwrap_or_default());
+        serde_yaml::from_str::<DeployConfig>(&content).unwrap()
+    }
+
     #[test]
     pub fn test_cass_env_gen() {
-        let config_path_string = set_config_path_env_and_get();
-        let config_rs = DeployConfig::load(Some(format!("{config_path_string}/deployment.yaml")));
-        assert!(config_rs.is_ok());
-        let config = config_rs.unwrap();
+        let config = load_test_config("eloqkv_cassandra.yaml");
         let monitor_opt = config.clone().deployment.monitor;
         let monitor = monitor_opt.as_ref();
         assert!(monitor.is_some());
@@ -758,5 +770,21 @@ mod tests {
             HashMap::from([(MONITOR_JOB_NAME.to_string(), mono_host_list)]),
         );
         println!("pro_rs={pro_rs:#?}")
+    }
+
+    #[test]
+    pub fn test_redis_password_falls_back_to_requirepass() {
+        let mut config = load_test_config("eloqkv_cassandra.yaml");
+
+        config.deployment.tx_service.requirepass = Some("requirepass-from-config".to_string());
+
+        assert_eq!(
+            config.redis_password(None),
+            Some("requirepass-from-config".to_string())
+        );
+        assert_eq!(
+            config.redis_password(Some("password-from-cli".to_string())),
+            Some("password-from-cli".to_string())
+        );
     }
 }

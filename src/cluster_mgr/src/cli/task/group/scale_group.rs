@@ -82,6 +82,7 @@ impl super::TaskGroup for ScaleTaskGroup {
             } else {
                 return Err(anyhow!("Invalid command for scale task group"));
             };
+        let redis_password = deploy_config.redis_password(password);
 
         if let Some(resume_id) = &resume {
             if !add_nodes.is_empty()
@@ -368,7 +369,7 @@ impl super::TaskGroup for ScaleTaskGroup {
                 candidate_nodes_that_must_be_valid_in_resume.clone(),
                 "cluster topology".to_string(),
                 redis_op_tx.clone(),
-                password.clone(),
+                redis_password.clone(),
                 true, // Skip checkpoint
             );
 
@@ -455,7 +456,7 @@ impl super::TaskGroup for ScaleTaskGroup {
                 candidate_nodes_before_scale.clone(),
                 "cluster topology".to_string(),
                 redis_op_tx.clone(),
-                password.clone(),
+                redis_password.clone(),
                 true, // Skip checkpoint
             );
 
@@ -822,7 +823,7 @@ impl super::TaskGroup for ScaleTaskGroup {
                     monitor: false,
                     force: true,
                     all: false,
-                    password: password.clone(),
+                    password: redis_password.clone(),
                     nodes: nodes_list.clone(),
                 };
 
@@ -866,7 +867,7 @@ impl super::TaskGroup for ScaleTaskGroup {
                 candidate_nodes_after_scale.clone(),
                 "cluster topology".to_string(),
                 redis_op_scaled_tx.clone(),
-                password.clone(),
+                redis_password.clone(),
                 true, // Skip checkpoint
             );
 
@@ -975,7 +976,7 @@ impl super::TaskGroup for ScaleTaskGroup {
             candidate_nodes_after_scale,
             "cluster topology".to_string(),
             final_topology_tx.clone(),
-            password.clone(),
+            redis_password.clone(),
             true, // Skip checkpoint
         );
 

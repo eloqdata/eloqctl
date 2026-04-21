@@ -277,7 +277,7 @@ pub async fn stop_with_hot_standby(
         password, force, ..
     } = &cmd
     {
-        redis_op_password = password.clone();
+        redis_op_password = config.redis_password(password.clone());
         is_force_stop = *force;
     }
 
@@ -398,7 +398,7 @@ pub async fn stop_with_failover(
         password, nodes, ..
     } = &cmd
     {
-        redis_op_password = password.clone();
+        redis_op_password = config.redis_password(password.clone());
         nodes_to_stop = nodes.clone();
     }
 
