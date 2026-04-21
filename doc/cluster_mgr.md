@@ -2,9 +2,9 @@
 
 ### Install
 ```shell
-bash concourse/install.sh
+bash install.sh
 # Or
-curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/concourse/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/install.sh | sh
 ```
 
 ### Design and implementation
@@ -40,52 +40,55 @@ curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/concou
 Commands:
   deploy
           Deploy the MonographDB cluster by specifying the cluster_topology.yaml file
-          ./cluster_mgr deploy --topology-file  ${PWD}/config/deployment.yaml
+          eloqctl deploy ${PWD}/config/deployment.yaml
 
   install
           bootstrap MonographDB to generate catalog. You need to specify the cluster name.
-          ./cluster_mgr install --cluster $CLUSTER_NAME
+          eloqctl install $CLUSTER_NAME
 
   start
           Start the MonographDB cluster(TxService LogService Storage). with the specified cluster name
-          ./cluster_mgr start  --cluster $CLUSTER_NAME
+          eloqctl start $CLUSTER_NAME
 
   stop
           Stop the MonographDB cluster(TxService LogService Storage). with the specified cluster name.
 
-          ./cluster_mgr stop --cluster $CLUSTER_NAME --force true|false  --all true|false
+          eloqctl stop $CLUSTER_NAME --force --all
 
   restart
           Restart the MonographDB cluster with the specified cluster name.
-          ./cluster_mgr restart --cluster $CLUSTER_NAME
+          eloqctl restart $CLUSTER_NAME
 
   exec
           Execute custom shell commands.
-          ./cluster_mgr exec --command 'ls -la /data1/' --topology-file  ${PWD}/config/deployment.yaml
+          eloqctl exec 'ls -la /data1/' ${PWD}/config/deployment.yaml
   status
           Check MonographDB cluster status. If the username password is given,
            the connection to the target database is established, otherwise, the ps command is executed.
-          ./cluster_mgr status --cluster $CLUSTER_NAME --user $DB_USER --password $DB_PASSWORD
+          eloqctl status $CLUSTER_NAME --user $DB_USER --password $DB_PASSWORD
 
   run-deps
           Install MonographDB runtime dependencies.
-          ./cluster_mgr run-deps --topology-file ${PWD}/config/deployment.yaml
+          eloqctl run-deps ${PWD}/config/deployment.yaml
 
   monitor
           Start or stop monitoring components,including prometheus, grafana,node_exporter,mysql_exporter.
-          ./cluster_mgr monitor --cluster $CLUSTER_NAME --command start | stop
+          eloqctl monitor start $CLUSTER_NAME
+          eloqctl monitor stop $CLUSTER_NAME
 
   log-service
           Start or stop LogService This command is only available if LogService is deployed standalone
-           ./cluster_mgr log-service --cluster $CLUSTER_NAME --command start | stop
+          eloqctl log-service start $CLUSTER_NAME
+          eloqctl log-service stop $CLUSTER_NAME
 
   upgrade
-          According to the deployment.yaml, update the related monograph_db cluster by stopping the cluster, replacing the package, and starting the cluster.
-          ./cluster_mgr upgrade --topology_file ${PWD}/config/deployment.yaml
+          Run the SQLite schema script to create any missing tables.
+          eloqctl upgrade
 
   update-conf
           Update the configuration file and restart the tx service (the default value of restart is true). Note: Please edit conf/my_template.cnf first
-           ./cluster_mgr update-conf --cluster $CLUSTER_NAME --restart true | false
+          eloqctl update-conf $CLUSTER_NAME --restart
+          eloqctl update-conf $CLUSTER_NAME
   help
           Print this message or the help of the given subcommand(s)
 ```

@@ -224,7 +224,7 @@ impl TaskGroup for LaunchTaskGroup {
             cluster_config.get_host_port_list(crate::config::DeploymentPackage::MonographTx),
             "cluster topology".to_string(),
             redis_op_tx.clone(),
-            None, // No password
+            cluster_config.redis_password(None),
             true, // Skip checkpoint
         );
 

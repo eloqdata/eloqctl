@@ -39,6 +39,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
             } => (version.is_some(), cassandra.is_some(), password, force),
             _ => unreachable!(),
         };
+        let redis_password = cluster_config.redis_password(password.clone());
         if !update_eloq && !update_cass {
             return Ok(TaskExecutionContext::dummy());
         }
@@ -82,7 +83,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
             monitor: false,
             force: *force,
             all: false,
-            password: password.clone(),
+            password: redis_password,
             nodes: Vec::new(),
         };
 

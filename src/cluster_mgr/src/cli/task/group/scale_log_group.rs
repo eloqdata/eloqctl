@@ -914,7 +914,7 @@ impl TaskGroup for ScaleLogTaskGroup {
                 tx_nodes,
                 "cluster topology".to_string(),
                 final_topology_tx.clone(),
-                None, // No password needed
+                temp_config.redis_password(None),
                 true, // Skip checkpoint
             );
 

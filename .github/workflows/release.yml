@@ -21,18 +21,8 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.runner }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-22.04
-            os_id: ubuntu22
-            arch: amd64
-          - runner: ubuntu-24.04
-            os_id: ubuntu24
-            arch: amd64
+    name: Build ubuntu24
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -55,8 +45,8 @@ jobs:
       - name: Build release tarball
         env:
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
-          TARGET_OS_ID: ${{ matrix.os_id }}
-          TARGET_ARCH: ${{ matrix.arch }}
+          TARGET_OS_ID: ubuntu24
+          TARGET_ARCH: amd64
         run: |
           chmod +x scripts/build-release-tarball.sh
           scripts/build-release-tarball.sh
@@ -64,7 +54,7 @@ jobs:
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.os_id }}-${{ matrix.arch }}
+          name: release-ubuntu24-amd64
           path: dist/*.tar.gz
           if-no-files-found: error
 
