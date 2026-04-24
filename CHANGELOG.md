@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/monographdb/eloq_waiter/compare/v1.0.2...v1.0.3) (2026-04-24)
+
+
+### Bug Fixes
+
+* **install:** robust latest resolution and idempotent profile setup ([#328](https://github.com/monographdb/eloq_waiter/issues/328)) ([893dafd](https://github.com/monographdb/eloq_waiter/commit/893dafde61a04151a8c5fc1b0af941a9580f3a34))
+
 ## [1.0.2](https://github.com/monographdb/eloq_waiter/compare/v1.0.1...v1.0.2) (2026-04-24)
 
 
