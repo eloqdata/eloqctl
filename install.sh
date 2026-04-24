@@ -40,9 +40,25 @@ TMP_TARBALL="${TMPDIR:-/tmp}/eloqctl.tar.gz"
 mkdir -p "${BIN_DIR}"
 
 resolve_latest_tag() {
-    curl -fsSL "${LATEST_API_URL}" \
-        | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' \
-        | head -n 1
+    latest_tag="$(
+        curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "User-Agent: eloqctl-install-script" \
+            "${LATEST_API_URL}" 2>/dev/null \
+            | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' \
+            | head -n 1
+    )"
+
+    if [ -n "${latest_tag}" ]; then
+        echo "${latest_tag}"
+        return 0
+    fi
+
+    # Fallback for API rate limits or temporary API failures:
+    # follow /releases/latest redirect and parse the /tag/<tag> URL.
+    redirected_url="$(curl -fsSIL -o /dev/null -w '%{url_effective}' "${RELEASES_URL}/latest" 2>/dev/null || true)"
+    printf '%s' "${redirected_url}" | sed -n 's|.*/tag/\([^/?#]*\).*|\1|p'
 }
 
 install_binary() {
@@ -95,8 +111,34 @@ case ":$PATH:" in
     echo "PATH already contains ${BIN_DIR}"
     ;;
 *)
-    printf '\nexport PATH=%s:$PATH\nexport ELOQCTL_HOME=%s\n' "${BIN_DIR}" "${ELOQCTL_HOME}" >>"${PROFILE}"
-    echo "${PROFILE} has been modified to add eloqctl to PATH"
+    PATH_EXPORT_LINE="export PATH=${BIN_DIR}:\$PATH"
+    HOME_EXPORT_LINE="export ELOQCTL_HOME=${ELOQCTL_HOME}"
+
+    path_line_exists=false
+    home_line_exists=false
+    if [ -f "${PROFILE}" ]; then
+        if grep -Fqx "${PATH_EXPORT_LINE}" "${PROFILE}"; then
+            path_line_exists=true
+        fi
+        if grep -Fqx "${HOME_EXPORT_LINE}" "${PROFILE}"; then
+            home_line_exists=true
+        fi
+    fi
+
+    if [ "${path_line_exists}" = false ] || [ "${home_line_exists}" = false ]; then
+        {
+            printf '\n'
+            if [ "${path_line_exists}" = false ]; then
+                printf '%s\n' "${PATH_EXPORT_LINE}"
+            fi
+            if [ "${home_line_exists}" = false ]; then
+                printf '%s\n' "${HOME_EXPORT_LINE}"
+            fi
+        } >>"${PROFILE}"
+        echo "${PROFILE} has been modified to add eloqctl to PATH"
+    else
+        echo "${PROFILE} already contains eloqctl settings"
+    fi
     ;;
 esac
 
