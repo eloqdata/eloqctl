@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.5](https://github.com/monographdb/eloq_waiter/compare/v1.0.4...v1.0.5) (2026-04-27)
+
+
+### Bug Fixes
+
+* improve eloqctl status and quality gates ([#334](https://github.com/monographdb/eloq_waiter/issues/334)) ([008264c](https://github.com/monographdb/eloq_waiter/commit/008264cd5a07ee90af09423636f043a5e515ae25))
+
 ## [1.0.4](https://github.com/monographdb/eloq_waiter/compare/v1.0.3...v1.0.4) (2026-04-24)
 
 
