@@ -25,6 +25,7 @@ use dyn_clone::DynClone;
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum Config {
     Cluster(DeployConfig),

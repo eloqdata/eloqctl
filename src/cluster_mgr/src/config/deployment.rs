@@ -315,11 +315,7 @@ impl Deployment {
     }
 
     pub fn client_port(&self) -> u16 {
-        if self.tx_service.client_port.is_some() {
-            self.tx_service.client_port.unwrap()
-        } else {
-            ELOQSQL_CLIENT_PORT
-        }
+        self.tx_service.client_port.unwrap_or(ELOQSQL_CLIENT_PORT)
     }
 
     pub fn tls_enabled(&self) -> bool {
@@ -792,7 +788,7 @@ impl Deployment {
                 core = core.max((hw.cpu * 2) / 5);
             }
             if union_cass {
-                core = (core + 1) / 2;
+                core = core.div_ceil(2);
             }
         }
         let key = "thread_pool_size";
@@ -1632,7 +1628,7 @@ impl Deployment {
 
     fn is_empty(&self, ini: &Ini, section: &str, key: &str) -> bool {
         ini.get(section, key)
-            .map_or(false, |value| value == "${OVERRIDE}")
+            .is_some_and(|value| value == "${OVERRIDE}")
     }
 
     pub fn gen_eloqkv_node_config(
@@ -1806,7 +1802,7 @@ impl Deployment {
                 let key = "event_dispatcher_num";
                 let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
                 if val.is_none() {
-                    let core_io = (core_tx + 7) / 8;
+                    let core_io = core_tx.div_ceil(8);
                     ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
                 }
 

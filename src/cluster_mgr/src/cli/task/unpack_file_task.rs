@@ -33,6 +33,9 @@ pub struct UnpackFileTask {
 }
 
 fn extract_unpacked_name(raw_file_name: &str) -> String {
+    if raw_file_name.contains("monographdb") {
+        return "monographdb".to_string();
+    }
     for unpacked in REMOTE_UNPACKED_NAMES {
         if !raw_file_name.contains(unpacked) {
             continue;
@@ -106,7 +109,7 @@ impl UnpackFileTask {
 
     pub fn unpack_eloqservers(config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
         let deploy_ref = &config.deployment;
-        let image = deploy_ref.tx_image().split('/').last().unwrap();
+        let image = deploy_ref.tx_image().split('/').next_back().unwrap();
         let tx_home = config.product().home().to_owned();
         let mut tasks = deploy_ref
             .tx_service
@@ -141,7 +144,7 @@ impl UnpackFileTask {
         }
 
         if let Some(srv) = &deploy_ref.log_service {
-            let image = srv.image.as_ref().unwrap().split('/').last().unwrap();
+            let image = srv.image.as_ref().unwrap().split('/').next_back().unwrap();
             let ret = srv
                 .log_host_unique()
                 .iter()
@@ -158,7 +161,7 @@ impl UnpackFileTask {
 
         if let Some(srv) = &deploy_ref.log_service {
             if let Some(image_url) = &srv.image {
-                let image = image_url.split('/').last().unwrap();
+                let image = image_url.split('/').next_back().unwrap();
                 let ret = srv
                     .log_host_unique()
                     .iter()

@@ -582,6 +582,9 @@ mod tests {
                 "t_service_config",
                 "t_snapshot_info",
                 "t_proxy",
+                "t_scale_tx_nodes",
+                "t_topology_tx",
+                "t_topology_log",
             ]
         );
     }

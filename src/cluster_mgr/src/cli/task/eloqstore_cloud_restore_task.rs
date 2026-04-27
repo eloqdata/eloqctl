@@ -23,6 +23,7 @@ pub struct EloqStoreCloudRestoreTask {
 }
 
 impl EloqStoreCloudRestoreTask {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         task_id: TaskId,
         cluster_name: String,
@@ -114,7 +115,7 @@ impl EloqStoreCloudRestoreTask {
                 .iter()
                 .filter(|m| {
                     // Extract filename from key
-                    if let Some(filename) = m.split('/').last() {
+                    if let Some(filename) = m.split('/').next_back() {
                         // Current database manifest format: manifest_<term> (no _<timestamp> suffix)
                         // Backup manifest format: manifest_<term>_<backup_ts>
                         // Check if filename matches current manifest format (no underscore after term)
@@ -211,7 +212,7 @@ fn extract_term_from_backup_manifest(manifest_key: &str, backup_ts: &str) -> Res
     // Extract filename from key
     let filename = manifest_key
         .split('/')
-        .last()
+        .next_back()
         .ok_or_else(|| anyhow::anyhow!("Invalid manifest key format: {}", manifest_key))?;
 
     // Remove "manifest_" prefix
@@ -242,7 +243,7 @@ fn extract_term_from_backup_manifest(manifest_key: &str, backup_ts: &str) -> Res
 fn extract_term_from_current_manifest(manifest_key: &str) -> Option<u64> {
     // Format: {partition_dir}/manifest_<term>
     // Extract filename from key
-    let filename = manifest_key.split('/').last()?;
+    let filename = manifest_key.split('/').next_back()?;
 
     // Remove "manifest_" prefix
     let term_str = filename.strip_prefix("manifest_")?;

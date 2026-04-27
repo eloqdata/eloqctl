@@ -25,6 +25,7 @@ pub struct S3DeleteTask {
 }
 
 impl S3DeleteTask {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         task_id: TaskId,
         cluster_name: String,

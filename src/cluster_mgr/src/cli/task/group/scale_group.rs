@@ -144,7 +144,7 @@ impl super::TaskGroup for ScaleTaskGroup {
             .unwrap_or_else(|| deploy_config.deployment.tx_image().to_string());
         let tx_image_filename = effective_tx_image_url
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("")
             .to_string();
         let effective_version = deploy_config

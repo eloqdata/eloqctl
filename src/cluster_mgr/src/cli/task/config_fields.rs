@@ -791,5 +791,5 @@ pub fn get_field_metadata(field_name: &str) -> Option<&FieldMetadata> {
 pub fn is_cluster_wide_field(field_name: &str) -> bool {
     AVAILABLE_FIELDS
         .get(field_name)
-        .map_or(false, |metadata| metadata.scope == FieldScope::ClusterWide)
+        .is_some_and(|metadata| metadata.scope == FieldScope::ClusterWide)
 }

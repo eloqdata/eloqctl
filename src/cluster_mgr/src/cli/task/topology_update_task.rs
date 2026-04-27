@@ -316,7 +316,7 @@ impl TopologyUpdateTask {
             if let Ok(entries) = fs::read_dir(&host_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_file() && path.extension().map_or(false, |ext| ext == "ini") {
+                    if path.is_file() && path.extension().is_some_and(|ext| ext == "ini") {
                         if let Some(file_name) = path.file_name() {
                             if let Some(file_name_str) = file_name.to_str() {
                                 // Look for a file with the specific port
@@ -549,7 +549,7 @@ impl TopologyUpdateTask {
             if let Ok(entries) = fs::read_dir(&host_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_file() && path.extension().map_or(false, |ext| ext == "ini") {
+                    if path.is_file() && path.extension().is_some_and(|ext| ext == "ini") {
                         if let Some(file_name) = path.file_name() {
                             if let Some(file_name_str) = file_name.to_str() {
                                 // Find the port-specific INI file

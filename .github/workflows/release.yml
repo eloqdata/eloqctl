@@ -54,21 +54,15 @@ jobs:
         with:
           toolchain: nightly-2026-04-21
 
-      - name: Cache Cargo registry (downloaded crates)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            cargo-registry-
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
 
       - name: Cache Rust build artifacts
         uses: swatinem/rust-cache@v2
         with:
           shared-key: release-ubuntu24
+          cache-directories: |
+            ~/.cache/sccache
           cache-on-failure: true
 
       - name: Build release tarball
@@ -76,6 +70,8 @@ jobs:
           RELEASE_TAG: ${{ steps.tag.outputs.value }}
           TARGET_OS_ID: ubuntu24
           TARGET_ARCH: amd64
+          RUSTC_WRAPPER: sccache
+          SCCACHE_GHA_ENABLED: "true"
         run: |
           chmod +x scripts/build-release-tarball.sh
           scripts/build-release-tarball.sh

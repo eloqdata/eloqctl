@@ -20,14 +20,15 @@ pub const CMD: &str = "_cmd_";
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "EloqData cluster management tool")]
 #[command(next_line_help = true)]
 pub struct Command {
-    #[arg(long, value_name = "home-dir")]
+    #[arg(long, value_name = "home-dir", global = true)]
     pub home: Option<PathBuf>,
-    #[arg(short, long, default_value_t = false)]
+    #[arg(short, long, default_value_t = false, global = true)]
     pub quiet: bool,
     #[arg(
         long,
         default_value_t = false,
-        help = "Show verbose task execution logs"
+        help = "Show verbose task execution logs",
+        global = true
     )]
     pub verbose: bool,
     #[command(subcommand)]

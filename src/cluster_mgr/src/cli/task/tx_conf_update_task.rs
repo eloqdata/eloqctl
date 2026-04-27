@@ -211,7 +211,7 @@ impl TxConfUpdateTask {
             .iter()
             .map(|p| {
                 p.split(':')
-                    .last()
+                    .next_back()
                     .unwrap_or("0")
                     .parse::<i32>()
                     .unwrap_or(0)
@@ -238,7 +238,7 @@ impl TxConfUpdateTask {
 
             for file_entry in fs::read_dir(&host_dir)? {
                 let file_path = file_entry?.path();
-                if !file_path.is_file() || file_path.extension().map_or(true, |ext| ext != "ini") {
+                if !file_path.is_file() || file_path.extension().is_none_or(|ext| ext != "ini") {
                     continue;
                 }
 

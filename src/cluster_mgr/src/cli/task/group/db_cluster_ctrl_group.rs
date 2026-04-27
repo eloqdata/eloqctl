@@ -422,7 +422,7 @@ impl CtrlDBTaskGroup {
                     ) || storage
                         .eloqdss
                         .as_ref()
-                        .map_or(false, |ds| ds.is_remote_mode() && !ds.is_external())
+                        .is_some_and(|ds| ds.is_remote_mode() && !ds.is_external())
                     {
                         use crate::cli::task::monograph_dss_ctl_task::MonographDssCtlTask;
                         let start_dss = MonographDssCtlTask::from_config(start_cmd.clone(), config);
@@ -546,7 +546,7 @@ impl CtrlDBTaskGroup {
             ) || storage
                 .eloqdss
                 .as_ref()
-                .map_or(false, |ds| ds.is_remote_mode() && !ds.is_external())
+                .is_some_and(|ds| ds.is_remote_mode() && !ds.is_external())
             {
                 let dss_tasks = MonographDssCtlTask::from_config(cmd.clone(), config);
                 if !dss_tasks.is_empty() {

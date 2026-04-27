@@ -163,7 +163,11 @@ impl DownloadUrl {
             DownloadUrl::Local(local_url) => local_url,
             DownloadUrl::Remote(remote_url) => remote_url,
         };
-        url.path_segments().unwrap().last().unwrap().to_string()
+        url.path_segments()
+            .unwrap()
+            .next_back()
+            .unwrap()
+            .to_string()
     }
 
     pub fn cache_dir(&self) -> anyhow::Result<String> {

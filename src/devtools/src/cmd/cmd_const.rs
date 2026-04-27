@@ -38,7 +38,7 @@ pub static SYSTEM_INFO: Lazy<HashMap<&'static str, String>> = Lazy::new(|| {
             .filter(|user| user.id().to_string().eq(&uid.to_string()))
             .map(|user| user.name())
             .collect::<Vec<_>>();
-        assert!(current_super_user.first().is_some());
+        assert!(!current_super_user.is_empty());
         sys_info_map.insert("uid", uid.to_string());
         sys_info_map.insert("euid", euid.to_string());
         // is_root, has_sudo

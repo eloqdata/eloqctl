@@ -83,7 +83,7 @@ impl EloqStoreDataCleanTask {
     /// * `cmd_arg` - The command argument
     /// * `config` - The cluster configuration
     /// * `target_hosts_filter` - Optional filter to only include specific hosts.
-    ///                           If None, includes all hosts based on DataStoreService mode.
+    ///   If None, includes all hosts based on DataStoreService mode.
     pub fn build_tasks(
         cmd_arg: SubCommand,
         config: &Config,

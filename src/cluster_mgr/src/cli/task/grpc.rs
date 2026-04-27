@@ -1,3 +1,4 @@
+#[allow(clippy::enum_variant_names)]
 pub(crate) mod cc_request {
     tonic::include_proto!("txservice.remote"); // The package name from your .proto file
 }
