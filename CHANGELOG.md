@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.6](https://github.com/monographdb/eloq_waiter/compare/v1.0.5...v1.0.6) (2026-04-27)
+
+
+### Bug Fixes
+
+* **ci:** publish release assets in release workflow ([#336](https://github.com/monographdb/eloq_waiter/issues/336)) ([39502c8](https://github.com/monographdb/eloq_waiter/commit/39502c8783d42a9d99abcfcc448e808a3f244172))
+
 ## [1.0.5](https://github.com/monographdb/eloq_waiter/compare/v1.0.4...v1.0.5) (2026-04-27)
 
 
