@@ -171,6 +171,7 @@ pub struct RocksMinio {
     pub object_path: Option<String>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum RocksDB {
     LOCAL(RocksLocal),

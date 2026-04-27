@@ -287,16 +287,12 @@ pub fn storage_service_running() -> bool {
     if !has_process {
         false
     } else {
-        let cassandra_bin = env::var("CASSANDRA_BIN_DIR");
-        if cassandra_bin.is_err() {
-            println!("not found ENV CASSANDRA_BIN_DIR");
-            false
-        } else {
+        if let Ok(cassandra_bin_dir) = env::var("CASSANDRA_BIN_DIR") {
             let node_tools = CmdDef {
                 name: "bash".to_string(),
                 args: Some(vec![
                     "-c".to_string(),
-                    format!("{}/nodetool status", cassandra_bin.unwrap()),
+                    format!("{cassandra_bin_dir}/nodetool status"),
                 ]),
                 show_progress_type: None,
                 payload: None,
@@ -326,6 +322,9 @@ pub fn storage_service_running() -> bool {
                 }
             }
             status.success && has_host_name
+        } else {
+            println!("not found ENV CASSANDRA_BIN_DIR");
+            false
         }
     }
 }

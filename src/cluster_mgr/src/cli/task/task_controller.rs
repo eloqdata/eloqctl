@@ -32,17 +32,14 @@ impl TaskController {
     }
 
     fn split_task(task_execution_context: &TaskExecutionContext) -> Vec<&'static [TaskInstance]> {
-        let barrier = task_execution_context.clone().barrier;
+        let barrier = &task_execution_context.barrier;
         let task_install_vec = task_execution_context
             .executable
             .values()
             .cloned()
             .collect_vec();
         let tasks = Box::leak(Box::new(task_install_vec));
-        if barrier.is_none() {
-            vec![tasks.as_slice()]
-        } else {
-            let barrier_array = barrier.as_ref().unwrap();
+        if let Some(barrier_array) = barrier.as_ref() {
             let mut begin;
             let mut end = 0;
             let mut split = vec![];
@@ -59,6 +56,8 @@ impl TaskController {
                 split.push(task_slice);
             }
             split
+        } else {
+            vec![tasks.as_slice()]
         }
     }
 

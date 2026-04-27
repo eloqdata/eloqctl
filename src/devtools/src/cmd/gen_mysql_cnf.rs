@@ -36,7 +36,7 @@ impl CmdV2 for GenMySQLConf {
         let local_ip_rs = local_ip
             .unwrap()
             .split(':')
-            .last()
+            .next_back()
             .unwrap()
             .parse::<usize>();
         if local_ip_rs.is_err() {

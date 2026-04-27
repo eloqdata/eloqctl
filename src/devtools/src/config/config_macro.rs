@@ -90,7 +90,6 @@ macro_rules! git_clone {
 mod tests {
     use crate::config::common::{Git, GitArgs};
     use crate::config::MONOGRAPH_WATER_CONFIG_DIR;
-    use crate::extract_config_value;
     use std::env;
 
     #[test]

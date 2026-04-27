@@ -23,6 +23,7 @@ pub struct S3RestoreTask {
 }
 
 impl S3RestoreTask {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         task_id: TaskId,
         cluster_name: String,
@@ -202,7 +203,7 @@ impl TaskExecutor for S3RestoreTask {
             .iter()
             .filter_map(|m| {
                 m.split('/')
-                    .last()
+                    .next_back()
                     .and_then(|f| parse_database_manifest(f).ok().map(|(ng_id, _)| ng_id))
             })
             .collect();

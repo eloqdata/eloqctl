@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/instal
 Install a specific release tag:
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/install.sh | sh -s -- v0.1.0
+curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/install.sh | sh -s -- v1.0.3
 ```
 
 ## Quick Start
@@ -85,7 +85,30 @@ cargo build --release
 # Compile the packages separately with cargo make.
 cargo make --no-workspace  --makefile Makefile.toml  pkg_eloqctl
 cargo make --no-workspace  --makefile Makefile.toml  rest_api_pkg
+
+# Fast local iteration (compile only cluster_mgr in dev profile)
+cargo make --no-workspace --makefile Makefile.toml dev_fast
+
+# Or use cargo aliases from .cargo/config.toml
+cargo cm-check
+cargo cm-build
+
+# Install local git hooks for commit/push quality gates
+cargo make --no-workspace --makefile Makefile.toml install_hooks
+
+# Run the full local quality suite on demand
+cargo make --no-workspace --makefile Makefile.toml quality
 ```
+
+## Quality Gates
+
+This repository includes both local and CI quality checks:
+
+1. Local git hooks live in `.githooks/`.
+2. `pre-commit` runs `cargo fmt --all -- --check` and `cargo cm-check`.
+3. `pre-push` runs `cargo test --tests -- --test-threads=1` and `cargo clippy --all-targets --all-features -- -D warnings` as blocking gates.
+4. `commit-msg` enforces Conventional Commit messages.
+5. CI runs format check, strict clippy, and single-threaded tests as blocking gates on pull requests and key branches.
 
 ## Versioning And Release
 

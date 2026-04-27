@@ -9,13 +9,7 @@ use tracing::{error, info};
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() == 2 && matches!(args[1].as_str(), "-v" | "-V" | "--version") {
-        println!("eloqctl version output {}", env!("CARGO_PKG_VERSION"));
-        return;
-    }
-
-    let cmd = Command::parse_from(&args);
+    let cmd = Command::parse();
     if let Some(SubCommand::Completion { shell, output }) = &cmd.subcmd {
         let mut app = Command::command();
         let mut writer: Box<dyn io::Write> =

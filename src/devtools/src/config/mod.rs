@@ -1,5 +1,4 @@
 use crate::config::common::{Cassandra, Common};
-use crate::{extract_config_value, load_toml_config};
 use configparser::ini::Ini;
 use once_cell::sync::{Lazy, OnceCell};
 use std::collections::HashMap;
@@ -87,7 +86,6 @@ pub fn load_config(config_dir: &str) -> &'static HashMap<String, ConfigObject> {
 mod tests {
     use crate::config::common::Common;
     use crate::config::workspace_sub_dir;
-    use crate::{build_script, extract_config_value, load_toml_config};
 
     pub fn config_file(file: &str) -> String {
         let mut base_path = env!("CARGO_MANIFEST_DIR").to_owned();

@@ -236,8 +236,8 @@ impl MonographLogCtlTask {
         input_execution_value: HashMap<LogProcessKey, ExecutionValue>,
     ) -> ExecutionValue {
         let result = input_execution_value
-            .iter()
-            .flat_map(|(_key, cmd_result)| {
+            .values()
+            .flat_map(|cmd_result| {
                 cmd_result
                     .iter()
                     .map(|(cmd_key, cmd_rs)| (cmd_key.clone(), cmd_rs.clone()))
@@ -332,8 +332,8 @@ impl MonographLogCtlTask {
         // key is host:port,value is ps log command.
         let check_status_cmd_by_key = self
             .log_cmd
-            .iter()
-            .flat_map(|(process_key, _log_cmd)| {
+            .keys()
+            .flat_map(|process_key| {
                 LogCtlCmd::build_cmd_with_predicate(
                     &self.config,
                     cluster_status_cmd.clone(),
@@ -427,9 +427,7 @@ impl TaskExecutor for MonographLogCtlTask {
             self.merge_execution_value(pid_cmd_value)
         } else {
             let execution_cmd_vec = self
-                .log_cmd
-                .iter()
-                .filter_map(|(key, _ctrl_cmd)| {
+                .log_cmd.keys().filter_map(|key| {
                     // Handle case where key might not exist in pid_cmd_value due to SSH failures
                     if let Some(execution_value) = pid_cmd_value.get(key) {
                         if let Some(pid_value) = execution_value.get(PROCESS_PID) {
@@ -445,11 +443,7 @@ impl TaskExecutor for MonographLogCtlTask {
                                 unreachable!()
                             };
                             if should_execute {
-                                if let Some(ctl_cmd) = self.log_cmd.get(key) {
-                                    Some((key.clone(), ctl_cmd.clone()))
-                                } else {
-                                    None
-                                }
+                                self.log_cmd.get(key).map(|ctl_cmd| (key.clone(), ctl_cmd.clone()))
                             } else {
                                 None
                             }
@@ -463,11 +457,7 @@ impl TaskExecutor for MonographLogCtlTask {
                                 unreachable!()
                             };
                             if should_execute {
-                                if let Some(ctl_cmd) = self.log_cmd.get(key) {
-                                    Some((key.clone(), ctl_cmd.clone()))
-                                } else {
-                                    None
-                                }
+                                self.log_cmd.get(key).map(|ctl_cmd| (key.clone(), ctl_cmd.clone()))
                             } else {
                                 None
                             }
@@ -482,11 +472,7 @@ impl TaskExecutor for MonographLogCtlTask {
                             unreachable!()
                         };
                         if should_execute {
-                            if let Some(ctl_cmd) = self.log_cmd.get(key) {
-                                Some((key.clone(), ctl_cmd.clone()))
-                            } else {
-                                None
-                            }
+                            self.log_cmd.get(key).map(|ctl_cmd| (key.clone(), ctl_cmd.clone()))
                         } else {
                             None
                         }

@@ -224,7 +224,7 @@ impl LogService {
                     let next_row = cells_table.get(next_row).unwrap();
                     let next_cells = next_row.iter().take(hole_count).cloned().collect_vec();
                     let mut cells_copy = cells.clone();
-                    cells_copy.extend(next_cells.into_iter());
+                    cells_copy.extend(next_cells);
                     let filter_cells = cells_copy
                         .iter()
                         .filter(|cell| !cell.disk.eq("_NONE_"))
@@ -354,7 +354,7 @@ impl LogService {
         for (idx, node) in node_sorted.iter().enumerate() {
             nodes_by_host
                 .entry(node.host.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push((idx, node));
         }
 
@@ -627,8 +627,8 @@ mod tests {
     ) -> LogService {
         let nodes = (0..host_num)
             .map(|idx| {
-                let disks = host_disk.get(&idx).unwrap();
-                let disk_path = (0..*disks)
+                let disks = host_disk.get(&idx).copied().unwrap_or(1);
+                let disk_path = (0..disks)
                     .map(|disk_idx| format!("/data/opt/disk_{disk_idx}"))
                     .collect_vec();
                 LogServiceNode {

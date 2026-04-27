@@ -159,7 +159,7 @@ async fn query_ckpt_status_with_retry(
 pub fn parse_cluster_nodes(value: Value) -> RedisResult<Vec<ClusterNodes>> {
     // Extract the cluster nodes string from the value
     let nodes_str = match value {
-        Value::Data(bytes) => {
+        Value::BulkString(bytes) => {
             // Extract the actual string data (handle quoted strings)
             let raw_str = String::from_utf8_lossy(&bytes).to_string();
             if raw_str.starts_with('"') && raw_str.ends_with('"') {
@@ -169,6 +169,7 @@ pub fn parse_cluster_nodes(value: Value) -> RedisResult<Vec<ClusterNodes>> {
                 raw_str
             }
         }
+        Value::SimpleString(s) => s,
         _ => {
             return Err(RedisError::from((
                 ErrorKind::TypeError,
@@ -237,8 +238,8 @@ pub fn parse_cluster_nodes(value: Value) -> RedisResult<Vec<ClusterNodes>> {
 /// Treats the node as master and extracts tcp_port; IP is derived from host:port string.
 pub fn parse_cluster_nodes_single(value: Value, default_host: &str) -> RedisResult<ClusterNodes> {
     let info_str = match value {
-        Value::Data(bytes) => String::from_utf8_lossy(&bytes).to_string(),
-        Value::Status(s) => s,
+        Value::BulkString(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+        Value::SimpleString(s) => s,
         _ => {
             return Err(RedisError::from((
                 ErrorKind::TypeError,

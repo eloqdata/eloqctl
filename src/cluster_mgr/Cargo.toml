@@ -26,7 +26,7 @@ indexmap = "2.1.0"
 indicatif = "0.17"
 itertools = "0.12.0"
 local-ip-address = "0.5"
-num-bigint-dig = "0.8"
+num-bigint-dig = "0.8.6"
 owo-colors = "4.0.0"
 rand = "0.8.5"
 reqwest = { version = "0.11", features = ["json", "stream"] }
@@ -79,7 +79,7 @@ users = "0.11.0"
 regex = "1.10.2"
 toml = "0.8.10"
 tokio-postgres = "0.7.10"
-redis = { version = "0.24", features = ["cluster", "cluster-async", "aio", "tokio-comp"] }
+redis = { version = "0.32.7", features = ["cluster", "cluster-async", "aio", "tokio-comp"] }
 uuid = { version = "1", features = ["v4"] }
 prettytable = "0.10.0"
 aws-sdk-s3 = "1.0"

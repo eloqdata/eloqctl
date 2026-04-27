@@ -1,9 +1,6 @@
 // build.rs
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out_dir = std::env::var("OUT_DIR").unwrap();
-    println!("cargo:warning=OUT_DIR is {}", out_dir);
-
     println!("cargo:rerun-if-changed=proto/cc_request.proto");
     println!("cargo:rerun-if-changed=proto/log.proto");
 

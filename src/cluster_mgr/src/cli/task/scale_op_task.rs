@@ -62,7 +62,7 @@ impl ScaleOpTask {
             .iter()
             .map(|p| {
                 p.split(':')
-                    .last()
+                    .next_back()
                     .unwrap_or("0")
                     .parse::<i32>()
                     .unwrap_or(0)

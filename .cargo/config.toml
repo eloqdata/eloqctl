@@ -1,0 +1,7 @@
+[net]
+git-fetch-with-cli = true
+
+[alias]
+cm-check = "check -p cluster_mgr"
+cm-build = "build -p cluster_mgr"
+cm-test = "test -p cluster_mgr --tests"

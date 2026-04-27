@@ -13,9 +13,7 @@ use chrono::{DateTime, Utc};
 use local_ip_address::local_ip;
 use redis::cluster::ClusterClient;
 use redis::Value;
-use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::error;
@@ -112,28 +110,6 @@ impl BackupTask {
         if let Err(put_err) = put_rs {
             panic!("Failed to write snapshot info to database: {:?}", put_err);
         }
-    }
-}
-
-#[derive(Debug, Serialize, Clone)]
-pub struct NodeInfo {
-    pub ip: String,
-    pub port: u16,
-}
-
-// Implement Eq and Hash for NodeInfo
-impl PartialEq for NodeInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.ip == other.ip && self.port == other.port
-    }
-}
-
-impl Eq for NodeInfo {}
-
-impl Hash for NodeInfo {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ip.hash(state);
-        self.port.hash(state);
     }
 }
 

@@ -6,10 +6,15 @@ args = ["--version"]
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 CARGO_MAKE_CRATE_IS_WORKSPACE = true
+
 [tasks.format]
 install_crate = "rustfmt"
 command = "cargo"
 args = ["fmt", "--", "--emit=files"]
+
+[tasks.format_check]
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
 
 [tasks.clean]
 command = "cargo"
@@ -17,13 +22,17 @@ args = ["clean"]
 
 [tasks.test]
 command = "cargo"
-args = ["test", "--tests"]
-dependencies = ["clippy"]
+args = ["test", "--tests", "--", "--test-threads=1"]
 
 [tasks.build_eloqctl]
 command = "cargo"
 args = ["build", "--package", "cluster_mgr", "--release"]
 dependencies = ["format", "generate_proto"]
+
+[tasks.clippy_advisory]
+description = "Run non-fatal clippy linting (advisory; no -D warnings)"
+command = "cargo"
+args = ["clippy", "--all-targets", "--all-features"]
 
 [tasks.devtools_build]
 command = "cargo"
@@ -38,6 +47,20 @@ dependencies = ["format"]
 [tasks.clippy]
 command = "cargo"
 args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+[tasks.quality]
+description = "Run formatting, lint, and test quality gates"
+dependencies = ["format_check", "clippy", "test"]
+
+[tasks.install_hooks]
+script = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+git config core.hooksPath .githooks
+find .githooks -type f -exec chmod +x {} +
+echo "Installed git hooks from .githooks"
+'''
 
 [tasks.devtools_pkg]
 script = '''
@@ -89,3 +112,15 @@ dependencies = ["generate_proto", "build_eloqctl"]
 [tasks.generate_proto]
 command = "cargo"
 args = ["check", "--package", "cluster_mgr"]
+
+[tasks.check_fast]
+command = "cargo"
+args = ["check", "--package", "cluster_mgr"]
+
+[tasks.build_eloqctl_fast]
+command = "cargo"
+args = ["build", "--package", "cluster_mgr"]
+
+[tasks.dev_fast]
+description = "Fast local developer loop without formatting or release packaging"
+dependencies = ["check_fast", "build_eloqctl_fast"]

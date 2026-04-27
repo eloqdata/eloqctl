@@ -10,8 +10,8 @@ use crate::config::config_base::{DeployConfig, VersionRow};
 use crate::config::deployment::{Deployment, Product};
 use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::storage_service_config::{
-    CassConnect, CassDeploy, CassKind, Cassandra, DataStoreService, DataStoreServiceBackend,
-    DataStoreServiceMode, EloqStoreConfig, RocksDB, RocksLocal, StorageService,
+    CassConnect, CassDeploy, CassKind, Cassandra, DataStoreServiceBackend, DataStoreServiceMode,
+    RocksDB, RocksLocal, StorageService,
 };
 use crate::config::{StorageProvider, TopoFormat, CDN, CONFIG_PATH_DIR, UPLOAD_PATH_DIR};
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
@@ -175,10 +175,13 @@ impl CmdExecutor {
                 if host.is_empty() {
                     return None;
                 }
-                let (service, port) = if task.starts_with("tx-status-") {
+                let tx_prefix = ["tx-status-", "txservice-status-"]
+                    .into_iter()
+                    .find(|prefix| task.starts_with(prefix));
+                let (service, port) = if let Some(prefix) = tx_prefix {
                     (
                         "tx".to_string(),
-                        task.trim_start_matches("tx-status-").to_string(),
+                        task.trim_start_matches(prefix).to_string(),
                     )
                 } else if task.starts_with("standby-status-") {
                     (
@@ -736,19 +739,11 @@ impl CmdExecutor {
                     println!("Launch cluster finished, Enjoy!");
                     println!("Connect to server: \n\t{}", cfg.client_conn());
                     if let Some(moni) = &cfg.deployment.monitor {
-                        if moni.prometheus.is_some() {
-                            println!(
-                                "Prometheus: http://{}:{}",
-                                moni.prometheus.as_ref().unwrap().host,
-                                moni.prometheus.as_ref().unwrap().port
-                            );
+                        if let Some(prometheus) = &moni.prometheus {
+                            println!("Prometheus: http://{}:{}", prometheus.host, prometheus.port);
                         }
-                        if moni.grafana.is_some() {
-                            println!(
-                                "Grafana: http://{}:{}",
-                                moni.grafana.as_ref().unwrap().host,
-                                moni.grafana.as_ref().unwrap().port
-                            );
+                        if let Some(grafana) = &moni.grafana {
+                            println!("Grafana: http://{}:{}", grafana.host, grafana.port);
                         }
                     }
 
@@ -1036,7 +1031,7 @@ impl CmdExecutor {
             .as_ref()
             .map_or("rocksdb".to_string(), |s| s.pretty_name());
 
-        if cnf.version.is_some() && cnf.version_str().to_ascii_lowercase() == "latest" {
+        if cnf.version.is_some() && cnf.version_str().eq_ignore_ascii_case("latest") {
             let client = self.pg_client().await?;
 
             // Use the correct query based on storage_service existence
@@ -1155,35 +1150,29 @@ impl CmdExecutor {
                                 cluster_name: None,
                             });
                         };
-                        if deploy.storage_service.is_none() {
-                            deploy.storage_service = Some(StorageService {
-                                cassandra: Some(Cassandra { host, kind }),
+                        deploy
+                            .storage_service
+                            .get_or_insert(StorageService {
+                                cassandra: None,
                                 dynamodb: None,
                                 rocksdb: None,
                                 eloqdss: None,
-                            });
-                        } else {
-                            deploy.storage_service.as_mut().unwrap().cassandra =
-                                Some(Cassandra { host, kind });
-                        }
+                            })
+                            .cassandra = Some(Cassandra { host, kind });
                     }
                     StorageProvider::Dynamodb => unimplemented!(),
                     StorageProvider::Rocksdb => {
-                        if deploy.storage_service.is_none() {
-                            deploy.storage_service = Some(StorageService {
+                        deploy
+                            .storage_service
+                            .get_or_insert(StorageService {
                                 cassandra: None,
                                 dynamodb: None,
-                                rocksdb: Some(RocksDB::LOCAL(RocksLocal {
-                                    path: Some("/tmp".to_string()),
-                                })),
+                                rocksdb: None,
                                 eloqdss: None,
-                            });
-                        } else {
-                            deploy.storage_service.as_mut().unwrap().rocksdb =
-                                Some(RocksDB::LOCAL(RocksLocal {
-                                    path: Some("/tmp".to_string()),
-                                }));
-                        }
+                            })
+                            .rocksdb = Some(RocksDB::LOCAL(RocksLocal {
+                            path: Some("/tmp".to_string()),
+                        }));
                     }
                     StorageProvider::EloqDSS => {
                         // Create a default DataStoreService with Local mode and EloqStore backend
@@ -1243,16 +1232,15 @@ impl CmdExecutor {
                             peer_host_ports: None,
                             mode: DataStoreServiceMode::Internal, // Default: eloqctl manages dss_server
                         };
-                        if deploy.storage_service.is_none() {
-                            deploy.storage_service = Some(StorageService {
+                        deploy
+                            .storage_service
+                            .get_or_insert(StorageService {
                                 cassandra: None,
                                 dynamodb: None,
                                 rocksdb: None,
-                                eloqdss: Some(default_dss),
-                            });
-                        } else {
-                            deploy.storage_service.as_mut().unwrap().eloqdss = Some(default_dss);
-                        }
+                                eloqdss: None,
+                            })
+                            .eloqdss = Some(default_dss);
                     }
                 }
                 // deploy log-service jointly

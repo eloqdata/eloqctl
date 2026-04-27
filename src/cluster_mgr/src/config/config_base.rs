@@ -201,7 +201,7 @@ impl DeployConfig {
                         host: host.to_string(),
                     })
                     .collect_vec();
-                result.extend(unpack_files.into_iter());
+                result.extend(unpack_files);
             })
         }
         result

@@ -434,10 +434,8 @@ impl MonographTxCtlTask {
             (-1, "_NONE".to_string(), "_NONE".to_string(), false);
 
         match &cmd_arg {
-            SubCommand::Start { nodes, .. } => {
-                if server_type == ServerType::Node {
-                    node_host_ports = nodes.clone();
-                }
+            SubCommand::Start { nodes, .. } if server_type == ServerType::Node => {
+                node_host_ports = nodes.clone();
             }
             SubCommand::Stop { force, .. } => {
                 is_force_stop = *force;

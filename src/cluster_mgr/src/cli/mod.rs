@@ -17,17 +17,18 @@ pub const CMD_OUTPUT: &str = "_cmd_output_";
 pub const CMD: &str = "_cmd_";
 
 #[derive(Parser, Default, Debug)]
-#[command(author, version = env!("CARGO_PKG_VERSION"), about = "EloqData cluster management tool")]
+#[command(author, version, about = "EloqData cluster management tool")]
 #[command(next_line_help = true)]
 pub struct Command {
-    #[arg(long, value_name = "home-dir")]
+    #[arg(long, value_name = "home-dir", global = true)]
     pub home: Option<PathBuf>,
-    #[arg(short, long, default_value_t = false)]
+    #[arg(short, long, default_value_t = false, global = true)]
     pub quiet: bool,
     #[arg(
         long,
         default_value_t = false,
-        help = "Show verbose task execution logs"
+        help = "Show verbose task execution logs",
+        global = true
     )]
     pub verbose: bool,
     #[command(subcommand)]
@@ -490,7 +491,14 @@ pub enum ProxyCommand {
 pub const HOME_DIR: &str = "ELOQCTL_HOME";
 
 pub fn home_path() -> PathBuf {
-    PathBuf::from(env::var(HOME_DIR).unwrap())
+    match env::var(HOME_DIR) {
+        Ok(home) => PathBuf::from(home),
+        Err(_) => {
+            let home = env::current_dir().expect("current dir should be available");
+            env::set_var(HOME_DIR, &home);
+            home
+        }
+    }
 }
 
 pub fn download_dir() -> PathBuf {

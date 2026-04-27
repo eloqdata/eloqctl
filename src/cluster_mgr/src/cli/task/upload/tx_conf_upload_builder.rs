@@ -9,6 +9,7 @@ use crate::config::config_base::{UploadFile, SCALED_CLUSTER_CONFIG};
 use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
 use itertools::Itertools;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,18 @@ use tokio::sync::watch;
 use tracing::{info, warn};
 
 pub struct TxConfUpload;
+
+static TX_INI_RENAME_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"EloqKv-(tx|candidate|voter)-(\d+)\.ini").unwrap());
+
+fn renamed_node_ini(file_name: &str) -> String {
+    if let Some(captures) = TX_INI_RENAME_RE.captures(file_name) {
+        let port = captures.get(2).map_or("", |m| m.as_str());
+        format!("EloqKv-node-{port}.ini")
+    } else {
+        file_name.to_string()
+    }
+}
 
 fn task_file_id(source_path: &str) -> String {
     Path::new(source_path)
@@ -68,7 +81,7 @@ impl UploadTaskBuilder for TxConfUpload {
                             .filter(|entry| {
                                 let path = entry.path();
                                 path.is_file()
-                                    && path.extension().map_or(false, |ext| ext == "ini")
+                                    && path.extension().is_some_and(|ext| ext == "ini")
                                     && path
                                         .file_name()
                                         .and_then(|n| n.to_str())
@@ -95,16 +108,7 @@ impl UploadTaskBuilder for TxConfUpload {
                             .unwrap_or_default();
 
                         // Check if filename matches the pattern and extract port
-                        let renamed_file = if let Some(captures) =
-                            Regex::new(r"EloqKv-(tx|candidate|voter)-(\d+)\.ini")
-                                .ok()
-                                .and_then(|re| re.captures(file_name))
-                        {
-                            let port = captures.get(2).map_or("", |m| m.as_str());
-                            format!("EloqKv-node-{}.ini", port)
-                        } else {
-                            file_name.to_string()
-                        };
+                        let renamed_file = renamed_node_ini(file_name);
 
                         upload_cnf_files.push(UploadFile {
                             source: file_path.to_string_lossy().to_string(),
@@ -123,7 +127,7 @@ impl UploadTaskBuilder for TxConfUpload {
                                 .filter(|entry| {
                                     let path = entry.path();
                                     path.is_file()
-                                        && path.extension().map_or(false, |ext| ext == "ini")
+                                        && path.extension().is_some_and(|ext| ext == "ini")
                                         && path
                                             .file_name()
                                             .and_then(|n| n.to_str())
@@ -177,7 +181,7 @@ impl UploadTaskBuilder for TxConfUpload {
                             .filter(|entry| {
                                 let path = entry.path();
                                 path.is_file()
-                                    && path.extension().map_or(false, |ext| ext == "ini")
+                                    && path.extension().is_some_and(|ext| ext == "ini")
                                     && path
                                         .file_name()
                                         .and_then(|n| n.to_str())
@@ -378,7 +382,7 @@ impl TxConfUpload {
                             .filter(|entry| {
                                 let path = entry.path();
                                 path.is_file()
-                                    && path.extension().map_or(false, |ext| ext == "ini")
+                                    && path.extension().is_some_and(|ext| ext == "ini")
                                     && path
                                         .file_name()
                                         .and_then(|n| n.to_str())
@@ -404,16 +408,7 @@ impl TxConfUpload {
                             .unwrap_or_default();
 
                         // Check if filename matches the pattern and extract port
-                        let renamed_file = if let Some(captures) =
-                            Regex::new(r"EloqKv-(tx|candidate|voter)-(\d+)\.ini")
-                                .ok()
-                                .and_then(|re| re.captures(file_name))
-                        {
-                            let port = captures.get(2).map_or("", |m| m.as_str());
-                            format!("EloqKv-node-{}.ini", port)
-                        } else {
-                            file_name.to_string()
-                        };
+                        let renamed_file = renamed_node_ini(file_name);
 
                         upload_cnf_files.push(UploadFile {
                             source: file_path.to_string_lossy().to_string(),
@@ -473,16 +468,7 @@ impl TxConfUpload {
                             .unwrap_or_default();
 
                         // Check if filename matches the pattern and extract port
-                        let renamed_file = if let Some(captures) =
-                            Regex::new(r"EloqKv-(tx|candidate|voter)-(\d+)\.ini")
-                                .ok()
-                                .and_then(|re| re.captures(file_name))
-                        {
-                            let port = captures.get(2).map_or("", |m| m.as_str());
-                            format!("EloqKv-node-{}.ini", port)
-                        } else {
-                            file_name.to_string()
-                        };
+                        let renamed_file = renamed_node_ini(file_name);
 
                         upload_cnf_files.push(UploadFile {
                             source: path.to_string(),

@@ -364,7 +364,7 @@ pub fn find_max_epoch_for_ng(manifest_keys: &[String], ng_id: u32) -> Result<u64
 
     for key in manifest_keys {
         // Extract just the filename from the key (handle paths)
-        let filename = key.split('/').last().unwrap_or(key);
+        let filename = key.split('/').next_back().unwrap_or(key);
 
         if filename.starts_with(&prefix) {
             match parse_database_manifest(filename) {
