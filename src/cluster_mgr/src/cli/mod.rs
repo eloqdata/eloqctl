@@ -302,6 +302,10 @@ pub enum SubCommand {
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
     },
+
+    #[command(hide = true)]
+    #[strum(serialize = "__complete-clusters")]
+    CompleteClusters,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, clap::ValueEnum)]

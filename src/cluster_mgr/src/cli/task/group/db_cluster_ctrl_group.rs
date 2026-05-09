@@ -2,6 +2,7 @@ use crate::cli::task::cassandra_ctl_task::CassandraCtlTask;
 use crate::cli::task::codis_task::{self, CodisTask};
 use crate::cli::task::eloq_store_data_clean_task::EloqStoreDataCleanTask;
 use crate::cli::task::group::{Config, CtrlDBTaskGroup, MonitorCtlTaskGroup, TaskGroup};
+use crate::cli::task::monitor_ctl_task::MonitorCtlTask;
 use crate::cli::task::monograph_dss_ctl_task::MonographDssCtlTask;
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
@@ -571,6 +572,22 @@ impl CtrlDBTaskGroup {
         }
         let status_tx = MonographTxCtlTask::from_config(cmd.clone(), config, ServerType::Tx);
         executable.extend(status_tx);
+
+        if deployment.monitor.is_some() {
+            let monitor_status_cmd = SubCommand::Monitor {
+                cluster: deployment.cluster_name.clone(),
+                command: "status".to_string(),
+            };
+            executable.extend(MonitorCtlTask::exporter_ctl_task(
+                monitor_status_cmd.clone(),
+                config,
+            ));
+            executable.extend(MonitorCtlTask::prometheus_ctl_task(
+                monitor_status_cmd.clone(),
+                config,
+            ));
+            executable.extend(MonitorCtlTask::grafana_ctl_task(monitor_status_cmd, config));
+        }
 
         if deployment.codis.is_some() {
             //TODO

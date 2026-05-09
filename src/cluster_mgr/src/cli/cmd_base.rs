@@ -167,6 +167,20 @@ impl CmdExecutor {
         (host, cmd, task)
     }
 
+    fn parse_monitor_status_task(task: &str) -> Option<(String, String)> {
+        [
+            ("prometheus-status-", "prometheus"),
+            ("grafana-status-", "grafana"),
+            ("node_exporter-status-", "node_exporter"),
+            ("mysql_exporter-status-", "mysql_exporter"),
+        ]
+        .into_iter()
+        .find_map(|(prefix, service)| {
+            task.strip_prefix(prefix)
+                .map(|port| (service.to_string(), port.to_string()))
+        })
+    }
+
     fn summarize_status_rows(task_results: &[TaskResultPair]) -> Vec<StatusSummaryRow> {
         task_results
             .iter()
@@ -197,6 +211,8 @@ impl CmdExecutor {
                     ("log".to_string(), "-".to_string())
                 } else if cmd.starts_with("dss_") && task == "status" {
                     ("dss".to_string(), "-".to_string())
+                } else if let Some((service, port)) = Self::parse_monitor_status_task(&task) {
+                    (service, port)
                 } else {
                     return None;
                 };
@@ -258,6 +274,15 @@ impl CmdExecutor {
             return;
         }
         println!("{}", tabled::Table::new(rows));
+    }
+
+    pub async fn list_cluster_names(&self) -> Result<Vec<String>> {
+        let deployments = self.state_mgr.list_deployments().await?;
+        Ok(deployments
+            .iter()
+            .map(|deploy| deploy.deployment.cluster_name.clone())
+            .sorted()
+            .collect_vec())
     }
 
     fn dir_home(&self) -> &str {
@@ -1349,5 +1374,34 @@ impl CmdExecutor {
             tar_cmd.bold()
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CmdExecutor;
+    use crate::cli::task::task_base::{TaskArgValue, TaskResultEnum, TaskResultPair};
+    use crate::cli::{CMD_OUTPUT, CMD_STATUS};
+    use std::collections::HashMap;
+
+    #[test]
+    fn summarize_status_rows_includes_monitor_components() {
+        let execution = HashMap::from([
+            (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
+            (
+                CMD_OUTPUT.to_string(),
+                TaskArgValue::Str("grafana is running, pid: 123".to_string()),
+            ),
+        ]);
+        let rows = CmdExecutor::summarize_status_rows(&[TaskResultPair {
+            task_id: "host=127.0.0.1,cmd=monitor,task=grafana-status-3301".to_string(),
+            result: TaskResultEnum::Success(Some(execution)),
+        }]);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].host, "127.0.0.1");
+        assert_eq!(rows[0].service, "grafana");
+        assert_eq!(rows[0].port, "3301");
+        assert_eq!(rows[0].status, "UP");
     }
 }

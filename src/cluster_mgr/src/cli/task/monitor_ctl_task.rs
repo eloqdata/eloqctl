@@ -7,7 +7,7 @@ use crate::cli::task::task_base::{
 use crate::cli::task::task_utils::{
     check_pid, ctl_action_wait_complete, parse_process_pid, PID_NOT_FOUND, PROCESS_PID,
 };
-use crate::cli::SubCommand;
+use crate::cli::{SubCommand, CMD_OUTPUT};
 use crate::config::config_base::{
     DeployConfig, GRAFANA_FILE_KEY, MYSQL_EXPORTER_FILE_KEY, NODE_EXPORTER_FILE_KEY,
     PROMETHEUS_FILE_KEY,
@@ -151,17 +151,8 @@ impl MonitorCtlTask {
         config: &DeployConfig,
         cmd_component: MonitorComponentCommand,
         monitor_component_host: String,
-        component_home: &str,
+        task_name: String,
     ) -> IndexMap<TaskId, TaskInstance> {
-        let task_name = match cmd_args.clone() {
-            SubCommand::Monitor {
-                cluster: _,
-                command,
-            } => {
-                format!("{}_{command}", component_home)
-            }
-            _ => unreachable!(),
-        };
         let conn_user = &config.connection.username;
         let ssh_port = config.connection.ssh_port();
         let task_host = TaskHost::Remote {
@@ -192,12 +183,18 @@ impl MonitorCtlTask {
             let component_host = component_obj.host.clone();
             let home = format!("{}/{}", config.install_dir(), GRAFANA_FILE_KEY);
             let cmd = MonitorComponentCommand::Grafana { home };
+            let task_name = match &cmd_arg {
+                SubCommand::Monitor { command, .. } => {
+                    format!("grafana-{command}-{}", component_obj.port)
+                }
+                _ => unreachable!(),
+            };
             MonitorCtlTask::basic_component_ctl_task(
                 cmd_arg,
                 config,
                 cmd,
                 component_host,
-                GRAFANA_FILE_KEY,
+                task_name,
             )
         } else {
             // Return an empty IndexMap if Grafana is not configured
@@ -216,12 +213,18 @@ impl MonitorCtlTask {
             let component_host = component_obj.host.clone();
             let home = format!("{}/{}", config.install_dir(), PROMETHEUS_FILE_KEY);
             let cmd = MonitorComponentCommand::Prometheus { home };
+            let task_name = match &cmd_arg {
+                SubCommand::Monitor { command, .. } => {
+                    format!("prometheus-{command}-{}", component_obj.port)
+                }
+                _ => unreachable!(),
+            };
             MonitorCtlTask::basic_component_ctl_task(
                 cmd_arg,
                 config,
                 cmd,
                 component_host,
-                PROMETHEUS_FILE_KEY,
+                task_name,
             )
         } else {
             // Return an empty IndexMap if Prometheus is not configured
@@ -272,7 +275,10 @@ impl MonitorCtlTask {
                             vec![MonitorCtlTask::build_monitor_task_instance(
                                 config.clone(),
                                 node_exporter_cmd,
-                                format!("node_exporter_{cmd_str_ref}"),
+                                format!(
+                                    "node_exporter-{cmd_str_ref}-{}",
+                                    monitor.node_exporter.as_ref().unwrap().port
+                                ),
                                 task_remote_host.clone(),
                                 cmd_arg.clone(),
                             )];
@@ -284,7 +290,10 @@ impl MonitorCtlTask {
                             exporter_cmd_vec.push(MonitorCtlTask::build_monitor_task_instance(
                                 config.clone(),
                                 mysql_exporter_cmd,
-                                format!("mysql_exporter_{cmd_str_ref}"),
+                                format!(
+                                    "mysql_exporter-{cmd_str_ref}-{}",
+                                    monitor.mysql_exporter.as_ref().unwrap().port
+                                ),
                                 task_remote_host,
                                 cmd_arg.clone(),
                             ));
@@ -364,12 +373,30 @@ impl TaskExecutor for MonitorCtlTask {
                     Ok(process_rs)
                 }
             }
+            "status" => Ok(process_rs),
             _ => {
                 unreachable!()
             }
         };
         ssh_session.close().await?;
-        let ctl_rtn_value = monitor_ctl_cmd_result?;
+        let mut ctl_rtn_value = monitor_ctl_cmd_result?;
+        if cmd_str == "status" && ctl_rtn_value.contains_key(PROCESS_PID) {
+            let pid = TaskArgValue::into_inner_value::<String>(
+                ctl_rtn_value.get(PROCESS_PID).unwrap().clone(),
+            );
+            let service_name = match &self.monitor_ctl {
+                MonitorComponentCommand::NodeExporter { .. } => "node_exporter",
+                MonitorComponentCommand::MySqlExporter { .. } => "mysql_exporter",
+                MonitorComponentCommand::Prometheus { .. } => "prometheus",
+                MonitorComponentCommand::Grafana { .. } => "grafana",
+            };
+            let output = if pid == PID_NOT_FOUND {
+                format!("\n{service_name} is down.")
+            } else {
+                format!("\n{service_name} is running, pid: {pid}.")
+            };
+            ctl_rtn_value.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(output));
+        }
         task_return_value!(
             ctl_rtn_value,
             |status_code: i32| -> CmdErr {
