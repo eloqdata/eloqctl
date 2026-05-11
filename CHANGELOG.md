@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.4](https://github.com/monographdb/eloq_waiter/compare/v1.1.3...v1.1.4) (2026-05-11)
+
+
+### Bug Fixes
+
+* zero-downtime apply/update with correct topology discovery ([#349](https://github.com/monographdb/eloq_waiter/issues/349)) ([54ac96f](https://github.com/monographdb/eloq_waiter/commit/54ac96fadba2ecd06d38ecedd11dc5349ca060de))
+
 ## [1.1.3](https://github.com/monographdb/eloq_waiter/compare/v1.1.2...v1.1.3) (2026-05-11)
 
 
