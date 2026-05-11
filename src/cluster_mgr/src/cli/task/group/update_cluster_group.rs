@@ -1,15 +1,19 @@
 use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
+use crate::cli::task::failover_op_task::FailoverOpTask;
 use crate::cli::task::group::{Config, TaskGroup, UpdateClusterTaskGroup};
 use crate::cli::task::monograph_log_ctl_task::MonographLogCtlTask;
 use crate::cli::task::monograph_log_probe_task::MonographLogProbeTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
-use crate::cli::task::task_base::TaskExecutionContext;
-use crate::cli::task::task_utils::stop_with_hot_standby;
+use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
+use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
+use crate::config::DeploymentPackage;
 use indexmap::IndexMap;
+use std::collections::HashMap;
+use tokio::sync::watch;
 use tracing::info;
 
 #[async_trait::async_trait]
@@ -71,26 +75,97 @@ impl TaskGroup for UpdateClusterTaskGroup {
             monitor: false,
             force: *force,
             all: false,
-            password: redis_password,
+            password: redis_password.clone(),
             nodes: Vec::new(),
         };
 
-        if cluster_config
+        let has_standby = cluster_config
             .deployment
             .tx_service
             .standby_host_ports
-            .is_some()
-        {
-            // this will succeed only if the tx-server is running properly. we can not trigger this action if the tx-server is down.
-            stop_with_hot_standby(
-                stop_cmd.clone(),
+            .is_some();
+
+        if has_standby {
+            // --- Round 1: failover masters, stop them ---
+            let tx_host_ports = cluster_config.get_host_port_list(DeploymentPackage::MonographTx);
+            let topo_task_id_1 = TaskId {
+                cmd: "topology".to_string(),
+                task: "check-topology-round1".to_string(),
+                host: "_local".to_string(),
+            };
+            let (topo_tx_1, failover_rx_1) = watch::channel::<ClusterNodes>(ClusterNodes {
+                masters: Vec::new(),
+                replicas: Vec::new(),
+            });
+            let stop_nodes_rx_1 = failover_rx_1.clone();
+            executable.insert(
+                topo_task_id_1.clone(),
+                TaskInstance {
+                    task_input: HashMap::default(),
+                    task: Box::new(RedisOpTask::new(
+                        topo_task_id_1,
+                        tx_host_ports.clone(),
+                        "cluster topology".to_string(),
+                        topo_tx_1,
+                        redis_password.clone(),
+                        true,
+                    )),
+                    task_host: TaskHost::Local,
+                },
+            );
+            barrier.push(1);
+
+            let mut failover_ids_1 = Vec::new();
+            for node_addr in &tx_host_ports {
+                if let Some((host, port_str)) = node_addr.split_once(':') {
+                    if let Ok(port) = port_str.parse::<u16>() {
+                        let fid = TaskId {
+                            cmd: "failover".to_string(),
+                            task: format!("failover-check-round1-{}", port_str),
+                            host: host.to_string(),
+                        };
+                        executable.insert(
+                            fid.clone(),
+                            TaskInstance {
+                                task_input: HashMap::default(),
+                                task: Box::new(FailoverOpTask::new(
+                                    fid.clone(),
+                                    host.to_string(),
+                                    port,
+                                    String::new(),
+                                    0u16,
+                                    failover_rx_1.clone(),
+                                    redis_password.clone(),
+                                )),
+                                task_host: TaskHost::Local,
+                            },
+                        );
+                        failover_ids_1.push(fid);
+                    }
+                }
+            }
+            barrier.push(failover_ids_1.len());
+
+            let stop_nodes_1 = MonographTxCtlTask::from_config_with_channel(
+                SubCommand::Stop {
+                    cluster: cluster.clone(),
+                    tx: Some(true),
+                    log: true,
+                    store: false,
+                    monitor: false,
+                    force: *force,
+                    all: false,
+                    password: redis_password.clone(),
+                    nodes: tx_host_ports,
+                },
                 cluster_config,
-                &mut barrier,
-                &mut executable,
+                ServerType::Node,
+                Some(stop_nodes_rx_1),
             )
-            .await;
+            .expect("stop nodes round1 error");
+            barrier.push(stop_nodes_1.len());
+            executable.extend(stop_nodes_1);
         } else {
-            // this means it will succeed even if the tx-server is not running. this is idempotent in that the result is the same whether the tx-server is running or not.
             let stop_tx =
                 MonographTxCtlTask::from_config(stop_cmd.clone(), cluster_config, ServerType::Tx);
             barrier.push(stop_tx.len());
@@ -108,7 +183,7 @@ impl TaskGroup for UpdateClusterTaskGroup {
 
         // start order: log-server -> tx-server
         let start_cmd = SubCommand::Start {
-            cluster,
+            cluster: cluster.clone(),
             nodes: Vec::new(),
         };
         if deployment.log_service.is_some() {
@@ -162,12 +237,94 @@ impl TaskGroup for UpdateClusterTaskGroup {
         barrier.push(start_tx.len());
         executable.extend(start_tx);
 
-        if cluster_config
-            .deployment
-            .tx_service
-            .standby_host_ports
-            .is_some()
-        {
+        if has_standby {
+            // --- Round 2: failover back, restart old standbys ---
+            let standby_host_ports =
+                cluster_config.get_host_port_list(DeploymentPackage::MonographStandby);
+            let topo_task_id_2 = TaskId {
+                cmd: "topology".to_string(),
+                task: "check-topology-round2".to_string(),
+                host: "_local".to_string(),
+            };
+            let (topo_tx_2, failover_rx_2) = watch::channel::<ClusterNodes>(ClusterNodes {
+                masters: Vec::new(),
+                replicas: Vec::new(),
+            });
+            let stop_nodes_rx_2 = failover_rx_2.clone();
+            executable.insert(
+                topo_task_id_2.clone(),
+                TaskInstance {
+                    task_input: HashMap::default(),
+                    task: Box::new(RedisOpTask::new(
+                        topo_task_id_2,
+                        standby_host_ports.clone(),
+                        "cluster topology".to_string(),
+                        topo_tx_2,
+                        redis_password.clone(),
+                        true,
+                    )),
+                    task_host: TaskHost::Local,
+                },
+            );
+            barrier.push(1);
+
+            let mut failover_ids_2 = Vec::new();
+            for node_addr in &standby_host_ports {
+                if let Some((host, port_str)) = node_addr.split_once(':') {
+                    if let Ok(port) = port_str.parse::<u16>() {
+                        let fid = TaskId {
+                            cmd: "failover".to_string(),
+                            task: format!("failover-check-round2-{}", port_str),
+                            host: host.to_string(),
+                        };
+                        executable.insert(
+                            fid.clone(),
+                            TaskInstance {
+                                task_input: HashMap::default(),
+                                task: Box::new(FailoverOpTask::new(
+                                    fid.clone(),
+                                    host.to_string(),
+                                    port,
+                                    String::new(),
+                                    0u16,
+                                    failover_rx_2.clone(),
+                                    redis_password.clone(),
+                                )),
+                                task_host: TaskHost::Local,
+                            },
+                        );
+                        failover_ids_2.push(fid);
+                    }
+                }
+            }
+            barrier.push(failover_ids_2.len());
+
+            let stop_nodes_2 = MonographTxCtlTask::from_config_with_channel(
+                SubCommand::Stop {
+                    cluster: cluster.clone(),
+                    tx: Some(true),
+                    log: true,
+                    store: false,
+                    monitor: false,
+                    force: *force,
+                    all: false,
+                    password: redis_password.clone(),
+                    nodes: standby_host_ports,
+                },
+                cluster_config,
+                ServerType::Node,
+                Some(stop_nodes_rx_2),
+            )
+            .expect("stop nodes round2 error");
+            barrier.push(stop_nodes_2.len());
+            executable.extend(stop_nodes_2);
+
+            // start_tx is idempotent (nodes already running from round 1)
+            let start_tx_r2 =
+                MonographTxCtlTask::from_config(start_cmd.clone(), cluster_config, ServerType::Tx);
+            barrier.push(start_tx_r2.len());
+            executable.extend(start_tx_r2);
+
             let start_standby = MonographTxCtlTask::from_config(
                 start_cmd.clone(),
                 cluster_config,
