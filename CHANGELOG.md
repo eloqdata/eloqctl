@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/monographdb/eloq_waiter/compare/v1.1.0...v1.1.1) (2026-05-11)
+
+
+### Bug Fixes
+
+* resolve panic in zero-downtime apply caused by duplicate topology task key ([#342](https://github.com/monographdb/eloq_waiter/issues/342)) ([4bb4fea](https://github.com/monographdb/eloq_waiter/commit/4bb4fea2e4c8362bc8334001ee8be2bbc3cc391d))
+
 ## [1.1.0](https://github.com/monographdb/eloq_waiter/compare/v1.0.6...v1.1.0) (2026-05-11)
 
 
