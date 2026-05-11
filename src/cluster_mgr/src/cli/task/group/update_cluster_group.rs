@@ -241,6 +241,24 @@ impl TaskGroup for UpdateClusterTaskGroup {
         barrier.push(start_tx.len());
         executable.extend(start_tx);
 
+        // Wait for tx nodes to be fully ready (Redis port accepting connections)
+        // before running the Round 2 topology query. Without this probe, the
+        // ClusterClient in check-topology-round2 hits connection-refused because
+        // the nodes are still initializing after binary update.
+        let probe_tx = MonographTxCtlTask::from_config(
+            SubCommand::Status {
+                cluster: cluster.clone(),
+                user: None,
+                password: redis_password.clone(),
+                wait: Some(120),
+                detail: false,
+            },
+            cluster_config,
+            ServerType::Tx,
+        );
+        barrier.push(probe_tx.len());
+        executable.extend(probe_tx);
+
         if has_standby {
             // --- Round 2: failover back, restart old standbys ---
             let standby_host_ports =
