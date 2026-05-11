@@ -181,9 +181,74 @@ impl TaskGroup for UpdateConfigTaskGroup {
                 executable.extend(start_tx_round1);
 
                 // --- Round 2: failover back, restart old standbys ---
+                // Inline the failover logic for round 2 with a unique topology task ID
+                // to avoid key collision with round 1's topology task.
                 let standby_host_ports =
                     deploy_config.get_host_port_list(DeploymentPackage::MonographStandby);
-                stop_with_failover(
+                let skip_checkpoint =
+                    crate::cli::task::task_utils::check_whether_to_skip_checkpoint(cluster_name)
+                        .await;
+                let topo_task_id_2 = TaskId {
+                    cmd: "topology".to_string(),
+                    task: "check-topology-round2".to_string(),
+                    host: "_local".to_string(),
+                };
+                let (topo_tx_2, failover_rx_2) = watch::channel::<ClusterNodes>(ClusterNodes {
+                    masters: Vec::new(),
+                    replicas: Vec::new(),
+                });
+                let stop_nodes_rx_2 = failover_rx_2.clone();
+                let topo_task_2 = RedisOpTask::new(
+                    topo_task_id_2.clone(),
+                    standby_host_ports.clone(),
+                    "cluster topology".to_string(),
+                    topo_tx_2,
+                    deploy_config.redis_password(None),
+                    skip_checkpoint,
+                );
+                executable.insert(
+                    topo_task_id_2,
+                    TaskInstance {
+                        task_input: HashMap::default(),
+                        task: Box::new(topo_task_2),
+                        task_host: TaskHost::Local,
+                    },
+                );
+                barrier.push(1);
+
+                let mut failover_ids_2 = Vec::new();
+                for node_addr in &standby_host_ports {
+                    if let Some((host, port_str)) = node_addr.split_once(':') {
+                        if let Ok(port) = port_str.parse::<u16>() {
+                            let fid = TaskId {
+                                cmd: "failover".to_string(),
+                                task: format!("failover-check-round2-{}", port_str),
+                                host: host.to_string(),
+                            };
+                            let ftask = crate::cli::task::failover_op_task::FailoverOpTask::new(
+                                fid.clone(),
+                                host.to_string(),
+                                port,
+                                String::new(),
+                                0u16,
+                                failover_rx_2.clone(),
+                                deploy_config.redis_password(None),
+                            );
+                            executable.insert(
+                                fid.clone(),
+                                TaskInstance {
+                                    task_input: HashMap::default(),
+                                    task: Box::new(ftask),
+                                    task_host: TaskHost::Local,
+                                },
+                            );
+                            failover_ids_2.push(fid);
+                        }
+                    }
+                }
+                barrier.push(failover_ids_2.len());
+
+                let stop_nodes_2 = MonographTxCtlTask::from_config_with_channel(
                     SubCommand::Stop {
                         cluster: cluster_name.clone(),
                         tx: Some(true),
@@ -196,10 +261,12 @@ impl TaskGroup for UpdateConfigTaskGroup {
                         nodes: standby_host_ports,
                     },
                     deploy_config,
-                    &mut barrier,
-                    &mut executable,
+                    ServerType::Node,
+                    Some(stop_nodes_rx_2),
                 )
-                .await;
+                .expect("stop nodes round2 error");
+                barrier.push(stop_nodes_2.len());
+                executable.extend(stop_nodes_2);
 
                 let start_tx_round2 = MonographTxCtlTask::from_config(
                     SubCommand::Start {

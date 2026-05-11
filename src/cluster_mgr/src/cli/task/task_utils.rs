@@ -498,7 +498,7 @@ pub async fn stop_with_failover(
     executable.extend(stop_nodes);
 }
 
-async fn check_whether_to_skip_checkpoint(cluster_name: &str) -> bool {
+pub async fn check_whether_to_skip_checkpoint(cluster_name: &str) -> bool {
     info!(
         "Checking via DB whether to skip checkpoint for cluster: {}",
         cluster_name
