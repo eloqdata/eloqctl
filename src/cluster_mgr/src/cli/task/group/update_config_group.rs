@@ -148,6 +148,7 @@ impl TaskGroup for UpdateConfigTaskGroup {
                 .standby_host_ports
                 .is_some()
             {
+                // --- Round 1: failover masters, restart them as standbys ---
                 let tx_host_ports =
                     deploy_config.get_host_port_list(DeploymentPackage::MonographTx);
                 stop_with_failover(
@@ -167,6 +168,60 @@ impl TaskGroup for UpdateConfigTaskGroup {
                     &mut executable,
                 )
                 .await;
+
+                let start_tx_round1 = MonographTxCtlTask::from_config(
+                    SubCommand::Start {
+                        cluster: cluster_name.to_string(),
+                        nodes: Vec::new(),
+                    },
+                    deploy_config,
+                    ServerType::Tx,
+                );
+                barrier.push(start_tx_round1.len());
+                executable.extend(start_tx_round1);
+
+                // --- Round 2: failover back, restart old standbys ---
+                let standby_host_ports =
+                    deploy_config.get_host_port_list(DeploymentPackage::MonographStandby);
+                stop_with_failover(
+                    SubCommand::Stop {
+                        cluster: cluster_name.clone(),
+                        tx: Some(true),
+                        log: true,
+                        store: false,
+                        monitor: false,
+                        force: false,
+                        all: false,
+                        password: None,
+                        nodes: standby_host_ports,
+                    },
+                    deploy_config,
+                    &mut barrier,
+                    &mut executable,
+                )
+                .await;
+
+                let start_tx_round2 = MonographTxCtlTask::from_config(
+                    SubCommand::Start {
+                        cluster: cluster_name.to_string(),
+                        nodes: Vec::new(),
+                    },
+                    deploy_config,
+                    ServerType::Tx,
+                );
+                barrier.push(start_tx_round2.len());
+                executable.extend(start_tx_round2);
+
+                let start_standby = MonographTxCtlTask::from_config(
+                    SubCommand::Start {
+                        cluster: cluster_name.to_string(),
+                        nodes: Vec::new(),
+                    },
+                    deploy_config,
+                    ServerType::Standby,
+                );
+                barrier.push(start_standby.len());
+                executable.extend(start_standby);
             } else {
                 let stop_tx_task = MonographTxCtlTask::from_config(
                     SubCommand::Stop {
@@ -185,35 +240,16 @@ impl TaskGroup for UpdateConfigTaskGroup {
                 );
                 barrier.push(stop_tx_task.len());
                 executable.extend(stop_tx_task);
-            }
-
-            let start_tx_task = MonographTxCtlTask::from_config(
-                SubCommand::Start {
-                    cluster: cluster_name.to_string(),
-                    nodes: Vec::new(),
-                },
-                deploy_config,
-                ServerType::Tx,
-            );
-            barrier.push(start_tx_task.len());
-            executable.extend(start_tx_task);
-
-            if deploy_config
-                .deployment
-                .tx_service
-                .standby_host_ports
-                .is_some()
-            {
-                let start_standby = MonographTxCtlTask::from_config(
+                let start_tx_task = MonographTxCtlTask::from_config(
                     SubCommand::Start {
                         cluster: cluster_name.to_string(),
                         nodes: Vec::new(),
                     },
                     deploy_config,
-                    ServerType::Standby,
+                    ServerType::Tx,
                 );
-                barrier.push(start_standby.len());
-                executable.extend(start_standby);
+                barrier.push(start_tx_task.len());
+                executable.extend(start_tx_task);
             }
 
             if deploy_config
@@ -222,6 +258,24 @@ impl TaskGroup for UpdateConfigTaskGroup {
                 .voter_host_ports
                 .is_some()
             {
+                let stop_voter = MonographTxCtlTask::from_config(
+                    SubCommand::Stop {
+                        cluster: cluster_name.clone(),
+                        tx: None,
+                        log: false,
+                        store: false,
+                        monitor: false,
+                        force: false,
+                        all: false,
+                        password: None,
+                        nodes: Vec::new(),
+                    },
+                    deploy_config,
+                    ServerType::Voter,
+                );
+                barrier.push(stop_voter.len());
+                executable.extend(stop_voter);
+
                 let start_voter = MonographTxCtlTask::from_config(
                     SubCommand::Start {
                         cluster: cluster_name.to_string(),
