@@ -327,12 +327,6 @@ impl TaskGroup for UpdateClusterTaskGroup {
             barrier.push(stop_nodes_2.len());
             executable.extend(stop_nodes_2);
 
-            // start_tx is idempotent (nodes already running from round 1)
-            let start_tx_r2 =
-                MonographTxCtlTask::from_config(start_cmd.clone(), cluster_config, ServerType::Tx);
-            barrier.push(start_tx_r2.len());
-            executable.extend(start_tx_r2);
-
             let start_standby = MonographTxCtlTask::from_config(
                 start_cmd.clone(),
                 cluster_config,

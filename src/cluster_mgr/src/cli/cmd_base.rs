@@ -540,10 +540,32 @@ impl CmdExecutor {
                     prometheus.retention_size = current_prom.retention_size.clone();
                 }
             }
+
+            if let Some(remote_write_urls) = desired_prom.remote_write_urls.clone() {
+                if current_prom.remote_write_urls != Some(remote_write_urls.clone()) {
+                    if let Some(monitor) = &mut merged.deployment.monitor {
+                        if let Some(prometheus) = &mut monitor.prometheus {
+                            prometheus.remote_write_urls = Some(remote_write_urls.clone());
+                        }
+                    }
+                    plan.monitor_restart_required = true;
+                    plan.applied_changes.push(format!(
+                        "deployment.monitor.prometheus.remote_write_urls: {:?} -> {:?}",
+                        current_prom.remote_write_urls,
+                        Some(remote_write_urls)
+                    ));
+                }
+            } else if let Some(monitor) = &mut desired_for_diff.deployment.monitor {
+                if let Some(prometheus) = &mut monitor.prometheus {
+                    prometheus.remote_write_urls = current_prom.remote_write_urls.clone();
+                }
+            }
         } else if let Some(monitor) = &mut desired_for_diff.deployment.monitor {
             if let Some(prometheus) = &mut monitor.prometheus {
                 prometheus.retention_time = current_prom.and_then(|p| p.retention_time.clone());
                 prometheus.retention_size = current_prom.and_then(|p| p.retention_size.clone());
+                prometheus.remote_write_urls =
+                    current_prom.and_then(|p| p.remote_write_urls.clone());
             }
         }
 
@@ -576,6 +598,7 @@ impl CmdExecutor {
             "deployment.checkpoint_interval",
             "deployment.monitor.prometheus.retention_time",
             "deployment.monitor.prometheus.retention_size",
+            "deployment.monitor.prometheus.remote_write_urls",
         ];
         plan.ignored_changes = other_diffs
             .into_iter()
