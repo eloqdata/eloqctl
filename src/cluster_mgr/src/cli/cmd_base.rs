@@ -473,6 +473,18 @@ impl CmdExecutor {
             );
         }
 
+        if desired.deployment.enable_tls.is_some()
+            && desired.deployment.enable_tls != current.deployment.enable_tls
+        {
+            merged.deployment.enable_tls = desired.deployment.enable_tls;
+            plan.store_config_restart_required = true;
+            plan.applied_changes.push(format!(
+                "deployment.enable_tls: {:?} -> {:?}",
+                current.deployment.enable_tls, desired.deployment.enable_tls
+            ));
+        }
+        desired_for_diff.deployment.enable_tls = current.deployment.enable_tls;
+
         if let Some(interval) = desired.deployment.checkpoint_interval {
             if current.deployment.checkpoint_interval != Some(interval) {
                 merged.deployment.checkpoint_interval = Some(interval);
