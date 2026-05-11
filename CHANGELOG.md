@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.6](https://github.com/monographdb/eloq_waiter/compare/v1.1.5...v1.1.6) (2026-05-11)
+
+
+### Bug Fixes
+
+* support enable_tls change in apply ([#353](https://github.com/monographdb/eloq_waiter/issues/353)) ([f6093b7](https://github.com/monographdb/eloq_waiter/commit/f6093b725c58f6955cb845bb178d529b4d79e645))
+
 ## [1.1.5](https://github.com/monographdb/eloq_waiter/compare/v1.1.4...v1.1.5) (2026-05-11)
 
 
