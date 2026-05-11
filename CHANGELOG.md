@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.0](https://github.com/monographdb/eloq_waiter/compare/v1.0.6...v1.1.0) (2026-05-11)
+
+
+### Features
+
+* complete zero-downtime rolling upgrade with two-round failover ([e98110d](https://github.com/monographdb/eloq_waiter/commit/e98110dfedc937f8c438001e5cb607bcc9a14e24))
+* enable apply for storage_service changes, add RocksDB tuning params and Prometheus remote_write ([#341](https://github.com/monographdb/eloq_waiter/issues/341)) ([1f1abcb](https://github.com/monographdb/eloq_waiter/commit/1f1abcba51eaedb9d9776b510b2aa94b45ca5fc5))
+* remove Cassandra support and add Prometheus retention config ([#340](https://github.com/monographdb/eloq_waiter/issues/340)) ([470f72d](https://github.com/monographdb/eloq_waiter/commit/470f72d67b16a71c2e9107648d36d81c76f99981))
+* show monitor status and improve eloqctl completion ([#338](https://github.com/monographdb/eloq_waiter/issues/338)) ([d4218fb](https://github.com/monographdb/eloq_waiter/commit/d4218fb2f3dd2189cd7e6b6a485b724e9f83d2ce))
+* zero-downtime upgrade with failover for cluster with standby ([e3e7eb3](https://github.com/monographdb/eloq_waiter/commit/e3e7eb380241f83507e2b4533ecfb06c4f2e4f7a))
+
 ## [1.0.6](https://github.com/monographdb/eloq_waiter/compare/v1.0.5...v1.0.6) (2026-04-27)
 
 
