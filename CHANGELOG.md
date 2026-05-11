@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.5](https://github.com/monographdb/eloq_waiter/compare/v1.1.4...v1.1.5) (2026-05-11)
+
+
+### Bug Fixes
+
+* support remote_write_urls in apply and fix update split_task panic ([#351](https://github.com/monographdb/eloq_waiter/issues/351)) ([d6e3881](https://github.com/monographdb/eloq_waiter/commit/d6e3881d23fe804be23efa4cdb9a12dde68a1c95))
+
 ## [1.1.4](https://github.com/monographdb/eloq_waiter/compare/v1.1.3...v1.1.4) (2026-05-11)
 
 
