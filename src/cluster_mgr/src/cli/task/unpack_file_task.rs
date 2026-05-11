@@ -154,6 +154,70 @@ impl UnpackFileTask {
         tasks
     }
 
+    /// Unpack only tx (and log) nodes — used in Round 1 of rolling update after tx nodes are stopped.
+    /// Standby nodes are still running at this point, so they must not be included.
+    pub fn unpack_tx_and_log_nodes(config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
+        let deploy_ref = &config.deployment;
+        let image = deploy_ref.tx_image().split('/').next_back().unwrap();
+        let tx_home = config.product().home().to_owned();
+        let mut tasks = deploy_ref
+            .tx_service
+            .tx_host_ports
+            .iter()
+            .map(|host_port| {
+                let host = host_port.split(':').next().unwrap();
+                Self::make_task_pair(config, host, image, &tx_home, vec![])
+            })
+            .collect::<IndexMap<TaskId, TaskInstance>>();
+
+        if let Some(srv) = &deploy_ref.log_service {
+            if let Some(image_url) = &srv.image {
+                let log_image = image_url.split('/').next_back().unwrap();
+                let ret = srv
+                    .log_host_unique()
+                    .iter()
+                    .map(|host| {
+                        Self::make_task_pair(config, host, log_image, LOG_SERVICE_HOME, vec![])
+                    })
+                    .collect::<IndexMap<TaskId, TaskInstance>>();
+                tasks.extend(ret);
+            }
+        }
+        tasks
+    }
+
+    /// Unpack only standby (and voter) nodes — used in Round 2 of rolling update after standby
+    /// nodes are stopped.
+    pub fn unpack_standby_nodes(config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
+        let deploy_ref = &config.deployment;
+        let image = deploy_ref.tx_image().split('/').next_back().unwrap();
+        let tx_home = config.product().home().to_owned();
+        let mut tasks = IndexMap::new();
+
+        if let Some(standby_host_ports) = &deploy_ref.tx_service.standby_host_ports {
+            let ret = standby_host_ports
+                .iter()
+                .map(|host_port| {
+                    let host = host_port.split(':').next().unwrap();
+                    Self::make_task_pair(config, host, image, &tx_home, vec![])
+                })
+                .collect::<IndexMap<TaskId, TaskInstance>>();
+            tasks.extend(ret);
+        }
+
+        if let Some(voter_host_ports) = &deploy_ref.tx_service.voter_host_ports {
+            let ret = voter_host_ports
+                .iter()
+                .map(|host_port| {
+                    let host = host_port.split(':').next().unwrap();
+                    Self::make_task_pair(config, host, image, &tx_home, vec![])
+                })
+                .collect::<IndexMap<TaskId, TaskInstance>>();
+            tasks.extend(ret);
+        }
+        tasks
+    }
+
     pub fn unpack_log_servers(config: &DeployConfig) -> IndexMap<TaskId, TaskInstance> {
         let deploy_ref = &config.deployment;
         let mut tasks = IndexMap::new();

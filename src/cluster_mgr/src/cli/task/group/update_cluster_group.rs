@@ -51,14 +51,12 @@ impl TaskGroup for UpdateClusterTaskGroup {
 
         let mut downloads = vec![];
         let mut upload_img = IndexMap::new();
-        let mut unpack_tasks = IndexMap::new();
         if update_eloq {
             downloads.push(cluster_config.deployment.tx_image().to_owned());
             if let Some(img) = cluster_config.deployment.log_image() {
                 downloads.push(img.to_owned());
             }
             upload_img.extend(upload_tasks(UploadTaskBuilderType::EloqImage, config));
-            unpack_tasks.extend(UnpackFileTask::unpack_eloqservers(cluster_config));
         }
         let download_task = DownloadTask::instances(DownloadTask::from_urls(downloads));
         let mut barrier = vec![download_task.len(), upload_img.len()];
@@ -182,8 +180,11 @@ impl TaskGroup for UpdateClusterTaskGroup {
             executable.extend(stop_log);
         }
 
-        barrier.push(unpack_tasks.len());
-        executable.extend(unpack_tasks);
+        // Unpack only tx and log nodes here — standby nodes are still running at this point.
+        // Standby nodes will be unpacked in Round 2 after they are stopped.
+        let unpack_tx_log = UnpackFileTask::unpack_tx_and_log_nodes(cluster_config);
+        barrier.push(unpack_tx_log.len());
+        executable.extend(unpack_tx_log);
 
         // start order: log-server -> tx-server
         let start_cmd = SubCommand::Start {
@@ -344,6 +345,13 @@ impl TaskGroup for UpdateClusterTaskGroup {
             .expect("stop nodes round2 error");
             barrier.push(stop_nodes_2.len());
             executable.extend(stop_nodes_2);
+
+            // Unpack standby (and voter) nodes now that they are stopped.
+            let unpack_standby = UnpackFileTask::unpack_standby_nodes(cluster_config);
+            if !unpack_standby.is_empty() {
+                barrier.push(unpack_standby.len());
+                executable.extend(unpack_standby);
+            }
 
             let start_standby = MonographTxCtlTask::from_config(
                 start_cmd.clone(),
