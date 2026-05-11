@@ -116,6 +116,7 @@ mod tests {
                 host: "127.0.0.1".to_string(),
                 retention_time: Some("30d".to_string()),
                 retention_size: Some("50GB".to_string()),
+                remote_write_urls: None,
             }),
             grafana: None,
             node_exporter: None,

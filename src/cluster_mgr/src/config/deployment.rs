@@ -925,6 +925,13 @@ impl Deployment {
                                 Some(val.clone()),
                             );
                         }
+                        if let Some(val) = &s3.rocksdb_periodic_compaction_seconds {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_periodic_compaction_seconds",
+                                Some(val.clone()),
+                            );
+                        }
                         if let Some(val) = &s3.rocksdb_storage_path {
                             ini.set(SECTION_STORE, "rocksdb_storage_path", Some(val.clone()));
                         }
@@ -966,6 +973,23 @@ impl Deployment {
                             "rocksdb_cloud_bucket_prefix",
                             Some(minio.bucket_prefix),
                         );
+                        if let Some(val) = &minio.rocksdb_enable_stats {
+                            ini.set(SECTION_STORE, "rocksdb_enable_stats", Some(val.clone()));
+                        }
+                        if let Some(val) = &minio.rocksdb_stats_dump_period_sec {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_stats_dump_period_sec",
+                                Some(val.clone()),
+                            );
+                        }
+                        if let Some(val) = &minio.rocksdb_periodic_compaction_seconds {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_periodic_compaction_seconds",
+                                Some(val.clone()),
+                            );
+                        }
                         if let Some(val) = &minio.object_path {
                             ini.set(
                                 SECTION_STORE,
@@ -996,6 +1020,23 @@ impl Deployment {
                             "rocksdb_cloud_sst_file_cache_size",
                             Some(gcs.sst_file_cache_size),
                         );
+                        if let Some(val) = &gcs.rocksdb_enable_stats {
+                            ini.set(SECTION_STORE, "rocksdb_enable_stats", Some(val.clone()));
+                        }
+                        if let Some(val) = &gcs.rocksdb_stats_dump_period_sec {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_stats_dump_period_sec",
+                                Some(val.clone()),
+                            );
+                        }
+                        if let Some(val) = &gcs.rocksdb_periodic_compaction_seconds {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_periodic_compaction_seconds",
+                                Some(val.clone()),
+                            );
+                        }
                         if let Some(val) = &gcs.object_path {
                             ini.set(
                                 SECTION_STORE,
@@ -1931,6 +1972,22 @@ impl Deployment {
                     ini.set(
                         "store",
                         "rocksdb_cloud_sst_file_cache_size",
+                        Some(v.clone()),
+                    );
+                    store_fields_set = true;
+                }
+                if let Some(v) = &s.rocksdb_enable_stats {
+                    ini.set("store", "rocksdb_enable_stats", Some(v.clone()));
+                    store_fields_set = true;
+                }
+                if let Some(v) = &s.rocksdb_stats_dump_period_sec {
+                    ini.set("store", "rocksdb_stats_dump_period_sec", Some(v.clone()));
+                    store_fields_set = true;
+                }
+                if let Some(v) = &s.rocksdb_periodic_compaction_seconds {
+                    ini.set(
+                        "store",
+                        "rocksdb_periodic_compaction_seconds",
                         Some(v.clone()),
                     );
                     store_fields_set = true;

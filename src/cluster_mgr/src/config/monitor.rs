@@ -64,6 +64,8 @@ pub struct Prometheus {
     pub host: String,
     pub retention_time: Option<String>,
     pub retention_size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_write_urls: Option<Vec<String>>,
 }
 
 impl Prometheus {
@@ -351,6 +353,21 @@ impl Monitor {
             "scrape_configs".to_string(),
             Value::Sequence(scrape_configs),
         );
+
+        if let Some(remote_write_urls) = &self.prometheus.as_ref().unwrap().remote_write_urls {
+            let remote_write_entries: Vec<Value> = remote_write_urls
+                .iter()
+                .map(|url| {
+                    let mut entry = serde_yaml::Mapping::new();
+                    entry.insert(Value::String("url".to_string()), Value::String(url.clone()));
+                    Value::Mapping(entry)
+                })
+                .collect();
+            prometheus_config_map.insert(
+                "remote_write".to_string(),
+                Value::Sequence(remote_write_entries),
+            );
+        }
 
         let prometheus_config_file = upload_dir()
             .join(cluster_name)

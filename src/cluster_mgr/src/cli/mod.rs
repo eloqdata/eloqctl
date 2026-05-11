@@ -154,6 +154,15 @@ pub enum SubCommand {
         tx_node_id: Option<u32>,
     },
 
+    #[command(
+        long_about = "Apply supported changes from a topology YAML to an existing cluster.\n\
+                      Currently supports tx config fields, Prometheus retention settings,\n\
+                      and storage_service configuration changes (full INI regeneration + restart).\n\
+                      Other unsupported changes are ignored and reported."
+    )]
+    #[strum(serialize = "apply")]
+    Apply { topology_file: String },
+
     #[command(long_about = "Remove cluster")]
     #[strum(serialize = "remove")]
     Remove {

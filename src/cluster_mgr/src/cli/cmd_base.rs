@@ -12,7 +12,9 @@ use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::storage_service_config::{
     DataStoreServiceBackend, DataStoreServiceMode, RocksDB, RocksLocal, StorageService,
 };
-use crate::config::{StorageProvider, TopoFormat, CDN, CONFIG_PATH_DIR, UPLOAD_PATH_DIR};
+use crate::config::{
+    DeploymentPackage, StorageProvider, TopoFormat, CDN, CONFIG_PATH_DIR, UPLOAD_PATH_DIR,
+};
 use crate::state::deployment_operation::{DeploymentEntity, DeploymentOperation};
 use crate::state::proxy_operation::{ProxyEntity, ProxyOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
@@ -22,6 +24,8 @@ use anyhow::{anyhow, bail, Result};
 use futures::StreamExt;
 use itertools::Itertools;
 use owo_colors::OwoColorize;
+use serde_yaml::Value as YamlValue;
+use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock, OnceLock};
@@ -38,6 +42,15 @@ struct StatusSummaryRow {
     port: String,
     status: String,
     detail: String,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ApplyPlan {
+    tx_field_updates: Vec<String>,
+    applied_changes: Vec<String>,
+    ignored_changes: Vec<String>,
+    monitor_restart_required: bool,
+    store_config_restart_required: bool,
 }
 
 pub static NOT_PRINT_TASK_RESULT: &str = "NOT_PRINT_TASK_RESULT";
@@ -370,28 +383,335 @@ impl CmdExecutor {
         Ok(())
     }
 
+    fn validate_metrics_config(config: &DeployConfig) -> Result<()> {
+        if let Some(monitor) = &config.deployment.monitor {
+            let has_monograph = monitor.monograph_metrics.is_some();
+            let has_eloq = monitor.eloq_metrics.is_some();
+
+            if !has_monograph && !has_eloq {
+                bail!("Monitor configuration is provided but neither monograph_metrics nor eloq_metrics is specified");
+            }
+
+            if has_monograph && has_eloq {
+                bail!("Cannot specify both monograph_metrics and eloq_metrics simultaneously; choose one");
+            }
+        }
+
+        Ok(())
+    }
+
+    fn normalize_config_for_apply_diff(config: &DeployConfig) -> DeployConfig {
+        let mut normalized = config.clone();
+        if normalized.deployment.version.is_none()
+            || normalized.deployment.version.as_deref() == Some("latest")
+        {
+            normalized.deployment.version = Some("__ignored__".to_string());
+        }
+        normalized.deployment.tx_service.image = None;
+        if let Some(logsrv) = &mut normalized.deployment.log_service {
+            logsrv.image = None;
+        }
+        normalized
+    }
+
+    fn push_yaml_diff(
+        path: String,
+        current: Option<&YamlValue>,
+        desired: Option<&YamlValue>,
+        diffs: &mut Vec<String>,
+    ) {
+        match (current, desired) {
+            (Some(YamlValue::Mapping(current_map)), Some(YamlValue::Mapping(desired_map))) => {
+                let keys = current_map
+                    .keys()
+                    .chain(desired_map.keys())
+                    .filter_map(|k| match k {
+                        YamlValue::String(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .collect::<BTreeSet<_>>();
+                for key in keys {
+                    let next_path = if path.is_empty() {
+                        key.clone()
+                    } else {
+                        format!("{path}.{key}")
+                    };
+                    Self::push_yaml_diff(
+                        next_path,
+                        current_map.get(YamlValue::String(key.clone())),
+                        desired_map.get(YamlValue::String(key)),
+                        diffs,
+                    );
+                }
+            }
+            (Some(YamlValue::Sequence(current_seq)), Some(YamlValue::Sequence(desired_seq))) => {
+                if current_seq != desired_seq {
+                    diffs.push(path);
+                }
+            }
+            _ => {
+                if current != desired {
+                    diffs.push(path);
+                }
+            }
+        }
+    }
+
+    fn build_apply_plan(
+        current: &DeployConfig,
+        desired: &DeployConfig,
+    ) -> Result<(ApplyPlan, DeployConfig)> {
+        let mut merged = current.clone();
+        let mut plan = ApplyPlan::default();
+        let mut desired_for_diff = desired.clone();
+
+        if current.deployment.cluster_name != desired.deployment.cluster_name {
+            bail!(
+                "cluster_name mismatch: state has '{}' but YAML has '{}'",
+                current.deployment.cluster_name,
+                desired.deployment.cluster_name
+            );
+        }
+
+        if let Some(interval) = desired.deployment.checkpoint_interval {
+            if current.deployment.checkpoint_interval != Some(interval) {
+                merged.deployment.checkpoint_interval = Some(interval);
+                plan.tx_field_updates
+                    .push(format!("checkpoint_interval:{interval}"));
+                plan.applied_changes.push(format!(
+                    "deployment.checkpoint_interval: {:?} -> {:?}",
+                    current.deployment.checkpoint_interval,
+                    Some(interval)
+                ));
+            }
+        } else {
+            desired_for_diff.deployment.checkpoint_interval =
+                current.deployment.checkpoint_interval;
+        }
+
+        let current_prom = current
+            .deployment
+            .monitor
+            .as_ref()
+            .and_then(|m| m.prometheus.as_ref());
+        let desired_prom = desired
+            .deployment
+            .monitor
+            .as_ref()
+            .and_then(|m| m.prometheus.as_ref());
+
+        if let (Some(current_prom), Some(desired_prom)) = (current_prom, desired_prom) {
+            if let Some(retention_time) = desired_prom.retention_time.clone() {
+                if current_prom.retention_time != Some(retention_time.clone()) {
+                    if let Some(monitor) = &mut merged.deployment.monitor {
+                        if let Some(prometheus) = &mut monitor.prometheus {
+                            prometheus.retention_time = Some(retention_time.clone());
+                        }
+                    }
+                    plan.monitor_restart_required = true;
+                    plan.applied_changes.push(format!(
+                        "deployment.monitor.prometheus.retention_time: {:?} -> {:?}",
+                        current_prom.retention_time,
+                        Some(retention_time)
+                    ));
+                }
+            } else if let Some(monitor) = &mut desired_for_diff.deployment.monitor {
+                if let Some(prometheus) = &mut monitor.prometheus {
+                    prometheus.retention_time = current_prom.retention_time.clone();
+                }
+            }
+
+            if let Some(retention_size) = desired_prom.retention_size.clone() {
+                if current_prom.retention_size != Some(retention_size.clone()) {
+                    if let Some(monitor) = &mut merged.deployment.monitor {
+                        if let Some(prometheus) = &mut monitor.prometheus {
+                            prometheus.retention_size = Some(retention_size.clone());
+                        }
+                    }
+                    plan.monitor_restart_required = true;
+                    plan.applied_changes.push(format!(
+                        "deployment.monitor.prometheus.retention_size: {:?} -> {:?}",
+                        current_prom.retention_size,
+                        Some(retention_size)
+                    ));
+                }
+            } else if let Some(monitor) = &mut desired_for_diff.deployment.monitor {
+                if let Some(prometheus) = &mut monitor.prometheus {
+                    prometheus.retention_size = current_prom.retention_size.clone();
+                }
+            }
+        } else if let Some(monitor) = &mut desired_for_diff.deployment.monitor {
+            if let Some(prometheus) = &mut monitor.prometheus {
+                prometheus.retention_time = current_prom.and_then(|p| p.retention_time.clone());
+                prometheus.retention_size = current_prom.and_then(|p| p.retention_size.clone());
+            }
+        }
+
+        let current_normalized = Self::normalize_config_for_apply_diff(current);
+        let desired_normalized = Self::normalize_config_for_apply_diff(&desired_for_diff);
+        let current_yaml = serde_yaml::to_value(&current_normalized)?;
+        let desired_yaml = serde_yaml::to_value(&desired_normalized)?;
+        let mut diffs = Vec::new();
+        Self::push_yaml_diff(
+            String::new(),
+            Some(&current_yaml),
+            Some(&desired_yaml),
+            &mut diffs,
+        );
+
+        let store_prefix = "deployment.storage_service";
+        let (store_diffs, other_diffs): (Vec<_>, Vec<_>) = diffs
+            .into_iter()
+            .filter(|path| !path.is_empty())
+            .partition(|path| path.starts_with(store_prefix));
+
+        if !store_diffs.is_empty() {
+            plan.store_config_restart_required = true;
+            for diff in &store_diffs {
+                plan.applied_changes.push(diff.clone());
+            }
+        }
+
+        let supported_paths = [
+            "deployment.checkpoint_interval",
+            "deployment.monitor.prometheus.retention_time",
+            "deployment.monitor.prometheus.retention_size",
+        ];
+        plan.ignored_changes = other_diffs
+            .into_iter()
+            .filter(|path| !supported_paths.contains(&path.as_str()))
+            .unique()
+            .collect();
+
+        Ok((plan, merged))
+    }
+
+    async fn apply_topology(
+        &'static self,
+        topology_file: &str,
+        quiet: bool,
+        verbose: bool,
+    ) -> Result<()> {
+        let desired = DeployConfig::load(Some(topology_file.to_string()))?;
+        Self::validate_metrics_config(&desired)?;
+
+        let cluster = desired.deployment.cluster_name.clone();
+        let current = self
+            .state_mgr
+            .load_deployment_from_state(&cluster)
+            .await?
+            .ok_or_else(|| anyhow!("cluster {} not found", cluster))?;
+
+        let (plan, merged) = Self::build_apply_plan(&current, &desired)?;
+
+        if plan.applied_changes.is_empty() && plan.ignored_changes.is_empty() {
+            println!("No configuration changes detected.");
+            return Ok(());
+        }
+
+        if !plan.applied_changes.is_empty() {
+            self.save_deployment_config(&merged, true).await?;
+        }
+
+        if plan.store_config_restart_required {
+            let deployment = &merged.deployment;
+            let mut all_host_ports = deployment.get_host_port_list(DeploymentPackage::MonographTx);
+            all_host_ports
+                .extend(deployment.get_host_port_list(DeploymentPackage::MonographStandby));
+            all_host_ports.extend(deployment.get_host_port_list(DeploymentPackage::MonographVoter));
+
+            for host_port in &all_host_ports {
+                if let Some((host, port)) = host_port.split_once(':') {
+                    deployment
+                        .gen_eloqkv_node_config(Some(host.to_string()), Some(port.to_string()))?;
+                }
+            }
+
+            Box::pin(self.run(
+                SubCommand::UpdateConf {
+                    cluster: cluster.clone(),
+                    restart: true,
+                    password: None,
+                    fields: vec![],
+                    tx_node_id: None,
+                },
+                None,
+                quiet,
+                verbose,
+            ))
+            .await?;
+        }
+
+        if !plan.tx_field_updates.is_empty() {
+            Box::pin(self.run(
+                SubCommand::UpdateConf {
+                    cluster: cluster.clone(),
+                    restart: true,
+                    password: None,
+                    fields: plan.tx_field_updates.clone(),
+                    tx_node_id: None,
+                },
+                None,
+                quiet,
+                verbose,
+            ))
+            .await?;
+        }
+
+        if plan.monitor_restart_required {
+            Box::pin(self.run(
+                SubCommand::Monitor {
+                    command: "stop".to_string(),
+                    cluster: cluster.clone(),
+                },
+                None,
+                quiet,
+                verbose,
+            ))
+            .await?;
+            Box::pin(self.run(
+                SubCommand::Monitor {
+                    command: "start".to_string(),
+                    cluster: cluster.clone(),
+                },
+                None,
+                quiet,
+                verbose,
+            ))
+            .await?;
+        }
+
+        if !plan.applied_changes.is_empty() {
+            println!("Applied changes:");
+            for change in &plan.applied_changes {
+                println!("  - {change}");
+            }
+        }
+
+        if !plan.ignored_changes.is_empty() {
+            eprintln!("Ignored unsupported changes:");
+            for change in &plan.ignored_changes {
+                eprintln!("  - {change}");
+            }
+        }
+
+        Ok(())
+    }
+
     async fn get_config(&self, cmd: SubCommand) -> anyhow::Result<Config> {
         match cmd {
+            SubCommand::Apply { topology_file } => {
+                let config = DeployConfig::load(Some(topology_file))?;
+                Self::validate_metrics_config(&config)?;
+                Ok(Config::Cluster(config))
+            }
             SubCommand::Deploy { topology_file }
             | SubCommand::Launch {
                 topology_file,
                 skip_deps: _,
             } => {
                 let mut config = DeployConfig::load(Some(topology_file))?;
-
-                // Validate metrics configuration
-                if let Some(monitor) = &config.deployment.monitor {
-                    let has_monograph = monitor.monograph_metrics.is_some();
-                    let has_eloq = monitor.eloq_metrics.is_some();
-
-                    if !has_monograph && !has_eloq {
-                        bail!("Monitor configuration is provided but neither monograph_metrics nor eloq_metrics is specified");
-                    }
-
-                    if has_monograph && has_eloq {
-                        bail!("Cannot specify both monograph_metrics and eloq_metrics simultaneously; choose one");
-                    }
-                }
+                Self::validate_metrics_config(&config)?;
 
                 self.resolve_version(&mut config.deployment).await?;
                 self.save_deployment_config(&config, false).await?;
@@ -437,20 +757,7 @@ impl CmdExecutor {
                     .load_deployment_from_state(&cluster)
                     .await?
                     .ok_or(anyhow!("cluster {} not found", cluster))?;
-
-                // Validate metrics configuration
-                if let Some(monitor) = &config.deployment.monitor {
-                    let has_monograph = monitor.monograph_metrics.is_some();
-                    let has_eloq = monitor.eloq_metrics.is_some();
-
-                    if !has_monograph && !has_eloq {
-                        bail!("Monitor configuration is provided but neither monograph_metrics nor eloq_metrics is specified");
-                    }
-
-                    if has_monograph && has_eloq {
-                        bail!("Cannot specify both monograph_metrics and eloq_metrics simultaneously; choose one");
-                    }
-                }
+                Self::validate_metrics_config(&config)?;
 
                 Ok(Config::Cluster(config))
             }
@@ -461,20 +768,7 @@ impl CmdExecutor {
                 topology_file,
             } => {
                 let config = DeployConfig::load(Some(topology_file))?;
-
-                // Validate metrics configuration
-                if let Some(monitor) = &config.deployment.monitor {
-                    let has_monograph = monitor.monograph_metrics.is_some();
-                    let has_eloq = monitor.eloq_metrics.is_some();
-
-                    if !has_monograph && !has_eloq {
-                        bail!("Monitor configuration is provided but neither monograph_metrics nor eloq_metrics is specified");
-                    }
-
-                    if has_monograph && has_eloq {
-                        bail!("Cannot specify both monograph_metrics and eloq_metrics simultaneously; choose one");
-                    }
-                }
+                Self::validate_metrics_config(&config)?;
 
                 Ok(Config::Cluster(config))
             }
@@ -499,20 +793,7 @@ impl CmdExecutor {
                     }
                     self.resolve_version(&mut config.deployment).await?;
                 }
-
-                // Validate metrics configuration
-                if let Some(monitor) = &config.deployment.monitor {
-                    let has_monograph = monitor.monograph_metrics.is_some();
-                    let has_eloq = monitor.eloq_metrics.is_some();
-
-                    if !has_monograph && !has_eloq {
-                        bail!("Monitor configuration is provided but neither monograph_metrics nor eloq_metrics is specified");
-                    }
-
-                    if has_monograph && has_eloq {
-                        bail!("Cannot specify both monograph_metrics and eloq_metrics simultaneously; choose one");
-                    }
-                }
+                Self::validate_metrics_config(&config)?;
 
                 Ok(Config::Cluster(config))
             }
@@ -565,6 +846,9 @@ impl CmdExecutor {
                 return self.list_versions(product.clone(), store.clone()).await
             }
             SubCommand::Update { cluster: None, .. } => return self.update().await,
+            SubCommand::Apply { topology_file } => {
+                return self.apply_topology(topology_file, quiet, verbose).await;
+            }
             SubCommand::Remove { cluster, force: _ } => {
                 let upload_path = upload_dir().join(cluster);
                 if upload_path.exists() {
@@ -1303,9 +1587,10 @@ impl CmdExecutor {
 
 #[cfg(test)]
 mod tests {
-    use super::CmdExecutor;
+    use super::{ApplyPlan, CmdExecutor};
     use crate::cli::task::task_base::{TaskArgValue, TaskResultEnum, TaskResultPair};
     use crate::cli::{CMD_OUTPUT, CMD_STATUS};
+    use crate::config::config_base::DeployConfig;
     use std::collections::HashMap;
 
     #[test]
@@ -1327,5 +1612,114 @@ mod tests {
         assert_eq!(rows[0].service, "grafana");
         assert_eq!(rows[0].port, "3301");
         assert_eq!(rows[0].status, "UP");
+    }
+
+    fn load_apply_test_config(
+        checkpoint_interval: Option<u32>,
+        retention_time: Option<&str>,
+    ) -> DeployConfig {
+        let checkpoint_line = checkpoint_interval
+            .map(|value| format!("  checkpoint_interval: {value}\n"))
+            .unwrap_or_default();
+        let retention_line = retention_time
+            .map(|value| format!("      retention_time: \"{value}\"\n"))
+            .unwrap_or_default();
+        let yaml = format!(
+            r#"connection:
+  username: "eloq"
+  auth_type: "keypair"
+  auth:
+    keypair: "/tmp/id_rsa"
+deployment:
+  cluster_name: "apply-test"
+  product: "EloqKV"
+  version: "1.0.6"
+  install_dir: "/tmp/eloq"
+{checkpoint_line}  tx_service:
+    tx_host_ports: ["127.0.0.1:6389"]
+    image: "eloqkv-image"
+  log_service:
+    nodes:
+      - host: "127.0.0.1"
+        port: 9000
+        data_dir: ["/tmp/log"]
+    replica: 1
+    image: "log-image"
+  storage_service:
+  monitor:
+    data_dir: ""
+    eloq_metrics:
+      path: "/eloq_metrics"
+      port: 18081
+    prometheus:
+      download_url: "https://example.com/prometheus.tar.gz"
+      port: 9500
+      host: "127.0.0.1"
+{retention_line}    grafana:
+      download_url: "https://example.com/grafana.tar.gz"
+      port: 3301
+      host: "127.0.0.1"
+    node_exporter:
+      url: "https://example.com/node_exporter.tar.gz"
+      port: 9200
+"#
+        );
+        DeployConfig::load_from_string(yaml).unwrap()
+    }
+
+    #[test]
+    fn build_apply_plan_detects_supported_and_ignored_changes() {
+        let current = load_apply_test_config(Some(60), Some("15d"));
+        let mut desired = load_apply_test_config(Some(120), Some("30d"));
+        desired.deployment.tx_service.tx_host_ports = vec!["127.0.0.2:6389".to_string()];
+
+        let (plan, merged) = CmdExecutor::build_apply_plan(&current, &desired).unwrap();
+
+        assert_eq!(
+            plan.tx_field_updates,
+            vec!["checkpoint_interval:120".to_string()]
+        );
+        assert!(plan.monitor_restart_required);
+        assert!(plan
+            .applied_changes
+            .iter()
+            .any(|change| change.contains("deployment.checkpoint_interval")));
+        assert!(plan
+            .applied_changes
+            .iter()
+            .any(|change| change.contains("retention_time")));
+        assert!(plan
+            .ignored_changes
+            .contains(&"deployment.tx_service.tx_host_ports".to_string()));
+        assert_eq!(merged.deployment.checkpoint_interval, Some(120));
+        assert_eq!(
+            merged
+                .deployment
+                .monitor
+                .as_ref()
+                .and_then(|m| m.prometheus.as_ref())
+                .and_then(|p| p.retention_time.clone()),
+            Some("30d".to_string())
+        );
+    }
+
+    #[test]
+    fn build_apply_plan_ignores_omitted_supported_fields() {
+        let current = load_apply_test_config(Some(120), Some("30d"));
+        let desired = load_apply_test_config(None, None);
+
+        let (plan, merged) = CmdExecutor::build_apply_plan(&current, &desired).unwrap();
+
+        assert_eq!(plan, ApplyPlan::default());
+        assert_eq!(merged.deployment.checkpoint_interval, Some(120));
+        assert_eq!(
+            merged
+                .deployment
+                .monitor
+                .as_ref()
+                .and_then(|m| m.prometheus.as_ref())
+                .and_then(|p| p.retention_time.clone()),
+            Some("30d".to_string())
+        );
     }
 }

@@ -111,13 +111,15 @@ impl TaskGroup for UpdateConfigTaskGroup {
             barrier.push(1);
 
             // Add TopologyUpdateTask
-            executable.extend(TopologyUpdateTask::for_config_update(
-                deploy_config,
-                redis_op_rx,
-                node_id,
-                fields,
-            ));
-            barrier.push(1);
+            if !fields.is_empty() {
+                executable.extend(TopologyUpdateTask::for_config_update(
+                    deploy_config,
+                    redis_op_rx,
+                    node_id,
+                    fields,
+                ));
+                barrier.push(1);
+            }
 
             // Add upload task to ensure the updated INI file is copied to target host
             let upload_tasks = upload_tasks(UploadTaskBuilderType::TxConf, config);
@@ -125,11 +127,13 @@ impl TaskGroup for UpdateConfigTaskGroup {
             executable.extend(upload_tasks);
         } else {
             // Use TopologyUpdateTask to update configuration for all nodes
-            executable.extend(TopologyUpdateTask::for_all_nodes_config_update(
-                deploy_config,
-                fields,
-            ));
-            barrier.push(executable.len());
+            if !fields.is_empty() {
+                executable.extend(TopologyUpdateTask::for_all_nodes_config_update(
+                    deploy_config,
+                    fields,
+                ));
+                barrier.push(executable.len());
+            }
 
             // Then upload the updated INI files to target hosts
             let upload_tasks = upload_tasks(UploadTaskBuilderType::TxConf, config);

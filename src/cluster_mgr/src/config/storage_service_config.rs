@@ -58,6 +58,8 @@ pub struct RocksS3 {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rocksdb_stats_dump_period_sec: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_periodic_compaction_seconds: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rocksdb_storage_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object_path: Option<String>,
@@ -71,6 +73,12 @@ pub struct RocksGCP {
     pub target_file_size_base: String,
     pub sst_file_cache_size: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_enable_stats: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_stats_dump_period_sec: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_periodic_compaction_seconds: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub object_path: Option<String>,
 }
 
@@ -83,6 +91,12 @@ pub struct RocksMinio {
     pub bucket_name: String,
     pub bucket_prefix: String,
     pub endpoint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_enable_stats: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_stats_dump_period_sec: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_periodic_compaction_seconds: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object_path: Option<String>,
 }
@@ -226,6 +240,12 @@ pub struct EloqDss {
     pub bucket_prefix: Option<String>,
     pub target_file_size_base: Option<String>,
     pub sst_file_cache_size: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_enable_stats: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_stats_dump_period_sec: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rocksdb_periodic_compaction_seconds: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object_path: Option<String>,
 }
