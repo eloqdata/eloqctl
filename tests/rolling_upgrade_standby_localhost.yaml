@@ -6,7 +6,7 @@ connection:
 deployment:
   cluster_name: "test-rolling-standby"
   product: "EloqKV"
-  version: "latest"
+  version: "1.2.2"
   install_dir: "/home/${USER}"
   enable_wal: false
   enable_io_uring: false
