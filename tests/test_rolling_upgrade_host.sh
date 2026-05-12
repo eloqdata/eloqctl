@@ -17,8 +17,10 @@ mkdir -p "${ELOQCTL_HOME}"
 cleanup() {
     "${ELOQCTL}" stop "${CLUSTER}" --all 2>/dev/null || true
     "${ELOQCTL}" remove "${CLUSTER}" --force 2>/dev/null || true
-    kill "$WRITER_PID" 2>/dev/null || true
-    rm -f "${WRITE_LOG}" "${ERROR_LOG}" /tmp/rolling_launch.log "${TOPO_V2}"
+    [ -n "${WRITER_PID:-}" ] && kill "$WRITER_PID" 2>/dev/null || true
+    [ -n "${WRITE_LOG:-}" ] && rm -f "${WRITE_LOG}"
+    [ -n "${ERROR_LOG:-}" ] && rm -f "${ERROR_LOG}"
+    rm -f /tmp/rolling_launch.log "${TOPO_V2}"
 }
 trap cleanup EXIT
 
