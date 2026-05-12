@@ -211,10 +211,27 @@ where
     let sleep_duration = Duration::from_secs(1);
     let mut timeout_remaining = wait_timeout;
     let mut process_ready = false;
+    let total_secs = wait_timeout.as_secs();
     loop {
         if timeout_remaining.as_secs() == 0 {
             info!("CheckStatus timeout");
+            println!("  [wait] timeout after {}s", total_secs);
             break;
+        }
+        let elapsed = total_secs - timeout_remaining.as_secs();
+        if elapsed % 10 == 0 || elapsed < 5 {
+            println!(
+                "  [wait] {}s elapsed (timeout {}s): {}",
+                elapsed,
+                total_secs,
+                check_status_cmd
+                    .lines()
+                    .next()
+                    .unwrap_or(&check_status_cmd)
+                    .chars()
+                    .take(80)
+                    .collect::<String>()
+            );
         }
         let rs = ssh_conn
             .command(check_status_cmd.as_str(), CollectOutput)

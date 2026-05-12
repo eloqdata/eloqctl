@@ -146,6 +146,11 @@ impl MonographLogProbeTask {
         let mut interval = tokio::time::interval(Duration::from_millis(300));
         let success = self.readiness.success_threshold.unwrap_or(3);
         let mut success_counter = 0_usize;
+        let started_at = std::time::Instant::now();
+        println!(
+            "  [log-probe] waiting for log service leader (expect {} leader(s))...",
+            expect_leader_count
+        );
         loop {
             let probe_result_fut = self
                 .check_health_url
@@ -220,6 +225,10 @@ impl MonographLogProbeTask {
                     success_counter += 1;
                     continue;
                 }
+                println!(
+                    "  [log-probe] log service ready ({:.1}s)",
+                    started_at.elapsed().as_secs_f32()
+                );
                 let execution_success = self.build_command_result(
                     0,
                     all_group_leaders
@@ -235,6 +244,12 @@ impl MonographLogProbeTask {
             }
             info!("MonographLogProbeTask found current leader count={total_leader:#?} != {expect_leader_count}.\
              next round 300ms after");
+            println!(
+                "  [log-probe] {:.0}s elapsed, leader={}/{}, retrying...",
+                started_at.elapsed().as_secs_f32(),
+                total_leader,
+                expect_leader_count
+            );
             interval.tick().await;
         }
     }

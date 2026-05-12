@@ -28,6 +28,7 @@ pub mod monograph_log_probe_task;
 pub mod monograph_tx_ctl_task;
 mod proxy_ctl_task;
 mod redis_op_task;
+pub mod rolling_upgrade;
 pub mod s3_delete_task;
 pub mod s3_restore_task;
 pub mod s3_utils;

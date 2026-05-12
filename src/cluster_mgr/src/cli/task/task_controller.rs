@@ -1,7 +1,5 @@
 use crate::cli::task::group::Config;
-use crate::cli::task::task_base::{
-    init_finish_signal, is_verbose_task_output, TaskExecutionContext,
-};
+use crate::cli::task::task_base::{init_finish_signal, TaskExecutionContext};
 use crate::cli::task::task_base::{TaskInstance, TaskResultEnum, TaskResultPair};
 use crate::post_task_execute;
 use crate::state::task_status_operation::TaskStatusEntity;
@@ -116,15 +114,12 @@ impl TaskController {
                     let task_input = execution_context.task_input.clone();
                     let task_host = &execution_context.task_host;
                     let task_id = task.identifier();
-                    if is_verbose_task_output() {
-                        println!("=> START {}", task_id.format_string());
-                    }
+                    println!("  -> {}", task_id.format_string());
+                    let start_time = std::time::Instant::now();
                     let execution_rs = task.execute(task_host.clone(), task_input).await;
+                    let elapsed = start_time.elapsed();
                     info!("Task {:?} execution complete", task_id);
-                    //let cmd = task_id.clone().cmd;
                     let conn_tuple = task_host.ssh_conn_tuple();
-                    // execution_rs,cluster,task_mame,command,task_host
-                    //let task_group_copy = Arc::clone(&task_group_arc.clone());
                     let post_execute_rs = post_task_execute!(
                         execution_rs,
                         name,
@@ -135,10 +130,18 @@ impl TaskController {
                     info!("Save Task {:?} execution status complete", task_id);
                     assert!(post_execute_rs.is_ok());
                     let result = match execution_rs {
-                        Ok(rs) => TaskResultEnum::Success(rs),
+                        Ok(rs) => {
+                            println!(
+                                "  ok {:.1}s {}",
+                                elapsed.as_secs_f32(),
+                                task_id.format_string()
+                            );
+                            TaskResultEnum::Success(rs)
+                        }
                         Err(err_msg) => {
                             let err_msg_str = err_msg.to_string();
                             error!("Task {:?} execution fail {:?}", task_id, err_msg_str);
+                            println!("  FAIL {} -- {}", task_id.format_string(), err_msg_str);
                             TaskResultEnum::Error(err_msg_str)
                         }
                     };
@@ -177,8 +180,18 @@ impl TaskController {
     ) -> anyhow::Result<Vec<TaskResultPair>> {
         let task_group_string = task_execution_context.clone().task_group;
         let split = TaskController::split_task(&task_execution_context);
+        let total_stages = split.len();
         let mut task_result_vec = vec![];
-        for task_split in split.into_iter() {
+        for (stage_idx, task_split) in split.into_iter().enumerate() {
+            let stage_num = stage_idx + 1;
+            let task_names: Vec<String> = task_split
+                .iter()
+                .map(|t| t.task.identifier().format_string())
+                .collect();
+            println!(
+                "[{task_group_string}] Stage {stage_num}/{total_stages}: {}",
+                task_names.join(", ")
+            );
             let rs = self
                 .run_task_split(task_group_string.clone(), task_split, config.clone())
                 .await?;
