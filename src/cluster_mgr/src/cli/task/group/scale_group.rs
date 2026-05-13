@@ -3,6 +3,7 @@ use crate::cli::task::db_update_task::DbDeploymentUpdateTask;
 use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{Config, ScaleTaskGroup};
+use crate::cli::task::install_dep_pkg::DepPkgTask;
 use crate::cli::task::monograph_tx_ctl_task::{MonographTxCtlTask, ServerType};
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::scale_op_task::{ScaleOpConfig, ScaleOpTask};
@@ -12,7 +13,6 @@ use crate::cli::task::topology_display_task::TopologyDisplayTask;
 use crate::cli::task::topology_update_task::TopologyUpdateTask;
 use crate::cli::task::tx_conf_update_task::TxConfUpdateTask;
 use crate::cli::task::unpack_file_task::UnpackFileTask;
-use crate::cli::task::update_scale_status_task::DbScaleOpUpdateTask;
 use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, upload_tasks_with_nodes, UploadTaskBuilderType,
 };
@@ -21,11 +21,6 @@ use crate::config::config_base::UploadFile;
 use crate::config::deployment::Product;
 use crate::config::DeploymentPackage;
 use crate::config::{config_template, SSH_PYTHON_SCRIPT};
-use crate::state::scale_operation::ScaleOperation;
-use crate::state::state_base::QueryCondition;
-use crate::state::state_base::StateOperation;
-use crate::state::state_mgr::{SCALE_STATE, STATE_MGR};
-use crate::StateValue;
 use anyhow::{anyhow, bail};
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -33,7 +28,6 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use tokio::sync::watch;
 use tracing::{info, warn};
-use uuid::Uuid;
 
 #[async_trait]
 impl super::TaskGroup for ScaleTaskGroup {
@@ -56,14 +50,13 @@ impl super::TaskGroup for ScaleTaskGroup {
         let mut barrier = Vec::new();
         let mut executable = IndexMap::new();
 
-        let (add_nodes, remove_nodes, is_candidate, cluster_name, ng_id, resume, password, version) =
+        let (add_nodes, remove_nodes, is_candidate, cluster_name, ng_id, password, version) =
             if let SubCommand::Scale {
                 add_nodes: add,
                 remove_nodes: remove,
                 is_candidate,
                 cluster,
                 ng_id,
-                resume,
                 password,
                 version,
                 ..
@@ -75,7 +68,6 @@ impl super::TaskGroup for ScaleTaskGroup {
                     is_candidate.clone(),
                     cluster.clone(),
                     *ng_id,
-                    resume.clone(),
                     password.clone(),
                     version.clone(),
                 )
@@ -84,47 +76,34 @@ impl super::TaskGroup for ScaleTaskGroup {
             };
         let redis_password = deploy_config.redis_password(password);
 
-        if let Some(resume_id) = &resume {
-            if !add_nodes.is_empty()
-                || !remove_nodes.is_empty()
-                || is_candidate.is_some()
-                || ng_id.is_some()
-                || version.is_some()
-            {
-                return Err(anyhow!("When using --resume, no other flags (--add-nodes, --remove-nodes, --is-candidate, --ng-id) should be provided"));
-            }
-            info!("Resuming scale operation with event_id: {}", resume_id);
-        } else {
-            if version.is_some() && add_nodes.is_empty() {
-                return Err(anyhow!(
-                    "--version requires --add-nodes with at least one node"
-                ));
-            }
+        if version.is_some() && add_nodes.is_empty() {
+            return Err(anyhow!(
+                "--version requires --add-nodes with at least one node"
+            ));
+        }
 
-            if version.is_some() && !remove_nodes.is_empty() {
-                return Err(anyhow!("--version cannot be combined with --remove-nodes"));
-            }
+        if version.is_some() && !remove_nodes.is_empty() {
+            return Err(anyhow!("--version cannot be combined with --remove-nodes"));
+        }
 
-            // If not resuming, validate normal operation flags
-            if add_nodes.is_empty() && remove_nodes.is_empty() {
-                return Err(anyhow!("Must specify either --add-nodes or --remove-nodes with at least one node; or use --resume with an event_id"));
-            }
+        if add_nodes.is_empty() && remove_nodes.is_empty() {
+            return Err(anyhow!(
+                "Must specify either --add-nodes or --remove-nodes with at least one node"
+            ));
+        }
 
-            if !add_nodes.is_empty() && !remove_nodes.is_empty() {
-                return Err(anyhow!(
-                    "Cannot specify both --add-nodes and --remove-nodes in the same command"
-                ));
-            }
+        if !add_nodes.is_empty() && !remove_nodes.is_empty() {
+            return Err(anyhow!(
+                "Cannot specify both --add-nodes and --remove-nodes in the same command"
+            ));
+        }
 
-            // For add operations, is_candidate must be specified
-            if !add_nodes.is_empty() && is_candidate.is_none() {
-                return Err(anyhow!("--is-candidate must be provided when adding nodes"));
-            }
+        if !add_nodes.is_empty() && is_candidate.is_none() {
+            return Err(anyhow!("--is-candidate must be provided when adding nodes"));
+        }
 
-            // For add operations, ng_id must be specified
-            if !add_nodes.is_empty() && ng_id.is_none() {
-                return Err(anyhow!("--ng-id must be provided when adding nodes"));
-            }
+        if !add_nodes.is_empty() && ng_id.is_none() {
+            return Err(anyhow!("--ng-id must be provided when adding nodes"));
         }
 
         let empty_cluster_nodes = ClusterNodes {
@@ -163,9 +142,6 @@ impl super::TaskGroup for ScaleTaskGroup {
         // Channel for getting cluster config information, ScaleOpTask to TxConfUpdateTask
         let (scale_op_tx, scale_op_rx) = watch::channel(empty_cluster_nodes_with_config.clone());
 
-        // Channel for scale status result, CheckTxClusterScaleStatusTask to UpdateScaleStatusTask
-        let (scale_status_tx, scale_status_rx) = watch::channel(-1); // Default -1 (undefined)
-
         // Get all Redis host:port combinations from the config
         let mut candidate_nodes_before_scale =
             deploy_config.get_host_port_list(DeploymentPackage::MonographTx);
@@ -178,139 +154,48 @@ impl super::TaskGroup for ScaleTaskGroup {
         all_nodes_before_scale.extend(voter_host_ports);
 
         // Determine event_id
-        let (scale_event_id, operation_type, nodes_list, is_candidate) =
-            if let Some(event_id) = &resume {
-                info!(
-                    "Retrieving details for resumed operation with event_id: {}",
-                    event_id
+        let scale_event_id = uuid::Uuid::new_v4().to_string();
+
+        if !add_nodes.is_empty() {
+            let existing_hosts = config.get_unique_host_list();
+            let newly_added_hosts = add_nodes
+                .clone()
+                .iter()
+                .map(|host_port| host_port.split(':').next().unwrap_or("").to_string())
+                .filter(|host| !host.is_empty())
+                .filter(|host| !existing_hosts.contains(host))
+                .dedup()
+                .collect::<Vec<String>>();
+
+            if !newly_added_hosts.is_empty() {
+                let ssh_python_bin = config_template(SSH_PYTHON_SCRIPT)?
+                    .to_string_lossy()
+                    .into_owned();
+                let mut all_hosts = config.get_unique_host_list();
+                all_hosts.extend(newly_added_hosts.clone());
+                let host_values = all_hosts.join(" ");
+                let ssh_python_task = ExecCustomCommand::build_local_task(
+                    format!("python3 {} {}", ssh_python_bin, host_values),
+                    config,
+                    "ssh setup for new nodes",
                 );
+                barrier.push(ssh_python_task.len());
+                executable.extend(ssh_python_task);
+            }
+            info!("Scaling cluster by adding nodes: {:?}", add_nodes);
+        } else {
+            info!("Scaling cluster by removing nodes: {:?}", remove_nodes);
+        }
 
-                // Retrieve the operation details from the database
-                let scale_op = STATE_MGR.get_state_operation::<ScaleOperation>(SCALE_STATE);
-
-                // We need to run this synchronously since we're in a non-async context
-                let op_result = scale_op
-                    .load(move || -> Option<QueryCondition> {
-                        Some(QueryCondition {
-                            cond_text: "event_id = $1".to_string(),
-                            bind_values: vec![StateValue::Varchar(event_id.clone())],
-                        })
-                    })
-                    .await?;
-
-                if op_result.is_empty() {
-                    return Err(anyhow!(
-                        "No scale operation found with event_id: {}",
-                        event_id
-                    ));
-                }
-
-                let operation = &op_result[0];
-
-                // Convert the stored operation details back to the format needed for processing
-                let op_type = match operation.operation_type {
-                    0 => ScaleOperationType::AddNodes,
-                    1 => ScaleOperationType::RemoveNodes,
-                    _ => {
-                        return Err(anyhow!(
-                            "Unknown operation type: {}",
-                            operation.operation_type
-                        ))
-                    }
-                };
-
-                let nodes = operation
-                    .nodes_list
-                    .split(',')
-                    .map(String::from)
-                    .collect::<Vec<String>>();
-
-                // Convert is_candidate from text (CSV) back to Vec<bool>
-                let is_cand = if let Some(is_candidate_str) = &operation.is_candidate {
-                    // Only relevant for AddNodes operations
-                    if op_type == ScaleOperationType::AddNodes {
-                        let result = is_candidate_str
-                            .split(',')
-                            .map(|flag| flag.trim().parse::<bool>().unwrap_or(false))
-                            .collect::<Vec<bool>>();
-                        Some(result)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                info!(
-                    "Resumed operation details - type: {:?}, nodes: {:?}, is_candidate: {:?}",
-                    op_type, nodes, is_cand
-                );
-
-                (event_id.clone(), op_type, nodes, is_cand)
-            } else {
-                // Generate a new event_id for the scale operation
-                let new_event_id = Uuid::new_v4().to_string();
-
-                if !add_nodes.is_empty() {
-                    // Check if any nodes already exist in the configuration when adding nodes
-                    for node in &add_nodes {
-                        if candidate_nodes_before_scale.contains(node) {
-                            return Err(anyhow!("Node {} already exists in configuration", node));
-                        }
-                    }
-
-                    let existing_hosts = config.get_unique_host_list();
-
-                    // Add SSH setup for newly added log nodes
-                    let newly_added_hosts = add_nodes
-                        .clone()
-                        .iter()
-                        .map(|host_port| host_port.split(':').next().unwrap_or("").to_string())
-                        .filter(|host| !host.is_empty())
-                        .filter(|host| !existing_hosts.contains(host))
-                        .dedup()
-                        .collect::<Vec<String>>();
-
-                    if !newly_added_hosts.is_empty() {
-                        // Add SSH setup for new nodes with Python SSH script
-                        let ssh_python_bin = config_template(SSH_PYTHON_SCRIPT)?
-                            .to_string_lossy()
-                            .into_owned();
-
-                        // Merge existing hosts with new hosts
-                        let mut all_hosts = config.get_unique_host_list();
-                        all_hosts.extend(newly_added_hosts.clone());
-                        // Join the hostnames with spaces
-                        let host_values = all_hosts.join(" ");
-
-                        // Create SSH setup task for added nodes with --new-nodes flag
-                        let ssh_python_task = ExecCustomCommand::build_local_task(
-                            format!("python3 {} {}", ssh_python_bin, host_values),
-                            config,
-                            "ssh setup for new nodes",
-                        );
-
-                        barrier.push(ssh_python_task.len());
-                        executable.extend(ssh_python_task);
-                    }
-
-                    info!("Scaling cluster by adding nodes: {:?}", add_nodes);
-                    (
-                        new_event_id,
-                        ScaleOperationType::AddNodes,
-                        add_nodes.clone(),
-                        is_candidate.clone(),
-                    )
-                } else {
-                    info!("Scaling cluster by removing nodes: {:?}", remove_nodes);
-                    (
-                        new_event_id,
-                        ScaleOperationType::RemoveNodes,
-                        remove_nodes,
-                        None,
-                    )
-                }
-            };
+        let (operation_type, nodes_list, is_candidate) = if !add_nodes.is_empty() {
+            (
+                ScaleOperationType::AddNodes,
+                add_nodes.clone(),
+                is_candidate.clone(),
+            )
+        } else {
+            (ScaleOperationType::RemoveNodes, remove_nodes, None)
+        };
 
         if version.is_some() {
             let download_tasks = DownloadTask::instances(DownloadTask::from_urls(vec![
@@ -342,221 +227,53 @@ impl super::TaskGroup for ScaleTaskGroup {
                 .collect::<Vec<String>>(),
         };
 
-        let candidate_nodes_that_must_be_valid_in_resume = match operation_type {
-            ScaleOperationType::AddNodes => candidate_nodes_before_scale.clone(),
-            ScaleOperationType::RemoveNodes => candidate_nodes_before_scale
-                .clone()
-                .into_iter()
-                .filter(|node| !nodes_list.contains(node)) // keep nodes that are not in nodes_list
-                .collect::<Vec<String>>(),
+        // Topology query — runs before any changes
+        let redis_op_task_id = TaskId {
+            cmd: "topology".to_string(),
+            task: "topology".to_string(),
+            host: "_local".to_string(),
         };
 
-        // The beginning of adding tasks
-        if let Some(event_id) = &resume {
-            let redis_op_task_id = TaskId {
-                cmd: "topology".to_string(),
-                task: "check-resume-topology".to_string(),
-                host: "_local".to_string(),
-            };
+        let redis_op_task = RedisOpTask::new(
+            redis_op_task_id.clone(),
+            candidate_nodes_before_scale.clone(),
+            "cluster topology".to_string(),
+            redis_op_tx.clone(),
+            redis_password.clone(),
+            true,
+        );
 
-            info!(
-                "Setting up topology task with redis_host_ports: {:?}",
-                candidate_nodes_that_must_be_valid_in_resume
-            );
+        let redis_op_instance = TaskInstance {
+            task_input: HashMap::default(),
+            task: Box::new(redis_op_task),
+            task_host: TaskHost::Local,
+        };
 
-            let redis_op_task = RedisOpTask::new(
-                redis_op_task_id.clone(),
-                candidate_nodes_that_must_be_valid_in_resume.clone(),
-                "cluster topology".to_string(),
-                redis_op_tx.clone(),
-                redis_password.clone(),
-                true, // Skip checkpoint
-            );
+        barrier.push(1);
+        executable.insert(redis_op_task_id, redis_op_instance);
 
-            let redis_op_instance = TaskInstance {
-                task_input: HashMap::default(),
-                task: Box::new(redis_op_task),
-                task_host: TaskHost::Local,
-            };
-
-            barrier.push(1);
-            executable.insert(redis_op_task_id, redis_op_instance);
-
-            // Add a task to check the cluster scale status via RPC before proceeding
-            let check_status_task_id = TaskId {
-                cmd: "validate".to_string(),
-                task: "check-resume-status".to_string(),
-                host: "_local".to_string(),
-            };
-
-            info!(
-                "Setting up check-resume-status task with endpoints: {:?}",
-                candidate_nodes_that_must_be_valid_in_resume
-            );
-
-            let check_status_task = CheckTxClusterScaleStatusTask::new(
-                check_status_task_id.clone(),
-                event_id.clone(),
-                true,
-                Some(scale_status_tx.clone()),
-                Some(redis_op_rx.clone()),
-                None,
-            );
-
-            let check_status_instance = TaskInstance {
-                task_input: HashMap::default(),
-                task: Box::new(check_status_task),
-                task_host: TaskHost::Local,
-            };
-
-            barrier.push(1);
-            executable.insert(check_status_task_id, check_status_instance);
-
-            // If CheckTxClusterScaleStatusTask fails, mark scale operation as failed then abort the operation
-            let handle_status_task_id = TaskId {
-                cmd: "status-handler".to_string(),
-                task: "handle-scale-status".to_string(),
-                host: "_local".to_string(),
-            };
-
-            // Check if scale_status_rx is NOT_STARTED, if so, mark scale operation as failed then abort the operation(abort logic in DbScaleOpUpdateTask::execute)
-            let handle_status_task = DbScaleOpUpdateTask::new_with_status_channel(
-                handle_status_task_id.clone(),
-                event_id.clone(),
-                operation_type.clone() as i32,
-                nodes_list.clone(),
-                is_candidate.clone(),
-                scale_status_rx.clone(),
-                cluster_name.clone(),
-            );
-
-            let handle_status_instance = TaskInstance {
-                task_input: HashMap::default(),
-                task: Box::new(handle_status_task),
-                task_host: TaskHost::Local,
-            };
-
-            barrier.push(1);
-            executable.insert(handle_status_task_id, handle_status_instance);
-        } else {
-            // not resume
-            let redis_op_task_id = TaskId {
-                cmd: "topology".to_string(),
-                task: "topology".to_string(),
-                host: "_local".to_string(),
-            };
-
-            info!(
-                "Setting up topology task with redis_host_ports: {:?}",
-                candidate_nodes_before_scale
-            );
-
-            let redis_op_task = RedisOpTask::new(
-                redis_op_task_id.clone(),
-                candidate_nodes_before_scale.clone(),
-                "cluster topology".to_string(),
-                redis_op_tx.clone(),
-                redis_password.clone(),
-                true, // Skip checkpoint
-            );
-
-            let redis_op_instance = TaskInstance {
-                task_input: HashMap::default(),
-                task: Box::new(redis_op_task),
-                task_host: TaskHost::Local,
-            };
-
-            barrier.push(1);
-            executable.insert(redis_op_task_id, redis_op_instance);
-
-            // Add a check for unfinished operations AND log stage 0 if check passes
-            let scale_op = STATE_MGR.get_state_operation::<ScaleOperation>(SCALE_STATE);
-
-            // Check for unfinished operations
-            let unfinished_ops = scale_op
-                .load(move || -> Option<QueryCondition> {
-                    Some(QueryCondition {
-                        cond_text: "stage = $1".to_string(),
-                        bind_values: vec![StateValue::Integer(0)],
-                    })
-                })
-                .await?;
-
-            // If any unfinished operations exist, abort immediately
-            if !unfinished_ops.is_empty() {
-                assert!(unfinished_ops.len() == 1);
-                let unfinished_op = &unfinished_ops[0];
-                bail!(
-                    "Found unfinished scale operation with event_id: {}. Please resolve or delete this operation before starting a new one, or resume it with --resume: eloqctl scale {} --resume {}",
-                    unfinished_op.event_id,
-                    cluster_name,
-                    unfinished_op.event_id
-                );
+        // ── System deps for new hosts (AddNodes only) ──
+        if let ScaleOperationType::AddNodes = operation_type {
+            let existing_hosts = config.get_unique_host_list();
+            let new_hosts: Vec<String> = nodes_list
+                .iter()
+                .map(|hp| hp.split(':').next().unwrap_or("").to_string())
+                .filter(|h| !h.is_empty() && !existing_hosts.contains(h))
+                .dedup()
+                .collect();
+            if !new_hosts.is_empty() {
+                let mut dep_tasks = DepPkgTask::from_config(deploy_config)?;
+                dep_tasks.retain(|tid, _| new_hosts.contains(&tid.host));
+                if !dep_tasks.is_empty() {
+                    let len = dep_tasks.len();
+                    barrier.push(len);
+                    executable.extend(dep_tasks);
+                    info!("Added dep install tasks for {} new hosts", new_hosts.len());
+                }
             }
-
-            // If no unfinished operations, create the task to log stage 0
-            let check_unfinished_ops_task_id = TaskId {
-                cmd: "scale-status".to_string(),
-                task: "log-stage-0".to_string(),
-                host: "_local".to_string(),
-            };
-
-            let check_unfinished_ops_task = DbScaleOpUpdateTask::new(
-                check_unfinished_ops_task_id.clone(),
-                scale_event_id.clone(),
-                operation_type.clone() as i32,
-                nodes_list.clone(),
-                is_candidate.clone(),
-                0, // Stage 0: scale started
-                cluster_name.clone(),
-            );
-
-            // Create the task input map
-            let task_input = HashMap::default();
-            let check_unfinished_ops_instance = TaskInstance {
-                task_input,
-                task: Box::new(check_unfinished_ops_task),
-                task_host: TaskHost::Local,
-            };
-
-            barrier.push(1);
-            executable.insert(check_unfinished_ops_task_id, check_unfinished_ops_instance);
-
-            // Execute the actual scaling operation (add/remove nodes)
-            let scale_task_id = TaskId {
-                cmd: "scale".to_string(),
-                task: "execute-scale".to_string(),
-                host: "_local".to_string(),
-            };
-
-            // Take the RedisOpTask result from redis_op_rx(old cluster config) and send the ScaleOpTask result to scale_op_tx(new cluster config)
-            let scale_config = ScaleOpConfig {
-                operation_type: operation_type.clone(),
-                nodes_list: nodes_list.clone(),
-                is_candidate: is_candidate.clone(),
-                cluster_name: cluster_name.clone(),
-                ng_id,
-            };
-
-            let scale_task = ScaleOpTask::new(
-                scale_task_id.clone(),
-                scale_event_id.clone(),
-                scale_config,
-                redis_op_rx.clone(),
-                scale_op_tx.clone(),
-            );
-
-            let scale_instance = TaskInstance {
-                task_input: HashMap::default(),
-                task: Box::new(scale_task),
-                task_host: TaskHost::Local,
-            };
-
-            barrier.push(1);
-            executable.insert(scale_task_id, scale_instance);
         }
 
-        // Common steps for both new and resumed scale operations
+        // ── Common steps for both add and remove ──
 
         let all_hosts_before_scale: Vec<String> = all_nodes_before_scale
             .clone()
@@ -609,6 +326,34 @@ impl super::TaskGroup for ScaleTaskGroup {
 
             barrier.push(mkdir_remote_dir.len());
             executable.extend(mkdir_remote_dir);
+        }
+
+        // ── TLS cert directory creation ──
+        if deploy_config.deployment.tls_enabled() {
+            let tls_dir = deploy_config.deployment.tls_cert_install_dir();
+            let tls_hosts: Vec<String> = match operation_type {
+                ScaleOperationType::AddNodes => nodes_list
+                    .iter()
+                    .map(|hp| hp.split(':').next().unwrap_or("").to_string())
+                    .filter(|h| !h.is_empty())
+                    .collect(),
+                ScaleOperationType::RemoveNodes => nodes_list
+                    .iter()
+                    .map(|hp| hp.split(':').next().unwrap_or("").to_string())
+                    .filter(|h| !h.is_empty())
+                    .collect(),
+            };
+            let tls_mkdir = ExecCustomCommand::build_task_by_host(
+                format!("mkdir -p {}", tls_dir),
+                config,
+                tls_hosts,
+                Some("mkdir-tls-dirs".to_string()),
+            );
+            if !tls_mkdir.is_empty() {
+                barrier.push(tls_mkdir.len());
+                executable.extend(tls_mkdir);
+                info!("Added TLS cert directory creation tasks");
+            }
         }
 
         // Update configuration files with the new topology in case the log node changed
@@ -757,6 +502,35 @@ impl super::TaskGroup for ScaleTaskGroup {
             }
         }
 
+        // ── gRPC scale operation (add_peers / remove_node) ──
+        // Must run AFTER all preparation (SSH, deps, upload, unpack, config) is done
+        let scale_task_id = TaskId {
+            cmd: "scale".to_string(),
+            task: "execute-scale".to_string(),
+            host: "_local".to_string(),
+        };
+        let scale_config = ScaleOpConfig {
+            operation_type: operation_type.clone(),
+            nodes_list: nodes_list.clone(),
+            is_candidate: is_candidate.clone(),
+            cluster_name: cluster_name.clone(),
+            ng_id,
+        };
+        let scale_task = ScaleOpTask::new(
+            scale_task_id.clone(),
+            scale_event_id.clone(),
+            scale_config,
+            redis_op_rx.clone(),
+            scale_op_tx.clone(),
+        );
+        let scale_instance = TaskInstance {
+            task_input: HashMap::default(),
+            task: Box::new(scale_task),
+            task_host: TaskHost::Local,
+        };
+        barrier.push(1);
+        executable.insert(scale_task_id, scale_instance);
+
         // Channel for getting candidate nodes after scaling, RedisOpTask to CheckTxClusterScaleStatusTask
         let (redis_op_scaled_tx, redis_op_scaled_rx) = watch::channel(empty_cluster_nodes.clone());
 
@@ -776,7 +550,7 @@ impl super::TaskGroup for ScaleTaskGroup {
                 true, // poll until finished
                 None, // no scale_status_tx needed here
                 None, // no redis_op_rx needed here
-                Some(candidate_nodes_that_must_be_valid_in_resume.clone()),
+                None,
             );
 
             let validate_config_instance = TaskInstance {
@@ -930,30 +704,6 @@ impl super::TaskGroup for ScaleTaskGroup {
 
         barrier.push(1);
         executable.insert(db_update_task_id, db_update_instance);
-
-        // Update eloqctl database with new scale status
-        let update_stage1_task_id = TaskId {
-            cmd: "scale-status".to_string(),
-            task: "update-stage-1".to_string(),
-            host: "_local".to_string(),
-        };
-
-        let update_stage1_task = DbScaleOpUpdateTask::new(
-            update_stage1_task_id.clone(),
-            scale_event_id.clone(),
-            operation_type.clone() as i32,
-            nodes_list.clone(),
-            is_candidate,
-            1, // stage 1, scale operation finished
-            cluster_name.clone(),
-        );
-        let update_stage1_instance = TaskInstance {
-            task_input: HashMap::default(),
-            task: Box::new(update_stage1_task),
-            task_host: TaskHost::Local,
-        };
-        barrier.push(1);
-        executable.insert(update_stage1_task_id, update_stage1_instance);
 
         // Add topology update and display tasks after everything else is complete
 

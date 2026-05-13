@@ -247,17 +247,37 @@ impl RedisProbe {
         Self { host, port }
     }
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
-        info!("Probe whether Redis is ready to be connected");
+        info!("Probe whether Redis is ready to serve requests");
         let url = format!("redis://{}:{}/", self.host, self.port);
         let client = redis::Client::open(url.clone())?;
         loop {
             match client.get_connection() {
-                Ok(_) => {
-                    return Ok(HashMap::from([
-                        (CMD.to_string(), TaskArgValue::Str(url)),
-                        (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
-                        (CMD_OUTPUT.to_string(), TaskArgValue::Str("OK".to_owned())),
-                    ]));
+                Ok(mut con) => {
+                    // Send PING to verify Redis is actually serving commands,
+                    // not just accepting TCP connections.
+                    match redis::cmd("PING").query::<String>(&mut con) {
+                        Ok(ref pong) if pong == "PONG" => {
+                            return Ok(HashMap::from([
+                                (CMD.to_string(), TaskArgValue::Str(url)),
+                                (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
+                                (CMD_OUTPUT.to_string(), TaskArgValue::Str("OK".to_owned())),
+                            ]));
+                        }
+                        Ok(resp) => {
+                            info!(
+                                "Redis PING returned unexpected response '{}', retrying",
+                                resp
+                            );
+                            maybe_continue_probe!(wait_secs);
+                        }
+                        Err(err) => {
+                            info!("Redis PING to {} failed: {}, retrying", url, err);
+                            if err.is_connection_refusal() {
+                                maybe_continue_probe!(wait_secs);
+                            }
+                            maybe_continue_probe!(wait_secs);
+                        }
+                    }
                 }
                 Err(err) => {
                     if err.is_connection_refusal() {

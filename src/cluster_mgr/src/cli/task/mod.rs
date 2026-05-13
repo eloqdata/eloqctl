@@ -42,5 +42,4 @@ pub mod topology_display_task;
 pub mod topology_update_task;
 mod tx_conf_update_task;
 mod unpack_file_task;
-mod update_scale_status_task;
 pub mod upload;

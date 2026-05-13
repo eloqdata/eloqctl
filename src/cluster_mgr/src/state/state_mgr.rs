@@ -4,7 +4,6 @@ use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::CONFIG_PATH_DIR;
 use crate::state::deployment_operation::DeploymentOperation;
 use crate::state::proxy_operation::{ProxyEntity, ProxyOperation};
-use crate::state::scale_operation::ScaleOperation;
 use crate::state::service_status_operation::{ServiceInstanceEntity, ServiceInstanceOperation};
 use crate::state::snapshot_info_operation::{SnapshotEntity, SnapshotOperation};
 use crate::state::state_base::{QueryCondition, StateOperation, StateOperationAny};
@@ -28,7 +27,6 @@ use tracing::{error, info};
 
 pub const DEPLOYMENT_STATE: &str = "Deployment";
 pub const PROXY_STATE: &str = "Proxy";
-pub const SCALE_STATE: &str = "Scale";
 pub const TASK_STATUS_STATE: &str = "TaskStatus";
 pub const SERVICE_STATUS_STATE: &str = "ServiceStatus";
 pub const SNAPSHOT_STATUS_STATE: &str = "SnapshotStatus";
@@ -283,12 +281,6 @@ impl StateMgr {
             .del(|| -> Option<QueryCondition> { Some(cond.clone()) })
             .await?;
 
-        // Delete entries from t_scale_tx_nodes
-        rows += self
-            .get_state_operation::<ScaleOperation>(SCALE_STATE)
-            .del(|| -> Option<QueryCondition> { Some(cond.clone()) })
-            .await?;
-
         Ok(rows)
     }
 
@@ -452,9 +444,6 @@ impl StateMgr {
             let proxy_opt_ref =
                 Box::leak(ProxyOperation::boxed(db_conn_pool.clone())) as &dyn StateOperationAny;
 
-            let scale_opt_ref =
-                Box::leak(ScaleOperation::boxed(db_conn_pool.clone())) as &dyn StateOperationAny;
-
             let topo_tx_opt_ref = Box::leak(TopologyTxOperation::boxed(db_conn_pool.clone()))
                 as &dyn StateOperationAny;
             let topo_log_opt_ref = Box::leak(TopologyLogOperation::boxed(db_conn_pool.clone()))
@@ -472,7 +461,6 @@ impl StateMgr {
                     Arc::new(snapshot_status_opt_ref),
                 ),
                 (PROXY_STATE.to_string(), Arc::new(proxy_opt_ref)),
-                (SCALE_STATE.to_string(), Arc::new(scale_opt_ref)),
                 (TOPOLOGY_TX_STATE.to_string(), Arc::new(topo_tx_opt_ref)),
                 (TOPOLOGY_LOG_STATE.to_string(), Arc::new(topo_log_opt_ref)),
             ]);
@@ -582,7 +570,6 @@ mod tests {
                 "t_service_config",
                 "t_snapshot_info",
                 "t_proxy",
-                "t_scale_tx_nodes",
                 "t_topology_tx",
                 "t_topology_log",
             ]

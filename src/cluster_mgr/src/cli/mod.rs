@@ -244,9 +244,6 @@ pub enum SubCommand {
         /// Candidate status for added nodes: true for candidate, false for non-candidate
         #[arg(long, value_delimiter = ',')]
         is_candidate: Option<Vec<bool>>,
-        /// Resume a previously interrupted scale operation with the given event_id
-        #[arg(long)]
-        resume: Option<String>,
         /// Optional password for Redis operations
         #[arg(long, value_name = "cluster password")]
         password: Option<String>,
