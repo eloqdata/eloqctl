@@ -14,7 +14,8 @@ use crate::cli::task::topology_update_task::TopologyUpdateTask;
 use crate::cli::task::tx_conf_update_task::TxConfUpdateTask;
 use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{
-    build_task_instance, get_source_host, upload_tasks_with_nodes, UploadTaskBuilderType,
+    build_task_instance, get_source_host, upload_tasks, upload_tasks_with_nodes,
+    UploadTaskBuilderType,
 };
 use crate::cli::{download_dir, SubCommand};
 use crate::config::config_base::UploadFile;
@@ -502,6 +503,75 @@ impl super::TaskGroup for ScaleTaskGroup {
             }
         }
 
+        // ── Monitor exporter upload for new nodes (AddNodes only) ──
+        if let ScaleOperationType::AddNodes = operation_type {
+            if deploy_config.deployment.monitor.is_some() {
+                let new_hosts: Vec<String> = nodes_list
+                    .iter()
+                    .map(|hp| hp.split(':').next().unwrap_or("").to_string())
+                    .filter(|h| !h.is_empty())
+                    .dedup()
+                    .collect();
+
+                // Upload node_exporter tarball to new hosts
+                if let Some(node_exporter_url) = deploy_config
+                    .deployment
+                    .monitor
+                    .as_ref()
+                    .and_then(|m| m.node_exporter.as_ref())
+                    .map(|n| n.url.clone())
+                {
+                    let ne_file = node_exporter_url.split('/').next_back().unwrap_or("");
+                    let store = deploy_config
+                        .deployment
+                        .storage_service
+                        .as_ref()
+                        .map_or("rocksdb".to_string(), |s| s.pretty_name());
+                    let ne_tarball = download_dir().join("monitor").join(&store).join(ne_file);
+                    if ne_tarball.exists() {
+                        for host in &new_hosts {
+                            let source_host = get_source_host(None);
+                            let upload_file = UploadFile {
+                                source: ne_tarball.to_string_lossy().to_string(),
+                                dest: deploy_config.install_dir(),
+                                extension: "gz".to_string(),
+                                host: host.clone(),
+                                copy_dir: false,
+                            };
+                            let (id, instance) = build_task_instance(
+                                source_host,
+                                upload_file,
+                                config,
+                                "deploy",
+                                "node_exporter_upload",
+                            );
+                            barrier.push(1);
+                            executable.insert(id, instance);
+                            info!("Added node_exporter upload task for host {}", host);
+                        }
+
+                        // Unpack node_exporter on new hosts
+                        let mut temp_ne_config = deploy_config.clone();
+                        temp_ne_config.deployment.tx_service.tx_host_ports =
+                            nodes_list.iter().map(|n| n.to_string()).collect();
+                        temp_ne_config.deployment.tx_service.standby_host_ports = None;
+                        temp_ne_config.deployment.tx_service.voter_host_ports = None;
+                        temp_ne_config.deployment.log_service = None;
+                        temp_ne_config.deployment.tx_service.image =
+                            Some(node_exporter_url.clone());
+                        temp_ne_config.tx_image_override = Some(node_exporter_url);
+
+                        let ne_unpack = UnpackFileTask::unpack_eloqservers(&temp_ne_config);
+                        for (task_id, instance) in ne_unpack {
+                            info!("Added node_exporter unpack task for host {}", task_id.host);
+                            barrier.push(1);
+                            executable.insert(task_id, instance);
+                        }
+                    }
+                }
+            }
+        }
+
         // ── gRPC scale operation (add_peers / remove_node) ──
         // Must run AFTER all preparation (SSH, deps, upload, unpack, config) is done
         let scale_task_id = TaskId {
@@ -704,6 +774,16 @@ impl super::TaskGroup for ScaleTaskGroup {
 
         barrier.push(1);
         executable.insert(db_update_task_id, db_update_instance);
+
+        // ── Regenerate and upload monitor configs (Prometheus targets) ──
+        if deploy_config.deployment.monitor.is_some() {
+            let mon_conf_tasks = upload_tasks(UploadTaskBuilderType::MonitorConf, config);
+            if !mon_conf_tasks.is_empty() {
+                let len = mon_conf_tasks.len();
+                barrier.push(len);
+                executable.extend(mon_conf_tasks);
+            }
+        }
 
         // Add topology update and display tasks after everything else is complete
 
