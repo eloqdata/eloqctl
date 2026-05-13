@@ -240,33 +240,15 @@ impl MySQLProbe {
 pub struct RedisProbe {
     host: String,
     port: u16,
-    password: Option<String>,
 }
 
 impl RedisProbe {
     pub fn new(host: String, port: u16) -> Self {
-        Self {
-            host,
-            port,
-            password: None,
-        }
+        Self { host, port }
     }
-
-    pub fn with_password(host: String, port: u16, password: Option<String>) -> Self {
-        Self {
-            host,
-            port,
-            password,
-        }
-    }
-
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
         info!("Probe whether Redis is ready to serve requests");
-        let url = if let Some(ref pass) = self.password {
-            format!("redis://:{pass}@{}:{}/", self.host, self.port)
-        } else {
-            format!("redis://{}:{}/", self.host, self.port)
-        };
+        let url = format!("redis://{}:{}/", self.host, self.port);
         let client = redis::Client::open(url.clone())?;
         loop {
             match client.get_connection() {
@@ -747,10 +729,7 @@ impl TaskExecutor for MonographTxCtlTask {
                     Product::EloqKV => {
                         if wait_secs >= 0 {
                             let cs_port: u16 = port.parse().unwrap();
-                            let rp = self.config.redis_password(None);
-                            let _ = RedisProbe::with_password(host_value, cs_port, rp)
-                                .probe(wait_secs)
-                                .await;
+                            let _ = RedisProbe::new(host_value, cs_port).probe(wait_secs).await;
                             check_process_status
                         } else {
                             check_process_status

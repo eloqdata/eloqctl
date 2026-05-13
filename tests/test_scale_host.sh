@@ -29,11 +29,11 @@ echo "  OK"
 
 echo "[2/5] Wait ready"
 for i in $(seq 1 60); do
-    REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 set _t v >/dev/null 2>&1 && { echo "  ready (${i}s)"; break; }
+    redis-cli -p 6379 set _t v >/dev/null 2>&1 && { echo "  ready (${i}s)"; break; }
     [ $i -ge 60 ] && { echo "FAIL: not ready after 60s"; exit 1; }
     sleep 1
 done
-REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 cluster slots
+redis-cli -p 6379 cluster slots
 
 echo "[3/5] Scale add: new replica at 127.0.0.1:6399"
 "${ELOQCTL}" scale "${CLUSTER}" \
@@ -41,19 +41,19 @@ echo "[3/5] Scale add: new replica at 127.0.0.1:6399"
     --ng-id 0 \
     --is-candidate true 2>&1
 sleep 2
-REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 set scale_add ok 2>&1 | grep -v OK && { echo "FAIL: write after add failed"; exit 1; }
+redis-cli -p 6379 set scale_add ok 2>&1 | grep -v OK && { echo "FAIL: write after add failed"; exit 1; }
 echo "  write after add: OK"
 
 echo "[4/5] Scale remove: old standby at 127.0.0.1:6389"
 "${ELOQCTL}" scale "${CLUSTER}" \
     --remove-nodes 127.0.0.1:6389 2>&1
 sleep 2
-REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 set scale_rm ok 2>&1 | grep -v OK && { echo "FAIL: write after remove failed"; exit 1; }
+redis-cli -p 6379 set scale_rm ok 2>&1 | grep -v OK && { echo "FAIL: write after remove failed"; exit 1; }
 echo "  write after remove: OK"
 
 echo "[5/5] Final state"
-REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 get scale_add 2>/dev/null
-REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 get scale_rm 2>/dev/null
+redis-cli -p 6379 get scale_add 2>/dev/null
+redis-cli -p 6379 get scale_rm 2>/dev/null
 
 echo ""
 echo "PASS: scale add and remove completed, cluster healthy"

@@ -119,6 +119,20 @@ pub enum SubCommand {
         detail: bool,
     },
 
+    #[command(long_about = "Audit cluster health and report inconsistencies.\n\
+                      Checks: SSH connectivity, eloqkv process, node_exporter,\n\
+                      TLS certs, Prometheus targets, state vs actual topology.")]
+    #[strum(serialize = "health")]
+    Health { cluster: String },
+
+    #[command(
+        long_about = "Repair missing infrastructure on existing cluster nodes.\n\
+                      Runs node_exporter upload, TLS cert generation, monitor config\n\
+                      regeneration. Does not modify cluster topology. Idempotent."
+    )]
+    #[strum(serialize = "fix")]
+    Fix { cluster: String },
+
     #[command(long_about = "Update cluster version. This will stop/update/start the cluster")]
     #[strum(serialize = "update")]
     Update {

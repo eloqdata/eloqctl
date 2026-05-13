@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/monographdb/eloq_waiter/compare/v1.2.0...v1.3.0) (2026-05-13)
+
+
+### Features
+
+* idempotent scale, health/export/fix commands, cluster_mode ([#364](https://github.com/monographdb/eloq_waiter/issues/364)) ([0115cec](https://github.com/monographdb/eloq_waiter/commit/0115cec2e790742f14561f1e3db63284142dc01f))
+
 ## [1.2.0](https://github.com/monographdb/eloq_waiter/compare/v1.1.8...v1.2.0) (2026-05-12)
 
 

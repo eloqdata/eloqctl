@@ -14,6 +14,5 @@ deployment:
   tx_service:
     tx_host_ports: [127.0.0.1:6379]
     standby_host_ports: [127.0.0.1:6389]
-    requirepass: "testpass"
   storage_service:
     rocksdb: !LOCAL
