@@ -47,11 +47,11 @@ echo "  OK"
 
 echo "[2/5] Wait ready"
 for i in $(seq 1 60); do
-    redis-cli -p 6379 set _t v >/dev/null 2>&1 && { echo "  ready (${i}s)"; break; }
+    REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 set _t v >/dev/null 2>&1 && { echo "  ready (${i}s)"; break; }
     [ $i -ge 60 ] && { echo "FAIL: not ready after 60s"; exit 1; }
     sleep 1
 done
-redis-cli -p 6379 cluster slots
+REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 cluster slots
 
 echo "[3/5] Create modified YAML (checkpoint_interval=130)"
 sed 's/checkpoint_interval: 120/checkpoint_interval: 130/' "${TOPO}" > "${TOPO_V2}"
@@ -62,7 +62,7 @@ echo "[4/5] Start writes + apply (triggers RollingUpgrade)..."
 WRITE_LOG=$(mktemp); ERROR_LOG=$(mktemp)
 (while true; do
     SEQ=$((SEQ+1))
-    OUT=$(redis-cli -p 6379 set rolling_k "${SEQ}" 2>&1) || echo "FAIL ${SEQ}" >> "${ERROR_LOG}"
+    OUT=$(REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 set rolling_k "${SEQ}" 2>&1) || echo "FAIL ${SEQ}" >> "${ERROR_LOG}"
     echo "${SEQ}" >> "${WRITE_LOG}"
     sleep 0.05
 done) & WRITER_PID=$!
@@ -85,15 +85,15 @@ fi
 echo "  post-upgrade cluster slots:"
 # Wait for transaction subsystem to stabilize after rolling restart
 for i in $(seq 1 10); do
-    redis-cli -p 6379 set _probe 1 >/dev/null 2>&1 && { echo "  stabilized (${i}s)"; break; }
+    REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 set _probe 1 >/dev/null 2>&1 && { echo "  stabilized (${i}s)"; break; }
     [ $i -ge 10 ] && { echo "  WARNING: cluster still initializing after 10s"; }
     sleep 1
 done
-redis-cli -p 6379 cluster slots
-redis-cli -p 6379 set final_k ok >/dev/null 2>&1 || true
-VAL=$(redis-cli -p 6379 get rolling_k 2>/dev/null || echo "N/A")
+REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 cluster slots
+REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 set final_k ok >/dev/null 2>&1 || true
+VAL=$(REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 get rolling_k 2>/dev/null || echo "N/A")
 echo "  last rolling key = ${VAL}"
-echo "  post-upgrade write/read: $(redis-cli -p 6379 set post_upgrade ok 2>&1) / $(redis-cli -p 6379 get post_upgrade 2>&1)"
+echo "  post-upgrade write/read: $(REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 set post_upgrade ok 2>&1) / $(REDISCLI_AUTH=testpass redis-cli --no-auth-warning -p 6379 get post_upgrade 2>&1)"
 
 echo ""
 echo "PASS: rolling upgrade completed, cluster healthy"
