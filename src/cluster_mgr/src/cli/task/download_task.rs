@@ -159,6 +159,36 @@ impl TaskExecutor for DownloadTask {
         println!("download url:{url}");
         let save_dir = &self.dir;
 
+        // create local directory
+        if let Err(err) = std::fs::create_dir_all(&self.dir) {
+            error!("Download task: create directory {:?} falied", save_dir);
+            return Err(anyhow!(DownloadErr(self.url.clone(), err.to_string())));
+        }
+        let save_path = save_dir.join(&self.name);
+
+        // Try HEAD first to check remote content-length for cache validation
+        let remote_len = HTTP_CLIENT
+            .head(&self.url)
+            .send()
+            .await
+            .ok()
+            .and_then(|r| r.content_length());
+
+        // Use cache if file exists and size matches remote
+        if let Some(expected_len) = remote_len {
+            if save_path.exists()
+                && fs::metadata(&save_path)
+                    .map(|m| m.len() == expected_len)
+                    .unwrap_or(false)
+            {
+                info!(
+                    "local file cache {:?} found ({} bytes, matches remote), skipping download.",
+                    save_path, expected_len
+                );
+                return Ok(None);
+            }
+        }
+
         let response = HTTP_CLIENT
             .get(&self.url)
             .send()
@@ -171,18 +201,14 @@ impl TaskExecutor for DownloadTask {
         }
         let file_len = response.content_length().unwrap();
 
-        // create local directory and partial file
-        if let Err(err) = std::fs::create_dir_all(&self.dir) {
-            error!("Download task: create directory {:?} falied", save_dir);
-            return Err(anyhow!(DownloadErr(self.url.clone(), err.to_string())));
-        }
-        let save_path = save_dir.join(&self.name);
-        if save_path.exists() {
-            // TODO(zhanghao): It would be better to check file SHA
-            if file_len == fs::metadata(&save_path).unwrap().len() {
-                info!("local file cache {:?} found.", save_path);
-                return Ok(None);
-            }
+        // Double-check cache after successful GET (in case of concurrent download)
+        if save_path.exists()
+            && fs::metadata(&save_path)
+                .map(|m| m.len() == file_len)
+                .unwrap_or(false)
+        {
+            info!("local file cache {:?} found.", save_path);
+            return Ok(None);
         }
         // TODO(zhanghao): Use HTTP range header to resume download
         let part_path = append_ext(save_path.clone(), "partial");

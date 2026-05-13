@@ -451,6 +451,17 @@ pub static AVAILABLE_FIELDS: Lazy<HashMap<&'static str, FieldMetadata>> = Lazy::
     );
 
     fields.insert(
+        "cluster_mode",
+        FieldMetadata {
+            description: "Enable cluster mode for EloqKV",
+            scope: FieldScope::NodeSpecific,
+            example: "true",
+            value_type: FieldValueType::Boolean,
+            default_value: "false",
+        },
+    );
+
+    fields.insert(
         "snapshot_sync_worker_num",
         FieldMetadata {
             description: "Snapshot sync worker num",

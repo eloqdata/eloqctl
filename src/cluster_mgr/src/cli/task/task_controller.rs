@@ -17,6 +17,12 @@ pub struct TaskController {
     tx: crossbeam_channel::Sender<TaskResultPair>,
 }
 
+impl Default for TaskController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// `TaskController` is responsible for the parallelization and coordination of tasks.
 /// Coordination refers to if there is a business dependency between tasks
 /// and if the execution of the dependent tasks is guaranteed to be completed.

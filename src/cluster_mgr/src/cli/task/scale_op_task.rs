@@ -8,8 +8,6 @@ use crate::cli::task::task_base::{
 };
 use crate::cli::task::task_utils::{ClusterNodesWithConfig, ScaleOperationType};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
-use crate::state::scale_operation::ScaleOperation;
-use crate::state::state_mgr::{SCALE_STATE, STATE_MGR};
 use crate::task_return_value;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -292,20 +290,6 @@ impl TaskExecutor for ScaleOpTask {
                         format!("RPC operation failed with result: {}", response.result);
                     error!("{}", error_msg);
                     error!("Response details: {:?}", response);
-
-                    // Update the scale operation stage to 2 in the database
-                    info!(
-                        "Updating scale operation stage to 2 for event_id: {}",
-                        self.event_id
-                    );
-                    let scale_op = STATE_MGR.get_state_operation::<ScaleOperation>(SCALE_STATE);
-
-                    // Create an update operation for the database
-                    if let Err(e) = scale_op.update_stage(&self.event_id, 2).await {
-                        error!("Failed to update scale operation stage: {}", e);
-                    } else {
-                        info!("Successfully updated scale operation stage to 2");
-                    }
 
                     task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
                     task_result

@@ -62,15 +62,17 @@ resolve_latest_tag() {
 }
 
 install_binary() {
-    echo "TAG: ${TAG}"
-
     RELEASE_TAG="${TAG}"
     if [ "${TAG}" = "latest" ]; then
+        echo "Resolving latest version..."
         RELEASE_TAG="$(resolve_latest_tag)"
         if [ -z "${RELEASE_TAG}" ]; then
             echo "Failed to resolve latest release tag."
             return 1
         fi
+        echo "Installing eloqctl ${RELEASE_TAG}"
+    else
+        echo "Installing eloqctl ${TAG}"
     fi
 
     TARBALL="eloqctl-${RELEASE_TAG}-${OS_ID}-${ARCH}.tar.gz"

@@ -1,10 +1,11 @@
 use crate::cli::task::backup_utils::split_manifests;
 use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{
-    set_verbose_task_output, TaskArgValue, TaskMgr, TaskResultEnum, TaskResultPair,
+    set_verbose_task_output, TaskArgValue, TaskExecutionContext, TaskMgr, TaskResultEnum,
+    TaskResultPair,
 };
 use crate::cli::util::{cpu_arch, file_pg_bar, os_id, os_major_version};
-use crate::cli::{upload_dir, SubCommand, CMD_OUTPUT, CMD_STATUS, HOME_DIR};
+use crate::cli::{download_dir, upload_dir, SubCommand, CMD_OUTPUT, CMD_STATUS, HOME_DIR};
 use crate::cli::{BackupCommand, ProxyCommand};
 use crate::config::config_base::{DeployConfig, VersionRow};
 use crate::config::deployment::{Deployment, Product};
@@ -12,6 +13,7 @@ use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::storage_service_config::{
     DataStoreServiceBackend, DataStoreServiceMode, RocksDB, RocksLocal, StorageService,
 };
+use crate::config::{config_template, SSH_PYTHON_SCRIPT};
 use crate::config::{
     DeploymentPackage, StorageProvider, TopoFormat, CDN, CONFIG_PATH_DIR, UPLOAD_PATH_DIR,
 };
@@ -501,6 +503,20 @@ impl CmdExecutor {
                 current.deployment.checkpoint_interval;
         }
 
+        if let Some(mode) = desired.deployment.cluster_mode {
+            if current.deployment.cluster_mode != Some(mode) {
+                merged.deployment.cluster_mode = Some(mode);
+                plan.tx_field_updates.push(format!("cluster_mode:{mode}"));
+                plan.applied_changes.push(format!(
+                    "deployment.cluster_mode: {:?} -> {:?}",
+                    current.deployment.cluster_mode,
+                    Some(mode)
+                ));
+            }
+        } else {
+            desired_for_diff.deployment.cluster_mode = current.deployment.cluster_mode;
+        }
+
         let current_prom = current
             .deployment
             .monitor
@@ -608,6 +624,7 @@ impl CmdExecutor {
 
         let supported_paths = [
             "deployment.checkpoint_interval",
+            "deployment.cluster_mode",
             "deployment.monitor.prometheus.retention_time",
             "deployment.monitor.prometheus.retention_size",
             "deployment.monitor.prometheus.remote_write_urls",
@@ -780,7 +797,10 @@ impl CmdExecutor {
                 command: _,
                 cluster,
             }
+            | SubCommand::Health { cluster }
+            | SubCommand::Fix { cluster }
             | SubCommand::Inspect { cluster, .. }
+            | SubCommand::Export { cluster, .. }
             | SubCommand::Remove { cluster, force: _ }
             | SubCommand::Connect { cluster }
             | SubCommand::Backup { cluster, .. }
@@ -919,6 +939,22 @@ impl CmdExecutor {
                     SubCommand::Connect { .. } => {
                         println!("{}", deploy_config.client_conn());
                     }
+                    SubCommand::Health { cluster: _ } => {
+                        return self.health_check(&deploy_config).await;
+                    }
+                    SubCommand::Fix { cluster: _ } => {
+                        return self.fix_infra(&deploy_config, quiet, verbose).await;
+                    }
+                    SubCommand::Export { cluster, output } => {
+                        let yaml_str = deploy_config.to_yaml();
+                        if let Some(path) = output {
+                            std::fs::write(path.clone(), &yaml_str)
+                                .map_err(|e| anyhow!("failed to write {}: {}", path, e))?;
+                            println!("Exported cluster '{}' topology to {}", cluster, path);
+                        } else {
+                            println!("{}", yaml_str);
+                        }
+                    }
                     SubCommand::Inspect { cluster: _, format } => match format {
                         Some(fmt) => match fmt {
                             TopoFormat::Yaml => println!("{}", deploy_config.to_yaml()),
@@ -1042,6 +1078,366 @@ impl CmdExecutor {
             }
         }
 
+        Ok(())
+    }
+
+    /// Audit cluster health: SSH, eloqkv processes, node_exporter, TLS certs.
+    async fn health_check(&self, deploy: &DeployConfig) -> Result<()> {
+        use crate::cli::ssh::SSHSession;
+
+        let all_hosts = deploy.get_unique_host_list();
+        let ssh_key = deploy
+            .connection
+            .ssh_auth_key()
+            .ok_or_else(|| anyhow!("no ssh key configured"))?
+            .to_string();
+        let ssh_usr = &deploy.connection.username;
+        let ssh_port = deploy.connection.ssh_port() as usize;
+
+        println!("Cluster: {}", deploy.deployment.cluster_name);
+        println!("Hosts:   {}", all_hosts.join(", "));
+        println!();
+
+        let mut issues = 0u32;
+        let install_dir = deploy.install_dir();
+        let tx_home = deploy.deployment.tx_srv_home();
+
+        // Hosts with eloqkv nodes
+        let node_hosts: Vec<String> = deploy
+            .deployment
+            .tx_service
+            .merge_hosts()
+            .into_iter()
+            .dedup()
+            .collect();
+
+        // 1. SSH + eloqkv + node_exporter for each node host
+        println!("── Nodes ──");
+        for host in &node_hosts {
+            let session = match SSHSession::connect(&ssh_key, ssh_usr, host, ssh_port).await {
+                Ok(s) => s,
+                Err(e) => {
+                    println!("  FAIL {host} — SSH: {e}");
+                    issues += 1;
+                    continue;
+                }
+            };
+
+            // eloqkv
+            let cmd = format!("ps ux | grep '[e]loqkv.*{tx_home}' | wc -l");
+            let proc_count = Self::ssh_exec(&session, &cmd)
+                .await
+                .map(|s| s.trim().parse::<u32>().unwrap_or(0))
+                .unwrap_or(0);
+            let eloq_ok = proc_count > 0;
+
+            // Redis API check — get all ports for this host
+            let mut redis_ports: Vec<String> = Vec::new();
+            for pkg in &[
+                DeploymentPackage::MonographTx,
+                DeploymentPackage::MonographStandby,
+                DeploymentPackage::MonographVoter,
+            ] {
+                for hp in &deploy.get_host_port_list(pkg.clone()) {
+                    if let Some((h, p)) = hp.split_once(':') {
+                        if h == host {
+                            redis_ports.push(p.to_string());
+                        }
+                    }
+                }
+            }
+            redis_ports.dedup();
+
+            let mut redis_issues: Vec<String> = Vec::new();
+            for port in &redis_ports {
+                let redis_url = if let Some(ref pass) = deploy.redis_password(None) {
+                    format!("redis://:{pass}@{host}:{port}")
+                } else {
+                    format!("redis://{host}:{port}")
+                };
+                match redis::Client::open(redis_url.clone()) {
+                    Ok(client) => match client.get_connection() {
+                        Ok(mut con) => {
+                            let ping: redis::RedisResult<String> =
+                                redis::cmd("PING").query(&mut con);
+                            if ping.as_deref() != Ok("PONG") {
+                                redis_issues.push(format!("{host}:{port} PING failed"));
+                            }
+                        }
+                        Err(e) => redis_issues.push(format!("{host}:{port} connection: {e}")),
+                    },
+                    Err(e) => redis_issues.push(format!("{host}:{port} client: {e}")),
+                }
+            }
+
+            // node_exporter
+            let ne_bin = format!("{install_dir}/node_exporter/node_exporter");
+            let ne_exist = Self::ssh_exec(
+                &session,
+                &format!("test -x {ne_bin} && echo ok || echo missing"),
+            )
+            .await
+            .map(|s| s.trim() == "ok")
+            .unwrap_or(false);
+            let ne_running = Self::ssh_exec(&session, "ps ux | grep '[n]ode_exporter' | wc -l")
+                .await
+                .map(|s| s.trim().parse::<u32>().unwrap_or(0) > 0)
+                .unwrap_or(false);
+
+            // Check Redis service on each port
+            let redis_ok = redis_issues.is_empty();
+
+            println!("  {host}:");
+            let eloq_status = if eloq_ok && redis_ok {
+                "OK"
+            } else if !eloq_ok {
+                "FAIL — no process"
+            } else {
+                "FAIL — process running but Redis unreachable"
+            };
+            println!("    eloqkv:        {eloq_status}");
+            if !eloq_ok || !redis_ok {
+                issues += 1;
+            }
+            for issue in &redis_issues {
+                println!("      → {issue}");
+            }
+            println!(
+                "    node_exporter: {}",
+                if ne_exist && ne_running {
+                    "OK"
+                } else if ne_exist {
+                    "WARN — binary present, not running"
+                } else {
+                    issues += 1;
+                    "FAIL — binary missing"
+                }
+            );
+
+            // TLS certs
+            if deploy.deployment.tls_enabled() {
+                let tls_dir = deploy.deployment.tls_cert_install_dir();
+                let all_hp = deploy.get_host_port_list(DeploymentPackage::MonographTx);
+                let standby_hp = deploy.get_host_port_list(DeploymentPackage::MonographStandby);
+                let voter_hp = deploy.get_host_port_list(DeploymentPackage::MonographVoter);
+                let mut all_nodes = all_hp;
+                all_nodes.extend(standby_hp);
+                all_nodes.extend(voter_hp);
+
+                let mut tls_ok = true;
+                for hp in &all_nodes {
+                    let parts: Vec<&str> = hp.split(':').collect();
+                    if parts.len() != 2 {
+                        continue;
+                    }
+                    if parts[0] != host {
+                        continue;
+                    }
+                    let port = parts[1];
+                    let san_host = host.replace('.', "_");
+                    let cert = format!("{tls_dir}/eloqkv-tls-{san_host}-{port}.crt");
+                    let key = format!("{tls_dir}/eloqkv-tls-{san_host}-{port}.key");
+                    let check =
+                        format!("test -f {cert} && test -f {key} && echo ok || echo missing");
+                    let result = Self::ssh_exec(&session, &check)
+                        .await
+                        .map(|s| s.trim() == "ok")
+                        .unwrap_or(false);
+                    if !result {
+                        tls_ok = false;
+                    }
+                }
+                println!(
+                    "    TLS:           {}",
+                    if tls_ok {
+                        "OK"
+                    } else {
+                        issues += 1;
+                        "FAIL — cert/key missing"
+                    }
+                );
+            }
+
+            let _ = session.close().await;
+        }
+        println!();
+
+        // 2. Remaining hosts (non-node)
+        let remaining: Vec<_> = all_hosts
+            .iter()
+            .filter(|h| !node_hosts.contains(*h))
+            .collect();
+        if !remaining.is_empty() {
+            println!("── Other hosts ──");
+            for host in remaining {
+                match SSHSession::connect(&ssh_key, ssh_usr, host, ssh_port).await {
+                    Ok(s) => {
+                        println!("  ok  {host}");
+                        let _ = s.close().await;
+                    }
+                    Err(e) => {
+                        println!("  FAIL {host} — SSH: {e}");
+                        issues += 1;
+                    }
+                }
+            }
+            println!();
+        }
+
+        if issues > 0 {
+            println!("{issues} issue(s) found.");
+        } else {
+            println!("All checks passed.");
+        }
+
+        Ok(())
+    }
+
+    /// Run a shell command over SSH and return stdout as String.
+    async fn ssh_exec(session: &crate::cli::ssh::SSHSession, cmd: &str) -> Result<String> {
+        use crate::cli::ssh::SSHCommandOption;
+        use crate::cli::CMD_OUTPUT;
+        let result = session.command(cmd, SSHCommandOption::None).await?;
+        let output = result
+            .get(CMD_OUTPUT)
+            .and_then(|v| match v {
+                crate::cli::task::task_base::TaskArgValue::Str(s) => Some(s.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        Ok(output)
+    }
+
+    /// Repair missing infrastructure: TLS certs, node_exporter, monitor config.
+    /// Does NOT modify cluster topology. All steps are idempotent.
+    async fn fix_infra(
+        &'static self,
+        deploy: &DeployConfig,
+        _quiet: bool,
+        _verbose: bool,
+    ) -> Result<()> {
+        use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
+        use crate::cli::task::group::Config;
+
+        use crate::cli::task::task_controller::TaskController;
+        use crate::cli::task::unpack_file_task::UnpackFileTask;
+        use crate::cli::task::upload::upload_task_builder::{
+            build_task_instance, get_source_host, upload_tasks, UploadTaskBuilderType,
+        };
+        use crate::config::config_base::UploadFile;
+
+        let config = Config::Cluster(deploy.clone());
+        let mut barrier = Vec::new();
+        let mut executable = indexmap::IndexMap::new();
+
+        // 1. SSH key exchange for all hosts
+        let ssh_python_bin = config_template(SSH_PYTHON_SCRIPT)?
+            .to_string_lossy()
+            .into_owned();
+        let host_values = deploy.get_unique_host_list().join(" ");
+        if !host_values.is_empty() {
+            let ssh_task = ExecCustomCommand::build_local_task(
+                format!("python3 {} {}", ssh_python_bin, host_values),
+                &config,
+                "ssh setup",
+            );
+            barrier.push(ssh_task.len());
+            executable.extend(ssh_task);
+        }
+
+        // 2. TLS cert generation (idempotent — skips if already exist)
+        deploy.deployment.ensure_tls_certs_for_all_kv_nodes().ok();
+
+        // 3. Monitor config regeneration + upload
+        if deploy.deployment.monitor.is_some() {
+            let mon_tasks = upload_tasks(UploadTaskBuilderType::MonitorConf, &config);
+            if !mon_tasks.is_empty() {
+                let len = mon_tasks.len();
+                barrier.push(len);
+                executable.extend(mon_tasks);
+            }
+        }
+
+        // 4. Node exporter upload + unpack for all hosts
+        if let Some(ne_url) = deploy
+            .deployment
+            .monitor
+            .as_ref()
+            .and_then(|m| m.node_exporter.as_ref())
+            .map(|n| n.url.clone())
+        {
+            let hosts = deploy.get_unique_host_list();
+            let ne_file = ne_url
+                .split('/')
+                .next_back()
+                .unwrap_or("node_exporter.tar.gz");
+            let store = deploy
+                .deployment
+                .storage_service
+                .as_ref()
+                .map_or("rocksdb".to_string(), |s| s.pretty_name());
+            let ne_tarball = download_dir().join("monitor").join(&store).join(ne_file);
+
+            // Upload
+            for host in &hosts {
+                let source_host = get_source_host(None);
+                let upload_file = UploadFile {
+                    source: ne_tarball.to_string_lossy().to_string(),
+                    dest: deploy.install_dir(),
+                    extension: "gz".to_string(),
+                    host: host.clone(),
+                    copy_dir: false,
+                };
+                let (id, instance) = build_task_instance(
+                    source_host,
+                    upload_file,
+                    &config,
+                    "deploy",
+                    "node_exporter_fix",
+                );
+                barrier.push(1);
+                executable.insert(id, instance);
+            }
+
+            // Unpack
+            let mut ne_config = deploy.clone();
+            ne_config.deployment.tx_service.image = Some(ne_url.clone());
+            ne_config.deployment.tx_service.tx_host_ports =
+                hosts.iter().map(|h| format!("{h}:6379")).collect();
+            ne_config.deployment.tx_service.standby_host_ports = None;
+            ne_config.deployment.tx_service.voter_host_ports = None;
+            ne_config.deployment.log_service = None;
+            ne_config.tx_image_override = Some(ne_url);
+
+            let ne_unpack = UnpackFileTask::unpack_eloqservers(&ne_config);
+            for (task_id, instance) in ne_unpack {
+                barrier.push(1);
+                executable.insert(task_id, instance);
+            }
+        }
+
+        if executable.is_empty() {
+            println!("Nothing to fix.");
+            return Ok(());
+        }
+
+        println!("Repairing infrastructure...");
+        let ctx = TaskExecutionContext {
+            task_group: "fix-infra".to_string(),
+            barrier: Some(barrier),
+            executable,
+        };
+
+        let controller: &'static TaskController = Box::leak(Box::new(TaskController::new()));
+        let results = controller.run_all_tasks(ctx, config, true).await?;
+
+        for pair in &results {
+            if let TaskResultEnum::Error(msg) = &pair.result {
+                eprintln!("  FAIL {}: {msg}", pair.task_id);
+            }
+        }
+
+        println!("Done.");
         Ok(())
     }
 

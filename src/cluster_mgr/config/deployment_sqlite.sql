@@ -1,4 +1,6 @@
 -- deployment database schema
+-- Migration: drop legacy t_scale_tx_nodes (scale state tracking removed)
+drop table if exists t_scale_tx_nodes;
 create table if not exists t_deployment
 (
     cluster_name      varchar(200) not null primary key,
@@ -54,17 +56,6 @@ create table if not exists t_proxy
     proxy_host_list   text         not null,
     create_timestamp  timestamp    not null DEFAULT CURRENT_TIMESTAMP,
     update_timestamp  timestamp    not null DEFAULT CURRENT_TIMESTAMP
-);
-create table if not exists t_scale_tx_nodes (
-    event_id varchar(200) PRIMARY KEY,
-    cluster_name varchar(200) not null,
-    operation_type integer not null,
-    nodes_list text not null,
-    is_candidate text,
-    stage integer not null,
-    error_message text,
-    create_timestamp timestamp not null DEFAULT CURRENT_TIMESTAMP,
-    update_timestamp timestamp not null DEFAULT CURRENT_TIMESTAMP
 );
 create table if not exists t_topology_tx
 (

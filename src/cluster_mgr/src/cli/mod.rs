@@ -119,6 +119,20 @@ pub enum SubCommand {
         detail: bool,
     },
 
+    #[command(long_about = "Audit cluster health and report inconsistencies.\n\
+                      Checks: SSH connectivity, eloqkv process, node_exporter,\n\
+                      TLS certs, Prometheus targets, state vs actual topology.")]
+    #[strum(serialize = "health")]
+    Health { cluster: String },
+
+    #[command(
+        long_about = "Repair missing infrastructure on existing cluster nodes.\n\
+                      Runs node_exporter upload, TLS cert generation, monitor config\n\
+                      regeneration. Does not modify cluster topology. Idempotent."
+    )]
+    #[strum(serialize = "fix")]
+    Fix { cluster: String },
+
     #[command(long_about = "Update cluster version. This will stop/update/start the cluster")]
     #[strum(serialize = "update")]
     Update {
@@ -177,6 +191,17 @@ pub enum SubCommand {
         cluster: String,
         #[arg(short, long)]
         format: Option<TopoFormat>,
+    },
+
+    #[command(
+        long_about = "Export the latest cluster topology as a launch-compatible YAML file.\n\
+                      The output can be used directly with `eloqctl launch`."
+    )]
+    #[strum(serialize = "export")]
+    Export {
+        cluster: String,
+        #[arg(short, long, help = "Output file path (default: <cluster>.yaml)")]
+        output: Option<String>,
     },
 
     #[command(long_about = "Connect to cluster")]
@@ -244,9 +269,6 @@ pub enum SubCommand {
         /// Candidate status for added nodes: true for candidate, false for non-candidate
         #[arg(long, value_delimiter = ',')]
         is_candidate: Option<Vec<bool>>,
-        /// Resume a previously interrupted scale operation with the given event_id
-        #[arg(long)]
-        resume: Option<String>,
         /// Optional password for Redis operations
         #[arg(long, value_name = "cluster password")]
         password: Option<String>,

@@ -1,0 +1,18 @@
+connection:
+  username: "${USER}"
+  auth_type: "keypair"
+  auth:
+    keypair: "/home/${USER}/.ssh/id_rsa"
+deployment:
+  cluster_name: "test-scale-standby"
+  product: "EloqKV"
+  version: "1.2.2"
+  install_dir: "/home/${USER}"
+  enable_wal: false
+  enable_io_uring: false
+  checkpoint_interval: 120
+  tx_service:
+    tx_host_ports: [127.0.0.1:6379]
+    standby_host_ports: [127.0.0.1:6389]
+  storage_service:
+    rocksdb: !LOCAL
