@@ -18,7 +18,10 @@ cleanup() {
     timeout --kill-after=5s "${CLEANUP_TIMEOUT_SECONDS}s" "${ELOQCTL}" remove "${CLUSTER}" --force >/dev/null 2>&1 || true
     compose_down
     if [ "${KEEP_E2E_LOGS:-0}" != "1" ]; then
-        rm -f "${SCRIPT_DIR}/launch.log" "${SCRIPT_DIR}/status.log" "${TOPO}"
+        rm -f "${SCRIPT_DIR}/launch.log" "${SCRIPT_DIR}/status.log" "${TOPO}" \
+              "${SCRIPT_DIR}/versions.log" "${SCRIPT_DIR}/list.log" \
+              "${SCRIPT_DIR}/export.log" "${SCRIPT_DIR}/connect.log" \
+              "${SCRIPT_DIR}/exported.yaml"
     fi
     exit "${rc}"
 }
@@ -46,12 +49,59 @@ if grep -q "FAIL" "${SCRIPT_DIR}/launch.log"; then
     exit 1
 fi
 
-echo "[5/5] Verify cluster status"
+echo "[5/9] Verify cluster status"
 run_with_progress "${STATUS_TIMEOUT_SECONDS}" "${SCRIPT_DIR}/status.log" "${ELOQCTL}" status "${CLUSTER}" --wait 90 || {
     echo "FAIL: status --wait failed"
     dump_failure_diagnostics "${SCRIPT_DIR}/status.log"
     exit 1
 }
 
+echo "[6/9] Check available versions"
+"${ELOQCTL}" versions > "${SCRIPT_DIR}/versions.log" 2>&1 || {
+    echo "FAIL: versions"
+    cat "${SCRIPT_DIR}/versions.log"
+    exit 1
+}
+grep -q "1." "${SCRIPT_DIR}/versions.log" || {
+    echo "FAIL: versions output does not list any version numbers"
+    cat "${SCRIPT_DIR}/versions.log"
+    exit 1
+}
+echo "  OK"
+
+echo "[7/9] List registered clusters"
+"${ELOQCTL}" list > "${SCRIPT_DIR}/list.log" 2>&1 || {
+    echo "FAIL: list"
+    cat "${SCRIPT_DIR}/list.log"
+    exit 1
+}
+grep -q "${CLUSTER}" "${SCRIPT_DIR}/list.log" || {
+    echo "FAIL: list does not contain ${CLUSTER}"
+    cat "${SCRIPT_DIR}/list.log"
+    exit 1
+}
+echo "  OK"
+
+echo "[8/9] Export cluster topology"
+"${ELOQCTL}" export "${CLUSTER}" --output "${SCRIPT_DIR}/exported.yaml" > "${SCRIPT_DIR}/export.log" 2>&1 || {
+    echo "FAIL: export"
+    cat "${SCRIPT_DIR}/export.log"
+    exit 1
+}
+grep -q "cluster_name.*${CLUSTER}" "${SCRIPT_DIR}/exported.yaml" || {
+    echo "FAIL: exported YAML missing cluster_name"
+    cat "${SCRIPT_DIR}/exported.yaml"
+    exit 1
+}
+echo "  OK"
+
+echo "[9/9] Connect to cluster"
+CLIENT=$("${ELOQCTL}" -q connect "${CLUSTER}" 2>"${SCRIPT_DIR}/connect.log") || {
+    echo "FAIL: connect"
+    cat "${SCRIPT_DIR}/connect.log"
+    exit 1
+}
+echo "  OK"
+
 echo ""
-echo "PASS: Docker HA EloqKV cluster deployed and healthy"
+echo "PASS: Docker HA EloqKV cluster deployed and healthy, all commands verified"
