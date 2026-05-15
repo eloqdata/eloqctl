@@ -91,12 +91,75 @@ pub struct Exporter {
 
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct AlertThresholds {
+    #[serde(default = "default_memory_warning_pct")]
+    pub memory_warning_pct: u8,
+    #[serde(default = "default_memory_critical_pct")]
+    pub memory_critical_pct: u8,
+    #[serde(default = "default_memory_emergency_pct")]
+    pub memory_emergency_pct: u8,
+    #[serde(default = "default_cache_hit_ratio_pct")]
+    pub cache_hit_ratio_pct: u8,
+    #[serde(default = "default_fragmentation_ratio_pct")]
+    pub fragmentation_ratio_pct: u8,
+    #[serde(default = "default_max_connections_pct")]
+    pub max_connections_pct: u8,
+    #[serde(default = "default_max_standby_lag_pct")]
+    pub max_standby_lag_pct: u8,
+    #[serde(default = "default_leader_change_max_per_10m")]
+    pub leader_change_max_per_10m: u8,
+}
+
+fn default_memory_warning_pct() -> u8 {
+    70
+}
+fn default_memory_critical_pct() -> u8 {
+    80
+}
+fn default_memory_emergency_pct() -> u8 {
+    90
+}
+fn default_cache_hit_ratio_pct() -> u8 {
+    95
+}
+fn default_fragmentation_ratio_pct() -> u8 {
+    30
+}
+fn default_max_connections_pct() -> u8 {
+    70
+}
+fn default_max_standby_lag_pct() -> u8 {
+    70
+}
+fn default_leader_change_max_per_10m() -> u8 {
+    2
+}
+
+impl Default for AlertThresholds {
+    fn default() -> Self {
+        Self {
+            memory_warning_pct: default_memory_warning_pct(),
+            memory_critical_pct: default_memory_critical_pct(),
+            memory_emergency_pct: default_memory_emergency_pct(),
+            cache_hit_ratio_pct: default_cache_hit_ratio_pct(),
+            fragmentation_ratio_pct: default_fragmentation_ratio_pct(),
+            max_connections_pct: default_max_connections_pct(),
+            max_standby_lag_pct: default_max_standby_lag_pct(),
+            leader_change_max_per_10m: default_leader_change_max_per_10m(),
+        }
+    }
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Monitor {
     pub data_dir: Option<String>,
     pub prometheus: Option<Prometheus>,
     pub grafana: Option<Grafana>,
     pub node_exporter: Option<Exporter>,
     pub eloq_metrics: Option<EloqMetrics>,
+    #[serde(default)]
+    pub alert_thresholds: Option<AlertThresholds>,
 }
 
 impl Monitor {
@@ -229,6 +292,60 @@ impl Monitor {
             Value::Sequence(static_configs_sequence.clone()),
         );
         Value::Mapping(target_job_yaml_value)
+    }
+
+    pub fn gen_alert_rules(&self, cluster_name: &str) -> anyhow::Result<PathBuf> {
+        use crate::config::ALERT_RULES_TEMPLATE;
+        let threshold = self.alert_thresholds.as_ref().cloned().unwrap_or_default();
+        let template_path = config_template(ALERT_RULES_TEMPLATE)?;
+        let mut template = std::fs::read_to_string(&template_path)?;
+
+        template = template.replace(
+            "${MEMORY_WARNING_PCT}",
+            &threshold.memory_warning_pct.to_string(),
+        );
+        template = template.replace(
+            "${MEMORY_CRITICAL_PCT}",
+            &threshold.memory_critical_pct.to_string(),
+        );
+        template = template.replace(
+            "${MEMORY_EMERGENCY_PCT}",
+            &threshold.memory_emergency_pct.to_string(),
+        );
+        template = template.replace(
+            "${CACHE_HIT_RATIO_PCT}",
+            &threshold.cache_hit_ratio_pct.to_string(),
+        );
+        template = template.replace(
+            "${FRAGMENTATION_RATIO_PCT}",
+            &threshold.fragmentation_ratio_pct.to_string(),
+        );
+        template = template.replace(
+            "${MAX_CONNECTIONS_PCT}",
+            &threshold.max_connections_pct.to_string(),
+        );
+        template = template.replace(
+            "${MAX_STANDBY_LAG_PCT}",
+            &threshold.max_standby_lag_pct.to_string(),
+        );
+        template = template.replace(
+            "${LEADER_CHANGE_MAX_PER_10M}",
+            &threshold.leader_change_max_per_10m.to_string(),
+        );
+        template = template.replace(
+            "${MAX_CONNECTIONS_PCT_DECIMAL}",
+            &format!("{:.1}", threshold.max_connections_pct as f64 / 100.0),
+        );
+        template = template.replace(
+            "${MAX_STANDBY_LAG_PCT_DECIMAL}",
+            &format!("{:.1}", threshold.max_standby_lag_pct as f64 / 100.0),
+        );
+
+        let output_dir = upload_dir().join(cluster_name).join(MONITOR_DIR);
+        fs::create_dir_all(&output_dir)?;
+        let output_path = output_dir.join(ALERT_RULES_TEMPLATE);
+        fs::write(&output_path, template)?;
+        Ok(output_path)
     }
 
     // node_exporter, prometheus

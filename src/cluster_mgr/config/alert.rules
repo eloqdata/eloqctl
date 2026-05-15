@@ -2,7 +2,7 @@ groups:
   - name: alert_rules
     rules:
       - alert: memory_usage_more_than_70%
-        expr: (memory_usage / memory_limit) * 100 > 70
+        expr: (memory_usage / memory_limit) * 100 > ${MEMORY_WARNING_PCT}
         for: 3m
         labels:
           severity: warning
@@ -11,7 +11,7 @@ groups:
           description: "Memory usage is above 70% on node {{ $labels.instance }}, core {{ $labels.core_id }}. Current usage: {{ printf \"%.2f\" $value }}%"
           
       - alert: memory_usage_more_than_80%
-        expr: (memory_usage / memory_limit) * 100 > 80
+        expr: (memory_usage / memory_limit) * 100 > ${MEMORY_CRITICAL_PCT}
         for: 3m
         labels:
           severity: critical
@@ -20,7 +20,7 @@ groups:
           description: "Memory usage is above 80% on node {{ $labels.instance }}, core {{ $labels.core_id }}. Current usage: {{ printf \"%.2f\" $value }}%"
       
       - alert: memory_usage_more_than_90%
-        expr: (memory_usage / memory_limit) * 100 > 90
+        expr: (memory_usage / memory_limit) * 100 > ${MEMORY_EMERGENCY_PCT}
         for: 1m
         labels:
           severity: emergency
@@ -30,7 +30,7 @@ groups:
 
 
       - alert: cache_hit_ratio_less_than_95%
-        expr: (cache_hit_or_miss_total{type="hits"} / ignoring(type)  (cache_hit_or_miss_total{type="hits"} + ignoring(type) cache_hit_or_miss_total{type="miss"})) * 100 < 95
+        expr: (cache_hit_or_miss_total{type="hits"} / ignoring(type)  (cache_hit_or_miss_total{type="hits"} + ignoring(type) cache_hit_or_miss_total{type="miss"})) * 100 < ${CACHE_HIT_RATIO_PCT}
         for: 1m
         labels:
           severity: warning
@@ -39,7 +39,7 @@ groups:
           description: "Cache hit ratio is below 95%. Current ratio: {{ printf \"%.2f\" $value }}%"
 
       - alert: memory_frament_ratio_more_than_30%
-        expr: memory_fragment_ratio > 30
+        expr: memory_fragment_ratio > ${FRAGMENTATION_RATIO_PCT}
         for: 3m
         labels:
           severity: critical
@@ -48,7 +48,7 @@ groups:
           description: "Memory fragment ratio is above 30%. Current ratio: {{ printf \"%.2f\" $value }}"
       
       - alert: client_connection_count_too_high
-        expr: redis_connection_count > (redis_max_connections * 0.7)
+        expr: redis_connection_count > (redis_max_connections * ${MAX_CONNECTIONS_PCT_DECIMAL})
         for: 1m
         labels:
           severity: warning
@@ -57,7 +57,7 @@ groups:
           description: "Client connection count is above 70% of maxclients. Current count: {{ $value }}"
 
       - alert: eloqkv_standby_lag
-        expr: standby_lagging_msgs > (max_standby_lag * 0.7)
+        expr: standby_lagging_msgs > (max_standby_lag * ${MAX_STANDBY_LAG_PCT_DECIMAL})
         for: 1m
         labels:
           severity: warning
@@ -108,7 +108,7 @@ groups:
           description: "Has seen leader changes in the last minutes for node group {{ $labels.ng_id }}"
 
       - alert: leader_changes_frequently
-        expr: sum by (ng_id) (changes(leader_changes_seen_total[10m])) > 2
+        expr: sum by (ng_id) (changes(leader_changes_seen_total[10m])) > ${LEADER_CHANGE_MAX_PER_10M}
         labels:
           severity: critical
         annotations:

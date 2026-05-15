@@ -9,11 +9,10 @@ use crate::config::monitor::{
     Monitor, GRAFANA_CONFIG_DIR, GRAFANA_DASHBOARD_CONFIG_DIR, GRAFANA_DATASOURCE_CONFIG_DIR,
     MONITOR_JOB_NAME, NODE_EXPORTER_JOB_NAME, PROMETHEUS_CONFIG_DIR,
 };
-use crate::config::{config_template, DeploymentPackage, ALERT_RULES_TEMPLATE, MONITOR_DIR};
+use crate::config::{DeploymentPackage, ALERT_RULES_TEMPLATE, MONITOR_DIR};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::fs;
 use std::path::PathBuf;
 
 pub struct MonitorInfraConfUploadBuilder;
@@ -199,19 +198,11 @@ impl UploadTaskBuilder for MonitorInfraConfUploadBuilder {
         let monitor_opt = cluster_config.deployment.monitor.as_ref();
         let source_host = get_source_host(None);
         if let Some(monitor) = monitor_opt {
-            // Copy alert.rules from config directory to upload directory
+            // Generate alert.rules from template with custom thresholds
             if monitor.prometheus.is_some() {
-                let alert_rules_source =
-                    config_template(ALERT_RULES_TEMPLATE).expect("get alert rules template error");
-                let monitor_dir = upload_dir()
-                    .join(cluster_config.deployment.cluster_name.clone())
-                    .join(MONITOR_DIR);
-                if !monitor_dir.exists() {
-                    fs::create_dir_all(&monitor_dir).expect("failed to create monitor directory");
-                }
-                let alert_rules_dest = monitor_dir.join(ALERT_RULES_TEMPLATE);
-                fs::copy(&alert_rules_source, &alert_rules_dest)
-                    .expect("copy alert rules template error");
+                monitor
+                    .gen_alert_rules(&cluster_config.deployment.cluster_name)
+                    .expect("generate alert rules error");
             }
 
             let mut all_upload_files = self.monitor_config_upload_files(monitor, cluster_config);
