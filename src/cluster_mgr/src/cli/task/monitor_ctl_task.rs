@@ -33,7 +33,7 @@ impl MonitorComponentCommand {
             MonitorComponentCommand::NodeExporter { home } => {
                 monitor.node_exporter.as_ref().map(|noex| {
                     format!(
-                        r#"{home}/node_exporter --web.listen-address=:{port} > /tmp/mono_node_exporter.log 2>&1 &"#,
+                         r#"{home}/node_exporter --web.listen-address=:{port} > /tmp/eloq_node_exporter.log 2>&1 &"#,
                         home = home,
                         port = noex.port
                     )
@@ -42,7 +42,7 @@ impl MonitorComponentCommand {
             MonitorComponentCommand::Grafana { home } => {
                 // Assuming Grafana is always configured when this command is used
                 Some(format!(
-                    r#"{home}/bin/grafana-server -homepath {home} -config {home}/conf/defaults.ini > /tmp/mono_grafana_server.log 2>&1 &"#,
+                     r#"{home}/bin/grafana-server -homepath {home} -config {home}/conf/defaults.ini > /tmp/eloq_grafana_server.log 2>&1 &"#,
                     home = home
                 ))
             }
@@ -55,7 +55,7 @@ impl MonitorComponentCommand {
                         format!(" {retention_flags}")
                     };
                     format!(
-                        r#"{home}/prometheus --web.listen-address="0.0.0.0:{port}" --storage.tsdb.path={home}/data{retention_flags} --config.file={home}/{PROMETHEUS_CONFIG_FILE} > /tmp/mono_prometheus.log 2>&1 &"#,
+                         r#"{home}/prometheus --web.listen-address="0.0.0.0:{port}" --storage.tsdb.path={home}/data{retention_flags} --config.file={home}/{PROMETHEUS_CONFIG_FILE} > /tmp/eloq_prometheus.log 2>&1 &"#,
                         home = home,
                         port = prom.port,
                         retention_flags = retention_flags,

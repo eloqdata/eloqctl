@@ -616,7 +616,7 @@ impl DeployConfig {
     }
 
     /// By default, the directory where cluster_mgr is located includes config dir.
-    /// If it does not exist, users need to specify the config location through environment variables (MONO_CLUSTER_MGR_CONF).
+    /// If it does not exist, users need to specify the config location through environment variables (ELOQ_CLUSTER_MGR_CONF).
     /// Recursively traverse all dashboard files
     pub fn load_monitor_dashboard(&self) -> Vec<String> {
         let base = config_template("dashboard").expect("dashbord config not found");
@@ -777,11 +777,11 @@ deployment:
         let monitor = monitor_opt.as_ref();
         assert!(monitor.is_some());
 
-        let mono_host_list = config.get_host_list(DeploymentPackage::EloqTx);
+        let eloq_host_list = config.get_host_list(DeploymentPackage::EloqTx);
         let monitor = monitor.unwrap();
         let pro_rs = monitor.gen_prometheus_config(
             &config.deployment.cluster_name,
-            HashMap::from([(MONITOR_JOB_NAME.to_string(), mono_host_list)]),
+            HashMap::from([(MONITOR_JOB_NAME.to_string(), eloq_host_list)]),
         );
         println!("pro_rs={pro_rs:#?}")
     }

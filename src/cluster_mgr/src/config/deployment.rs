@@ -64,8 +64,8 @@ pub struct Port {
 
 impl Port {
     pub fn contains(&self, p: u16) -> bool {
-        if let Some(mono_port) = &self.eloq_port {
-            if p >= mono_port.start && p <= mono_port.end {
+        if let Some(eloq_port) = &self.eloq_port {
+            if p >= eloq_port.start && p <= eloq_port.end {
                 return true;
             }
         }
@@ -432,7 +432,7 @@ impl Deployment {
         if let Some(keyspace) = my_ini_local.get(SECTION_STORE, "cass_keyspace") {
             Ok(keyspace)
         } else {
-            Ok("mono_redis".to_string())
+            Ok("eloq_redis".to_string())
         }
     }
 

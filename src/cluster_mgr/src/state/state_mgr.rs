@@ -33,7 +33,7 @@ pub const TOPOLOGY_TX_STATE: &str = "TopologyTx";
 pub const TOPOLOGY_LOG_STATE: &str = "TopologyLog";
 
 pub(crate) static CLUSTER_MGR_CLI_DB: &str = "cluster_mgr_state.db";
-pub(crate) static MONO_CLUSTER_MGR_SCHEMA_PATH: &str = "MONO_CLUSTER_MGR_SCHEMA_PATH";
+pub(crate) static ELOQ_CLUSTER_MGR_SCHEMA_PATH: &str = "ELOQ_CLUSTER_MGR_SCHEMA_PATH";
 
 pub static STATE_MGR: LazyLock<StateMgr> = LazyLock::new(|| {
     // CAUTION: block_on inside LazyLock can deadlock if the initialization
@@ -470,7 +470,7 @@ impl StateMgr {
     }
 
     pub async fn new(schema_path: String) -> Result<Self> {
-        env::set_var(MONO_CLUSTER_MGR_SCHEMA_PATH, schema_path.clone());
+        env::set_var(ELOQ_CLUSTER_MGR_SCHEMA_PATH, schema_path.clone());
         let db_conn_pool_rs = StateMgr::db_conn_pool_init(schema_path).await;
         if let Ok(db_conn_pool) = db_conn_pool_rs {
             let deployment_opt_ref = Box::leak(DeploymentOperation::boxed(db_conn_pool.clone()))
@@ -524,7 +524,7 @@ impl StateMgr {
     /// Re-run the SQLite schema script to create any missing tables.
     pub async fn upgrade_schema(&self) -> Result<()> {
         // Load schema path from environment and read script
-        let schema_path = env::var(MONO_CLUSTER_MGR_SCHEMA_PATH)?;
+        let schema_path = env::var(ELOQ_CLUSTER_MGR_SCHEMA_PATH)?;
         let db_schema = StateMgr::load_schema_script(Path::new(&schema_path))?;
         // Execute all statements in the script
         let exec_rs = sqlx::raw_sql(db_schema.as_str())
@@ -588,7 +588,7 @@ impl StateMgr {
 mod tests {
     use crate::state::cluster_index_operation::ClusterIndexOperation;
     use crate::state::state_base::{QueryCondition, StateOperation};
-    use crate::state::state_mgr::{StateMgr, CLUSTER_INDEX_STATE, MONO_CLUSTER_MGR_SCHEMA_PATH};
+    use crate::state::state_mgr::{StateMgr, CLUSTER_INDEX_STATE, ELOQ_CLUSTER_MGR_SCHEMA_PATH};
     use sqlx::testing::TestTermination;
     use std::path::PathBuf;
     use std::sync::LazyLock;
@@ -616,7 +616,7 @@ mod tests {
         setup();
         let schema_path = schema_path();
         println!("schema_path {schema_path:?}");
-        std::env::set_var(MONO_CLUSTER_MGR_SCHEMA_PATH, schema_path.clone());
+        std::env::set_var(ELOQ_CLUSTER_MGR_SCHEMA_PATH, schema_path.clone());
         let state_mgr = StateMgr::new(schema_path).await;
         assert!(state_mgr.is_ok());
         let all_tables = state_mgr.unwrap().list_tables().await;
@@ -640,7 +640,7 @@ mod tests {
         setup();
         let schema_path = schema_path();
         println!("schema_path {schema_path:?}");
-        std::env::set_var(MONO_CLUSTER_MGR_SCHEMA_PATH, schema_path.clone());
+        std::env::set_var(ELOQ_CLUSTER_MGR_SCHEMA_PATH, schema_path.clone());
         let state_mgr_rs = StateMgr::new(schema_path).await;
         assert!(state_mgr_rs.is_ok());
         let state_mgr = state_mgr_rs.unwrap();

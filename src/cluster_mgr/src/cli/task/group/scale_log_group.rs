@@ -321,7 +321,7 @@ impl TaskGroup for ScaleLogTaskGroup {
                                 // Check if the file exists in the download directory
                                 let download_dir = PathBuf::from(format!(
                                     "{}/.eloqctl/download",
-                                    env::var("HOME").unwrap_or_else(|_| "/home/mono".to_string())
+                                    env::var("HOME").unwrap_or_else(|_| "/home/eloq".to_string())
                                 ));
                                 let file_path = download_dir
                                     .join("eloqkv")

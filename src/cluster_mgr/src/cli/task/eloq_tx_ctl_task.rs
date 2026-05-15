@@ -86,8 +86,8 @@ macro_rules! eloq_cmd_with_port {
 }
 
 macro_rules! tx_ctl {
-    ($self:ident, $mono_process_status:expr, {$op:tt, $pid_check_expr:expr}, $ctl_func:expr) => {{
-        if let Ok(ref process_info) = $mono_process_status {
+    ($self:ident, $eloq_process_status:expr, {$op:tt, $pid_check_expr:expr}, $ctl_func:expr) => {{
+        if let Ok(ref process_info) = $eloq_process_status {
             info!("tx_ctl process_info={process_info:#?}");
             let pid = TaskArgValue::into_inner_value::<String>(
                 process_info.get(PROCESS_PID).unwrap().clone(),
@@ -96,16 +96,16 @@ macro_rules! tx_ctl {
             if pid $op $pid_check_expr {
                 ctl_f().await
             } else {
-               Ok($mono_process_status?)
+               Ok($eloq_process_status?)
             }
         } else {
             error!(
                 "EloqCtlTask process status failed. check_status_cmd={:?}",
-                $mono_process_status
+                $eloq_process_status
             );
             Err(anyhow!(EloqCtlErr(
                 $self.ctl_cmd.cmd_value(),
-                $mono_process_status.err().unwrap().to_string()
+                $eloq_process_status.err().unwrap().to_string()
             )))
         }
     }};
@@ -625,7 +625,7 @@ impl TaskExecutor for EloqTxCtlTask {
         let check_process_status = check_pid(cmd_val, ssh_session.clone(), parse_process_pid).await;
 
         let ctl_cmd_ref = self.ctl_cmd.as_ref();
-        let mono_ctl_rs = match ctl_cmd_ref {
+        let eloq_ctl_rs = match ctl_cmd_ref {
             "status" => {
                 let wait_secs =
                     TaskArgValue::into_inner_value::<i32>(task_arg.get(WAIT_SECS).unwrap().clone());
@@ -739,7 +739,7 @@ impl TaskExecutor for EloqTxCtlTask {
         };
 
         ssh_session.close().await?;
-        let mut ctl_rtn_value = mono_ctl_rs?;
+        let mut ctl_rtn_value = eloq_ctl_rs?;
         if ctl_cmd_ref == "status" && ctl_rtn_value.contains_key(PROCESS_PID) {
             let pid = TaskArgValue::into_inner_value::<String>(
                 ctl_rtn_value.get(PROCESS_PID).unwrap().clone(),
