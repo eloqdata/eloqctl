@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/monographdb/eloq_waiter/compare/v1.6.0...v1.6.1) (2026-05-15)
+
+
+### Code Refactoring
+
+* add changelog-sections to capture refactor/perf/docs/test in release notes ([#380](https://github.com/monographdb/eloq_waiter/issues/380)) ([68c9d78](https://github.com/monographdb/eloq_waiter/commit/68c9d78400913234090e034dd1ffc6e6dda6830b))
+
 ## [1.6.0](https://github.com/monographdb/eloq_waiter/compare/v1.5.0...v1.6.0) (2026-05-15)
 
 
