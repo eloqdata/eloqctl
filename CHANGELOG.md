@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.3](https://github.com/monographdb/eloq_waiter/compare/v1.6.2...v1.6.3) (2026-05-15)
+
+
+### Tests
+
+* add failover, monitor status, log-service status to E2E ([#388](https://github.com/monographdb/eloq_waiter/issues/388)) ([bb9e57e](https://github.com/monographdb/eloq_waiter/commit/bb9e57e4255635058356b6b53f2cf025da83952a))
+* expand E2E coverage — add stop/start/check/exec/upgrade/remove ([#387](https://github.com/monographdb/eloq_waiter/issues/387)) ([5d02ea7](https://github.com/monographdb/eloq_waiter/commit/5d02ea72bea8f9027878b97822caf3c492a4eb94))
+* unify Docker E2E into single environment — launch once, test all ([#385](https://github.com/monographdb/eloq_waiter/issues/385)) ([258ada6](https://github.com/monographdb/eloq_waiter/commit/258ada6852f0286e7042058857a50ef1c0f7914c))
+
 ## [1.6.2](https://github.com/monographdb/eloq_waiter/compare/v1.6.1...v1.6.2) (2026-05-15)
 
 
