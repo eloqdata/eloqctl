@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/monographdb/eloq_waiter/compare/v1.5.0...v1.6.0) (2026-05-15)
+
+
+### Features
+
+* add alertmanager target config and Prometheus hot reload ([#374](https://github.com/monographdb/eloq_waiter/issues/374)) ([8d9384f](https://github.com/monographdb/eloq_waiter/commit/8d9384fbb16f8f8521fbe010e9b84ab51d3b82a0))
+* make alert thresholds configurable via topology YAML ([#372](https://github.com/monographdb/eloq_waiter/issues/372)) ([32cd45a](https://github.com/monographdb/eloq_waiter/commit/32cd45a54bb7ff5558508cd7417264b580ea9f18))
+
+
+### Bug Fixes
+
+* move alert_thresholds under prometheus in config hierarchy ([#375](https://github.com/monographdb/eloq_waiter/issues/375)) ([0ecdc46](https://github.com/monographdb/eloq_waiter/commit/0ecdc4656fc44eb8afe2c90d840ff7b0376596ce))
+
 ## [1.5.0](https://github.com/monographdb/eloq_waiter/compare/v1.4.0...v1.5.0) (2026-05-15)
 
 
