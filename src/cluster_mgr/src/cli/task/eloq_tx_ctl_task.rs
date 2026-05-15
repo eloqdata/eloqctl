@@ -424,9 +424,7 @@ impl EloqTxCtlTask {
             }
             SubCommand::Remove { .. } => is_force_stop = true,
             SubCommand::Status { wait, .. } => {
-                if let Some(w) = wait {
-                    wait_secs = *w as i32;
-                }
+                wait_secs = wait.map_or(-1, |w| w as i32);
             }
             _ => {}
         }
@@ -474,9 +472,7 @@ impl EloqTxCtlTask {
             }
             SubCommand::Remove { .. } => is_force_stop = true,
             SubCommand::Status { wait, .. } => {
-                if let Some(w) = wait {
-                    wait_secs = *w as i32;
-                }
+                wait_secs = wait.map_or(-1, |w| w as i32);
             }
             _ => {}
         }
