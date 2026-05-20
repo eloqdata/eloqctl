@@ -142,7 +142,12 @@ impl ExecCustomCommand {
             if let (Some(dest_user), Some(dest_host)) = (dest_user.clone(), dest_host.clone()) {
                 (dest_user, dest_host)
             } else {
-                (conn_user.to_string(), "localhost".to_string())
+                let default_host = config
+                    .get_unique_host_list()
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "localhost".to_string());
+                (conn_user.to_string(), default_host)
             };
 
         let (host, ssh_port) = config.ssh_endpoint(&host);
