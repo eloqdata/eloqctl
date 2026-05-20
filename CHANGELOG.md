@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.6](https://github.com/monographdb/eloq_waiter/compare/v1.6.5...v1.6.6) (2026-05-20)
+
+
+### Bug Fixes
+
+* backup from_path defaults to first deployment host instead of localhost ([#396](https://github.com/monographdb/eloq_waiter/issues/396)) ([88d07e3](https://github.com/monographdb/eloq_waiter/commit/88d07e3c9e81cbe369ad98e71b120807e4160d55))
+
 ## [1.6.5](https://github.com/monographdb/eloq_waiter/compare/v1.6.4...v1.6.5) (2026-05-20)
 
 

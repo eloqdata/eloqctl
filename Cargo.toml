@@ -4,6 +4,6 @@ members = ["src/cluster_mgr", "src/devtools", "src/rest_api"]
 resolver = "2"
 
 [workspace.package]
-version = "1.6.5"
+version = "1.6.6"
 edition = "2021"
 repository = "https://github.com/monographdb/monograph_waiter"
