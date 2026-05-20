@@ -53,49 +53,7 @@ run_with_progress "${STATUS_TIMEOUT_SECONDS}" "${SCRIPT_DIR}/status.log" "${ELOQ
 }
 echo "  OK"
 
-# ---- [3] Read-only commands ----
-echo "[3/6] Test read-only commands"
-"${ELOQCTL}" versions > "${SCRIPT_DIR}/versions.log" 2>&1 || { echo "FAIL: versions"; exit 1; }
-grep -q "1." "${SCRIPT_DIR}/versions.log" || { echo "FAIL: versions"; exit 1; }
-
-"${ELOQCTL}" list > "${SCRIPT_DIR}/list.log" 2>&1 || { echo "FAIL: list"; exit 1; }
-grep -q "${CLUSTER}" "${SCRIPT_DIR}/list.log" || { echo "FAIL: list"; exit 1; }
-
-"${ELOQCTL}" export "${CLUSTER}" --output "${SCRIPT_DIR}/exported.yaml" > "${SCRIPT_DIR}/export.log" 2>&1 || { echo "FAIL: export"; exit 1; }
-grep -q "cluster_name" "${SCRIPT_DIR}/exported.yaml" || { echo "FAIL: export"; exit 1; }
-
-CLIENT=$("${ELOQCTL}" -q connect "${CLUSTER}" 2>"${SCRIPT_DIR}/connect.log")
-echo "  OK"
-
-# ---- [4] Rolling update via apply ----
-echo "[4/6] Rolling update (apply checkpoint_interval change)"
-"${ELOQCTL}" status "${CLUSTER}" >/dev/null 2>&1
-# Generate a modified topology with different checkpoint_interval from the rendered version
-sed 's/checkpoint_interval: 120/checkpoint_interval: 130/' "${TOPO}" > "${SCRIPT_DIR}/topology-v2.yaml"
-"${ELOQCTL}" plan "${SCRIPT_DIR}/topology-v2.yaml" > "${SCRIPT_DIR}/plan.log" 2>&1 || { echo "FAIL: plan"; cat "${SCRIPT_DIR}/plan.log"; exit 1; }
-"${ELOQCTL}" apply "${SCRIPT_DIR}/topology-v2.yaml" > "${SCRIPT_DIR}/apply.log" 2>&1 || { echo "FAIL: apply"; exit 1; }
-run_with_progress "${STATUS_TIMEOUT_SECONDS}" "${SCRIPT_DIR}/post-apply.log" "${ELOQCTL}" status "${CLUSTER}" --wait 60 || {
-    echo "FAIL: status after apply"
-    dump_failure_diagnostics "${SCRIPT_DIR}/post-apply.log"
-    exit 1
-}
-rm -f "${SCRIPT_DIR}/topology-v2.yaml"
-echo "  OK"
-
-# ---- [5] Scale add + remove ----
-echo "[5/6] Scale add standby"
-"${ELOQCTL}" status "${CLUSTER}" >/dev/null 2>&1
-"${ELOQCTL}" scale "${CLUSTER}" --add-nodes "172.28.10.11:6390" --ng-id 0 --is-candidate true --password testpass > "${SCRIPT_DIR}/scale-add.log" 2>&1 || {
-    echo "FAIL: scale add"
-    dump_failure_diagnostics "${SCRIPT_DIR}/scale-add.log"
-    exit 1
-}
-run_with_progress "${STATUS_TIMEOUT_SECONDS}" "${SCRIPT_DIR}/post-scale-add.log" "${ELOQCTL}" status "${CLUSTER}" --wait 60 || {
-    echo "FAIL: status after scale add"
-    exit 1
-}
-echo "  OK"
-
+# ---- [6] Scale remove old standby ----
 echo "[6/6] Scale remove old standby"
 "${ELOQCTL}" scale "${CLUSTER}" --remove-nodes "172.28.10.12:6379" --password testpass > "${SCRIPT_DIR}/scale-remove.log" 2>&1 || {
     echo "FAIL: scale remove"

@@ -308,6 +308,7 @@ impl CmdExecutor {
         config: &DeployConfig,
         operation: &str,
     ) -> Result<()> {
+        use crate::cli::task::eloq_tx_ctl_task::RedisProbe;
         let observed = self.observe_cluster(config, None).await?;
         if observed.has_errors() || !observed.unavailable_services().is_empty() {
             observed.print();
@@ -315,6 +316,20 @@ impl CmdExecutor {
                 "cannot {operation}: live cluster '{}' is not healthy",
                 config.deployment.cluster_name
             );
+        }
+        // Verify standby and voter nodes are actually serving Redis, not just running.
+        let password = config.redis_password(None);
+        let mut redis_nodes = config.get_host_port_list(DeploymentPackage::EloqStandby);
+        redis_nodes.extend(config.get_host_port_list(DeploymentPackage::EloqVoter));
+        for node in &redis_nodes {
+            let (host, port_str) = node.split_once(':').unwrap_or((node, "6379"));
+            let port: u16 = port_str.parse().unwrap_or(6379);
+            let (endpoint_host, endpoint_port) = config.service_endpoint(host, port);
+            let probe = RedisProbe::with_password(endpoint_host, endpoint_port, password.clone());
+            // Wait up to 120s for each node to respond to PING.
+            probe.probe(120).await.map_err(|e| {
+                anyhow!("cannot {operation}: node {node} is not serving Redis after waiting: {e}")
+            })?;
         }
         Ok(())
     }
