@@ -61,6 +61,43 @@ Override the binary path:
 ELOQCTL=/custom/path/to/cluster_mgr bash tests/e2e/test.sh
 ```
 
+## Command Coverage
+
+### Covered by E2E
+
+| Command | How tested |
+|---------|-----------|
+| `launch` | Full cluster deploy with deps, config, bootstrap, start |
+| `status --wait` | After every mutation: verifies serving master + process health |
+| `versions` | Lists available versions, output contains version numbers |
+| `list` | Registered clusters include the test cluster |
+| `export` | Exported YAML contains cluster_name |
+| `connect` | Client command string exits successfully |
+| `plan` + `apply` | Rolling update via checkpoint_interval change |
+| `scale --add-nodes` | Adds new standby, verifies cluster stays healthy |
+| `scale --remove-nodes` | Removes old standby, verifies cluster stays healthy |
+| `stop + start` | Full stop/start cycle with intermediate `check` validation |
+| `check` | Topology validation on stopped cluster (ports free etc.) |
+| `failover` | Promotes standby to master, verifies cluster recovers |
+| `monitor status` | Reports correctly even without monitor configured |
+| `log-service status` | Reports correctly even without log-service configured |
+| `exec` | Runs remote shell command on cluster hosts |
+| `upgrade` | Schema upgrade exits successfully |
+| `remove --force` | Cluster removed, no longer present in `list` |
+
+### Not Covered
+
+| Command | Reason |
+|---------|--------|
+| `deploy`, `install`, `run-deps` | Tested implicitly via `launch` |
+| `restart` | Equivalent to `stop` + `start`, covered separately |
+| `scalelog` | Requires `log_service` config with log binaries |
+| `backup start/list/remove` | SSH endpoint mapping bug in `--dest-node` path |
+| `update` | Requires version download from remote PostgreSQL |
+| `proxy` | Legacy product, not active |
+| `demo` | Interactive, not suitable for automated testing |
+| `completion` | Shell generation, no runtime state to verify |
+
 ## Test Output
 
 Passing output looks like:
@@ -93,13 +130,3 @@ echo "[N/TOTAL] Your test description"
 }
 echo "  OK"
 ```
-
-## What's Not Covered
-
-| Command | Reason |
-|---------|--------|
-| `backup` | SSH endpoint mapping bug in `--dest-node` path |
-| `scalelog` | Requires `log_service` config and log binaries |
-| `deploy`, `install`, `run-deps` | Tested implicitly via `launch` |
-| `proxy`, `demo` | Legacy products, not active |
-| `completion` | Shell generation, no runtime state to verify |
