@@ -1,40 +1,105 @@
 # E2E Tests
 
-These scripts run real `eloqctl` operations against Ubuntu Docker containers using the locally installed development build. The containers provide only SSH-accessible Ubuntu nodes; `eloqctl` installs runtime dependencies and deploys EloqKV from the host.
+A single script (`tests/e2e/test.sh`) starts one Docker environment, deploys one EloqKV cluster, then runs all scenarios sequentially against it. The whole suite completes in ~5 minutes.
+
+## Architecture
+
+```
+tests/
+├── e2e/
+│   ├── test.sh            ← single test entry point
+│   └── topology.yaml      ← topology for the e2e cluster
+├── docker_ha/              ← shared Docker infrastructure
+│   ├── Dockerfile          ← Ubuntu 24.04 + SSH server
+│   ├── docker-compose.yaml ← 3-node bridge network (172.28.10.x)
+│   ├── topology.yaml       ← topology template (referenced by docker_env.sh)
+│   ├── id_ed25519          ← SSH key pair for eloq user
+│   └── authorized_keys
+└── docker_env.sh           ← shared shell helpers
+```
+
+## How It Works
+
+1. **Docker env starts once** — `docker_env.sh` builds an Ubuntu image, starts 3 containers on a bridge network, waits for SSH
+2. **Cluster deploys once** — `eloqctl launch` installs deps, deploys EloqKV, boots one tx + one standby + one voter
+3. **All scenarios run sequentially** — every test scenario operates on the same running cluster:
+   - status, versions, list, export, connect
+   - rolling update via `plan` + `apply`
+   - scale add / remove
+   - stop → check topology → start
+   - failover (promote standby to master)
+   - monitor status, log-service status
+   - exec (remote shell command)
+   - schema upgrade
+   - remove (cleanup verification)
+4. **Docker env destroyed once** — trap cleans up on exit or failure
 
 ## Prerequisites
 
-1. Docker is available.
-2. Install the current repo build first:
-
 ```sh
+# Build and install the dev eloqctl binary
 scripts/install-dev.sh
 ```
 
-This builds `cluster_mgr`, installs it to `${ELOQCTL_HOME:-$HOME/.eloqctl}/bin/cluster_mgr`, and links `${ELOQCTL_HOME:-$HOME/.eloqctl}/config` to this repo's `src/cluster_mgr/config`.
+Requires Docker and Rust toolchain (see repo README).
 
-## Tests
-
-```sh
-bash tests/docker_ha/test.sh
-bash tests/rolling_update/test.sh
-bash tests/scale/test.sh
-```
-
-Each test has its own directory containing the script, topology, and transient logs. The scripts use `${ELOQCTL_HOME:-$HOME/.eloqctl}/bin/cluster_mgr` by default; set `ELOQCTL=/path/to/cluster_mgr` to override. Readiness and cleanup are verified through `eloqctl` itself; every test cleanup runs `eloqctl stop <cluster> --all --force` and `eloqctl remove <cluster> --force`.
-
-Run the full push gate locally with:
+## Running
 
 ```sh
+# Single script — runs everything
+bash tests/e2e/test.sh
+
+# Full push gate (includes format, build, clippy, E2E)
 scripts/test-before-push.sh
-```
 
-Install the git pre-push hook with:
-
-```sh
+# Install git pre-push hook (auto-runs test-before-push.sh)
 scripts/install-git-hooks.sh
 ```
 
-`tests/docker_ha/test.sh` starts three Ubuntu containers on a Docker bridge network and deploys EloqKV through SSH from the host, which is closer to a real multi-host deployment than localhost tests.
+Override the binary path:
+```sh
+ELOQCTL=/custom/path/to/cluster_mgr bash tests/e2e/test.sh
+```
 
-All E2E tests use `connection.ssh_endpoints` for SSH access and `connection.service_endpoints` for Redis/gRPC readiness from the host. The HA baseline is one tx/master, one standby, and one voter with `cluster_mode: true`.
+## Test Output
+
+Passing output looks like:
+```
+[1/6] Launch cluster ... OK
+[2/6] Verify cluster status ... OK
+[3/6] Test read-only commands ... OK
+[4/6] Rolling update ... OK
+[5/6] Scale add standby ... OK
+[6/6] Scale remove old standby ... OK
+[7/14] Stop cluster and validate topology ... OK
+[8/14] Restart cluster ... OK
+[9/14] Failover standby to master ... OK
+[10/14] Monitor and log-service status ... OK
+[11/14] Exec custom remote command ... OK
+[12/14] Schema upgrade ... OK
+[13/14] Remove cluster ... OK
+PASS: all E2E tests completed
+```
+
+## Adding New Tests
+
+Add a new step to `tests/e2e/test.sh` following the existing pattern:
+```sh
+echo "[N/TOTAL] Your test description"
+"${ELOQCTL}" your-command ... > "${SCRIPT_DIR}/your-command.log" 2>&1 || {
+    echo "FAIL: your test"
+    cat "${SCRIPT_DIR}/your-command.log"
+    exit 1
+}
+echo "  OK"
+```
+
+## What's Not Covered
+
+| Command | Reason |
+|---------|--------|
+| `backup` | SSH endpoint mapping bug in `--dest-node` path |
+| `scalelog` | Requires `log_service` config and log binaries |
+| `deploy`, `install`, `run-deps` | Tested implicitly via `launch` |
+| `proxy`, `demo` | Legacy products, not active |
+| `completion` | Shell generation, no runtime state to verify |
