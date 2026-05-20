@@ -1,0 +1,22 @@
+name: Update Cargo.lock on Release
+
+on:
+  push:
+    branches:
+      - release-please--branches--main
+
+permissions:
+  contents: write
+
+jobs:
+  update-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - run: cargo update -p cluster_mgr
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update Cargo.lock for release"
