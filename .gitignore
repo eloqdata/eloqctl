@@ -45,3 +45,4 @@ tests/**/topology-v2.yaml
 tests/**/id_ed25519
 tests/**/id_ed25519.pub
 tests/**/authorized_keys
+tests/**/exported.yaml
