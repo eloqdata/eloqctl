@@ -3,6 +3,7 @@
 #   STEPS=launch,stress,remove   # comma-separated steps (default: all)
 #   CONNECTIONS=30000            # number of concurrent connections
 #   CMD_TIMEOUT=5                # per-command timeout in seconds
+#   SKIP_CLEANUP=1               # keep containers after script exits
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,7 +22,6 @@ SSH_KEY="${ELOQCTL_DOCKER_SSH_KEY}"
 
 cleanup() {
     rc=$?
-    compose_down
     if [ "${KEEP_LOGS:-0}" != "1" ]; then
         rm -f "${SCRIPT_DIR}/stress-"*.log "${SCRIPT_DIR}/launch-stress.log" "${TOPO}"
     fi
@@ -77,6 +77,7 @@ do_remove() {
     echo "=== Remove cluster ==="
     "${ELOQCTL}" stop "${CLUSTER}" --all --force >/dev/null 2>&1 || true
     "${ELOQCTL}" remove "${CLUSTER}" --force >/dev/null 2>&1 || true
+    compose_down
     echo "  removed"
 }
 
