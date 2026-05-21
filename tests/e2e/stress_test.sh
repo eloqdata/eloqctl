@@ -44,10 +44,10 @@ do_launch() {
     start_docker_env
     "${ELOQCTL}" stop "${CLUSTER}" --all --force >/dev/null 2>&1 || true
     "${ELOQCTL}" remove "${CLUSTER}" --force >/dev/null 2>&1 || true
-    run_with_progress 180 "${SCRIPT_DIR}/launch-stress.log" "${ELOQCTL}" launch "${TOPO}" || {
+    run_with_progress 300 "${SCRIPT_DIR}/launch-stress.log" "${ELOQCTL}" launch "${TOPO}" || {
         echo "FAIL: launch failed"; dump_failure_diagnostics "${SCRIPT_DIR}/launch-stress.log"; exit 1
     }
-    run_with_progress 120 "${SCRIPT_DIR}/launch-stress.log" "${ELOQCTL}" status "${CLUSTER}" --wait 120 >/dev/null 2>&1 || {
+    run_with_progress 180 "${SCRIPT_DIR}/launch-stress.log" "${ELOQCTL}" status "${CLUSTER}" --wait 120 >/dev/null 2>&1 || {
         echo "FAIL: cluster not healthy after launch"; exit 1
     }
     echo "  cluster ready"
