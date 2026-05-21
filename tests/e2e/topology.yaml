@@ -43,6 +43,7 @@ deployment:
   enable_wal: false
   enable_io_uring: false
   cluster_mode: true
+  maxclients: 60000
   checkpoint_interval: 120
   hardware:
     172.28.10.11:

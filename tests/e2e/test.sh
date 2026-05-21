@@ -1,5 +1,9 @@
 #!/bin/bash
 # End-to-end test: deploy EloqKV once, run all scenarios sequentially.
+#   STRESS=1        - add concurrent connection stress test
+#   STRESS_ONLY=1   - only run stress test (cluster must be running)
+#   SKIP_LAUNCH=1   - skip cluster launch (cluster must already be running)
+#   SKIP_CLEANUP=1  - skip stop/remove cleanup
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,11 +14,18 @@ CLUSTER="test-e2e"
 TOPO="${SCRIPT_DIR}/topology.generated.yaml"
 LAUNCH_TIMEOUT_SECONDS="${LAUNCH_TIMEOUT_SECONDS:-120}"
 STATUS_TIMEOUT_SECONDS="${STATUS_TIMEOUT_SECONDS:-120}"
+STRESS="${STRESS:-0}"
+STRESS_ONLY="${STRESS_ONLY:-0}"
+SKIP_LAUNCH="${SKIP_LAUNCH:-0}"
+SKIP_CLEANUP="${SKIP_CLEANUP:-0}"
+PASSWD="testpass"
 
 cleanup() {
     rc=$?
-    timeout --kill-after=5s "${CLEANUP_TIMEOUT_SECONDS}s" "${ELOQCTL}" stop "${CLUSTER}" --all --force >/dev/null 2>&1 || true
-    timeout --kill-after=5s "${CLEANUP_TIMEOUT_SECONDS}s" "${ELOQCTL}" remove "${CLUSTER}" --force >/dev/null 2>&1 || true
+    if [ "${SKIP_CLEANUP}" != "1" ]; then
+        timeout --kill-after=5s "${CLEANUP_TIMEOUT_SECONDS}s" "${ELOQCTL}" stop "${CLUSTER}" --all --force >/dev/null 2>&1 || true
+        timeout --kill-after=5s "${CLEANUP_TIMEOUT_SECONDS}s" "${ELOQCTL}" remove "${CLUSTER}" --force >/dev/null 2>&1 || true
+    fi
     compose_down
     if [ "${KEEP_E2E_LOGS:-0}" != "1" ]; then
         rm -f "${SCRIPT_DIR}/"*.log "${TOPO}" "${SCRIPT_DIR}/exported.yaml"
@@ -29,7 +40,31 @@ trap cleanup EXIT
 render_topology "${SCRIPT_DIR}/topology.yaml" "${TOPO}"
 start_docker_env
 
+if [ "${STRESS_ONLY}" = "1" ]; then
+    echo "[stress] Running concurrent connection stress test"
+    "${ELOQCTL}" status "${CLUSTER}" --wait 60 >/dev/null 2>&1 || { echo "FAIL: cluster not running"; exit 1; }
+    scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        -o PasswordAuthentication=no -o BatchMode=yes -o ConnectTimeout=10 \
+        -i "${ELOQCTL_DOCKER_SSH_KEY}" -P 2221 \
+        "${SCRIPT_DIR}/stress.py" "eloq@127.0.0.1:/home/eloq/${CLUSTER}/stress.py" \
+        >/dev/null 2>&1 || { echo "FAIL: cannot upload stress script"; exit 1; }
+    echo "  Starting 30000 concurrent connections..."
+    ssh_cmd 2221 "python3 /home/eloq/${CLUSTER}/stress.py --host 172.28.10.11 --port 6379 --password ${PASSWD} --connections 30000" \
+        > "${SCRIPT_DIR}/stress.log" 2>&1 || {
+        echo "FAIL: stress test failed"
+        tail -20 "${SCRIPT_DIR}/stress.log"
+        exit 1
+    }
+    tail -5 "${SCRIPT_DIR}/stress.log"
+    echo "  verifying cluster still healthy..."
+    "${ELOQCTL}" status "${CLUSTER}" --wait 30 >/dev/null 2>&1 || { echo "FAIL: cluster unhealthy after stress"; exit 1; }
+    echo ""
+    echo "PASS: stress test completed"
+    exit 0
+fi
+
 # ---- [1] Launch cluster ----
+if [ "${SKIP_LAUNCH}" != "1" ]; then
 echo "[1/6] Launch cluster"
 "${ELOQCTL}" stop "${CLUSTER}" --all --force >/dev/null 2>&1 || true
 "${ELOQCTL}" remove "${CLUSTER}" --force >/dev/null 2>&1 || true
@@ -43,6 +78,7 @@ if [ ${launch_rc} -ne 0 ]; then
     exit 1
 fi
 echo "  OK"
+fi
 
 # ---- [2] Verify status ----
 echo "[2/6] Verify cluster status"
@@ -163,4 +199,26 @@ grep -q "${CLUSTER}" "${SCRIPT_DIR}/post-remove-list.log" && { echo "FAIL: clust
 echo "  OK"
 
 echo ""
+
+# ---- [N] Stress test (STRESS=1) ----
+if [ "${STRESS}" = "1" ]; then
+    echo "[S] Concurrent connection stress test (maxclients=60000)"
+    scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no \
+        -o PasswordAuthentication=no -o BatchMode=yes -o ConnectTimeout=10 \
+        -i "${ELOQCTL_DOCKER_SSH_KEY}" -P 2221 \
+        "${SCRIPT_DIR}/stress.py" "eloq@127.0.0.1:/home/eloq/${CLUSTER}/stress.py" \
+        >/dev/null 2>&1 || { echo "FAIL: cannot upload stress script"; exit 1; }
+    echo "  Starting 30000 concurrent connections..."
+    ssh_cmd 2221 "python3 /home/eloq/${CLUSTER}/stress.py --host 172.28.10.11 --port 6379 --password ${PASSWD} --connections 30000" \
+        > "${SCRIPT_DIR}/stress.log" 2>&1 || {
+        echo "FAIL: stress test failed"
+        tail -20 "${SCRIPT_DIR}/stress.log"
+        exit 1
+    }
+    tail -5 "${SCRIPT_DIR}/stress.log"
+    echo "  verifying cluster still healthy..."
+    "${ELOQCTL}" status "${CLUSTER}" --wait 30 >/dev/null 2>&1 || { echo "FAIL: cluster unhealthy after stress"; exit 1; }
+    echo "  OK"
+fi
+
 echo "PASS: all E2E tests completed"
