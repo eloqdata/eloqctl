@@ -266,12 +266,13 @@ impl TaskExecutor for BackupTask {
                     let dest_user = dest_user.clone();
 
                     let backup_name = format!(
-                        "snapshot-{}-{}:{}-{}",
+                        "snapshot-{}-{}-{}-{}",
                         self.cluster_name.clone(),
                         node.ip,
                         node.port,
                         Self::format_string(self.back_up_config.snapshot_ts)
-                    );
+                    )
+                    .replace(['.', ':'], "-");
 
                     // Create the async task
                     let task = async move {
