@@ -1,4 +1,26 @@
 services:
+  pumba:
+    image: ghcr.io/alexei-led/pumba:latest
+    container_name: eloqctl-e2e-pumba
+    hostname: pumba
+    command: >
+      --log-level info
+      netem
+      --duration 999999h
+      --tc-image ghcr.io/alexei-led/pumba:latest
+      delay --time 2 --jitter 1 --distribution normal
+      loss --percent 0.1
+      containers eloqctl-e2e-node-1 eloqctl-e2e-node-2 eloqctl-e2e-node-3
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - eloq-node-1
+      - eloq-node-2
+      - eloq-node-3
+    networks:
+      eloqctl-e2e-net:
+        ipv4_address: 172.28.10.40
+
   minio:
     image: minio/minio:RELEASE.2025-02-28T09-55-16Z
     container_name: eloqctl-e2e-minio

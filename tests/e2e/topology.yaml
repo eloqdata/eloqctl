@@ -40,16 +40,3 @@ deployment:
       bucket_name: "eloqservice"
       bucket_prefix: "store"
       endpoint: "http://172.28.10.20:9000"
-  log_service:
-    nodes:
-      - host: 172.28.10.14
-        port: 9000
-        data_dir:
-          - "/home/eloq/test-e2e/log_service/wal_eloqkv"
-    replica: 1
-    aws_access_key_id: "minioadmin"
-    aws_secret_key: "minioadmin"
-    bucket_name: "eloqlogservice"
-    bucket_prefix: "wal"
-    endpoint: "http://172.28.10.20:9000"
-    sst_file_cache_size: "10GB"
