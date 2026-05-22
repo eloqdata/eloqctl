@@ -1,0 +1,17 @@
+{
+  "name": "eloqkv-cmd-stress-ts",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "stress": "npx tsx main.ts",
+    "stress:prod": "npx tsx main.ts"
+  },
+  "dependencies": {
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}

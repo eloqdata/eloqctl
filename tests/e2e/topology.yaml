@@ -3,57 +3,30 @@ connection:
   auth_type: "keypair"
   auth:
     keypair: "${ELOQCTL_DOCKER_SSH_KEY}"
-  ssh_endpoints:
-    172.28.10.11:
-      host: "127.0.0.1"
-      port: 2221
-    172.28.10.12:
-      host: "127.0.0.1"
-      port: 2222
-    172.28.10.13:
-      host: "127.0.0.1"
-      port: 2223
-  service_endpoints:
-    172.28.10.11:6379:
-      host: "127.0.0.1"
-      port: 16371
-    172.28.10.11:16380:
-      host: "127.0.0.1"
-      port: 26371
-    172.28.10.11:6390:
-      host: "127.0.0.1"
-      port: 16391
-    172.28.10.12:6379:
-      host: "127.0.0.1"
-      port: 16372
-    172.28.10.12:16380:
-      host: "127.0.0.1"
-      port: 26372
-    172.28.10.13:6379:
-      host: "127.0.0.1"
-      port: 16373
-    172.28.10.13:16380:
-      host: "127.0.0.1"
-      port: 26373
 deployment:
   cluster_name: "test-e2e"
   product: "EloqKV"
-  version: "1.2.2"
+  version: "${ELOQKV_VERSION}"
   install_dir: "/home/eloq"
-  enable_wal: false
+  enable_wal: true
   enable_io_uring: false
+  enable_tls: true
   cluster_mode: true
-  maxclients: 60000
   checkpoint_interval: 120
   hardware:
     172.28.10.11:
-      cpu: 2
+      cpu: 7
       memory: 1024
+      event_dispatcher_num: 1
     172.28.10.12:
-      cpu: 2
+      cpu: 7
       memory: 1024
+      event_dispatcher_num: 1
     172.28.10.13:
       cpu: 2
+      memory: 1024
+    172.28.10.14:
+      cpu: 4
       memory: 1024
   tx_service:
     tx_host_ports: [172.28.10.11:6379]
@@ -61,5 +34,22 @@ deployment:
     voter_host_ports: [172.28.10.13:6379]
     requirepass: "testpass"
   storage_service:
-    rocksdb: !LOCAL
-      path: "/home/eloq/rocksdb"
+    rocks_s3: !MINIO
+      aws_access_key_id: "minioadmin"
+      aws_secret_key: "minioadmin"
+      bucket_name: "eloqservice"
+      bucket_prefix: "store"
+      endpoint: "http://172.28.10.20:9000"
+  log_service:
+    nodes:
+      - host: 172.28.10.14
+        port: 9000
+        data_dir:
+          - "/home/eloq/test-e2e/log_service/wal_eloqkv"
+    replica: 1
+    aws_access_key_id: "minioadmin"
+    aws_secret_key: "minioadmin"
+    bucket_name: "eloqlogservice"
+    bucket_prefix: "wal"
+    endpoint: "http://172.28.10.20:9000"
+    sst_file_cache_size: "10GB"

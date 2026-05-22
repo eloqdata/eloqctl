@@ -1,0 +1,119 @@
+name: E2E Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "EloqKV version"
+        required: false
+        default: "1.2.2"
+      storage:
+        description: "Storage type (rocks_s3 / rocksdb)"
+        required: false
+        default: "rocks_s3"
+      workers:
+        description: "Stress test workers"
+        required: false
+        default: "16"
+      duration:
+        description: "Stress duration (seconds)"
+        required: false
+        default: "60"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: E2E (Python + Go + TS)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: protobuf-compiler pkg-config libssl-dev
+          version: e2e-ubuntu24-v1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-04-21
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          shared-key: e2e-ubuntu24
+          cache-on-failure: true
+
+      - name: Build eloqctl
+        run: |
+          cargo build -p cluster_mgr
+          mkdir -p ~/.eloqctl/bin
+          cp target/debug/cluster_mgr ~/.eloqctl/bin/cluster_mgr
+          chmod 755 ~/.eloqctl/bin/cluster_mgr
+          rm -f ~/.eloqctl/config
+          ln -s "$PWD/src/cluster_mgr/config" ~/.eloqctl/config
+
+      - name: Resolve inputs
+        id: vars
+        run: |
+          V="${VERSION:-${{ github.event.inputs.version || '1.2.2' }}}"
+          S="${STORAGE:-${{ github.event.inputs.storage || 'rocks_s3' }}}"
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+          echo "storage=${S}" >> "$GITHUB_OUTPUT"
+          echo "tx_tarball=eloqkv-${V}-ubuntu24-amd64.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "log_tarball=log-service-${V}-ubuntu24-amd64.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Cache eloqkv binaries
+        id: cache-eloqkv
+        uses: actions/cache@v4
+        with:
+          path: ~/.eloqctl/download
+          key: eloqkv-${{ steps.vars.outputs.version }}-${{ steps.vars.outputs.storage }}
+
+      - name: Download eloqkv binaries (if not cached)
+        if: steps.cache-eloqkv.outputs.cache-hit != 'true'
+        run: |
+          S="${{ steps.vars.outputs.storage }}"
+          TX="eloqkv/${S}/${{ steps.vars.outputs.tx_tarball }}"
+          LOG="eloqkv/logservice/rocks_s3/${{ steps.vars.outputs.log_tarball }}"
+          BASE="https://download.eloqdata.com"
+
+          mkdir -p "$HOME/.eloqctl/download/$(dirname "${TX}")"
+          curl -fsSL --retry 3 -o "$HOME/.eloqctl/download/${TX}" "${BASE}/${TX}"
+
+          mkdir -p "$HOME/.eloqctl/download/$(dirname "${LOG}")"
+          curl -fsSL --retry 3 -o "$HOME/.eloqctl/download/${LOG}" "${BASE}/${LOG}"
+
+      - name: Run E2E test
+        run: |
+          export DOCKER_E2E_DIR="$PWD/tests/docker_ha"
+          export COMPOSE_OVERRIDE_FILE="$DOCKER_E2E_DIR/docker-compose.ci.yml"
+          export ELOQCTL_HOME="$HOME/.eloqctl"
+          export ELOQCTL="$HOME/.eloqctl/bin/cluster_mgr"
+          export HOST_ELOQCTL_HOME="${ELOQCTL_HOME}"
+          export ELOQKV_VERSION="${{ steps.vars.outputs.version }}"
+          export ELOQKV_STORAGE="${{ steps.vars.outputs.storage }}"
+          export DURATION_SECONDS="${{ github.event.inputs.duration || '60' }}"
+          export WORKERS="${{ github.event.inputs.workers || '16' }}"
+          export SKIP_DEPS=1
+          export STEPS="launch,py-stress,go-stress,ts-stress,remove"
+          bash tests/e2e/cmd_stress_test.sh
+
+      - name: Cleanup Docker
+        if: always()
+        run: |
+          docker compose -f tests/docker_ha/docker-compose.yaml down -v --remove-orphans 2>/dev/null || true
+          docker system prune -af --volumes 2>/dev/null || true

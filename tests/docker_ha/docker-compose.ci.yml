@@ -1,0 +1,35 @@
+# CI override – strips debug-only security options to ensure Docker compatibility.
+# Original compose needs seccomp:unconfined + SYS_PTRACE for gdb/strace;
+# these are not required for eloqkv to run and may be blocked on some CI runners.
+
+services:
+  eloq-node-1:
+    cap_add: []
+    security_opt: []
+  eloq-node-2:
+    cap_add: []
+    security_opt: []
+  eloq-node-3:
+    cap_add: []
+    security_opt: []
+  eloq-node-4:
+    cap_add: []
+    security_opt: []
+  stress-client:
+    cap_add: []
+    security_opt: []
+  stress-client-2:
+    cap_add: []
+    security_opt: []
+  stress-client-3:
+    cap_add: []
+    security_opt: []
+  stress-client-4:
+    cap_add: []
+    security_opt: []
+  stress-go:
+    cap_add: []
+    security_opt: []
+  stress-ts:
+    cap_add: []
+    security_opt: []

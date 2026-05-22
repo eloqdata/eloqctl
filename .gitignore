@@ -46,3 +46,6 @@ tests/**/id_ed25519
 tests/**/id_ed25519.pub
 tests/**/authorized_keys
 tests/**/exported.yaml
+tests/**/node_modules/
+tests/**/__pycache__/
+tests/**/go-cluster-tls-stress
