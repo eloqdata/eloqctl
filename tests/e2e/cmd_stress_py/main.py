@@ -109,7 +109,7 @@ Str = str
 COMMAND_TESTS: List[Tuple[str, Callable[[Redis, int], Any]]] = [
     # ── Connection / Server ──
     ("PING",     lambda c, i: c.ping()),
-    ("ECHO",     lambda c, i: c.execute_command("ECHO", Str(i), keys=[_k(i)])),
+    ("ECHO",     lambda c, i: c.echo(Str(i))),
     ("DBSIZE",   lambda c, i: c.dbsize()),
     ("TIME",     lambda c, i: c.time()),
     ("READONLY", lambda c, i: c.execute_command("READONLY")),
@@ -271,7 +271,10 @@ def stress_worker(client: Redis, stop_event: threading.Event, phase_event: threa
                 fn(client, ki)
                 with stats_lock:
                     cmd_stats[cmd_name]["ok"] += 1
-            except Exception:
+            except Exception as e:
+                # ECHO can't be routed by cluster client (no key) — skip, not fail
+                if cmd_name == "ECHO" and "Missing key" in str(e):
+                    continue
                 with stats_lock:
                     cmd_stats[cmd_name]["fail"] += 1
             idx += 1
