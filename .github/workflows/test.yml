@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
       version:
@@ -19,6 +21,10 @@ on:
         description: "Stress duration (seconds)"
         required: false
         default: "60"
+      repeat:
+        description: "Per-command repeat factor"
+        required: false
+        default: "10"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -73,14 +79,30 @@ jobs:
 
       - name: Run E2E test
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            workers="${{ github.event.inputs.workers || '32' }}"
+            duration="${{ github.event.inputs.duration || '60' }}"
+            repeat="${{ github.event.inputs.repeat || '10' }}"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            workers="16"
+            duration="60"
+            repeat="10"
+          else
+            workers="32"
+            duration="60"
+            repeat="20"
+          fi
+
           export DOCKER_E2E_DIR="$PWD/tests/docker_ha"
           export ELOQCTL_HOME="$HOME/.eloqctl"
           export ELOQCTL="$HOME/.eloqctl/bin/cluster_mgr"
           export ELOQKV_VERSION="${{ github.event.inputs.version || '1.2.2' }}"
-          export DURATION_SECONDS="${{ github.event.inputs.duration || '60' }}"
-          export WORKERS="${{ github.event.inputs.workers || '16' }}"
+          export DURATION_SECONDS="${duration}"
+          export WORKERS="${workers}"
+          export REPEAT="${repeat}"
           export SKIP_DEPS=1
           export STEPS="launch,py-stress,go-stress,ts-stress,remove"
+          echo "Running E2E with WORKERS=${WORKERS} DURATION_SECONDS=${DURATION_SECONDS} REPEAT=${REPEAT}"
           bash tests/e2e/cmd_stress_test.sh
 
       - name: Cleanup Docker
