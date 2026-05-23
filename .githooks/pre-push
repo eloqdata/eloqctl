@@ -5,7 +5,7 @@ set -eo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 LOG_FILE="${REPO_ROOT}/.githooks/pre-push.log"
 
-echo "[pre-push] Running full verification suite (output -> ${LOG_FILE})..." >&2
+echo "[pre-push] Running fast verification suite (output -> ${LOG_FILE})..." >&2
 if "${REPO_ROOT}/scripts/test-before-push.sh" > "${LOG_FILE}" 2>&1; then
     echo "[pre-push] PASS" >&2
     exit 0

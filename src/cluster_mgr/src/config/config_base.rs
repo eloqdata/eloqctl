@@ -68,6 +68,7 @@ pub struct UploadFile {
     pub extension: String,
     pub host: String,
     pub copy_dir: bool,
+    pub delete_remote: bool,
 }
 
 #[serde_with::skip_serializing_none]
@@ -421,7 +422,9 @@ impl DeployConfig {
         let bin = self.deployment.client_bin();
         let host_port = self.deployment.tx_service.tx_host_ports.first().unwrap();
         let parts: Vec<&str> = host_port.split(':').collect();
-        format!("{bin} -h {} -p {}", parts[0], parts[1])
+        let port = parts[1].parse::<u16>().unwrap_or(6379);
+        let (host, port) = self.service_endpoint(parts[0], port);
+        format!("{bin} -h {host} -p {port}")
     }
 
     pub fn product(&self) -> Product {

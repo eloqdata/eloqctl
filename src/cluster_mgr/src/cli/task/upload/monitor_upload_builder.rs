@@ -49,6 +49,7 @@ impl MonitorInfraConfUploadBuilder {
                 extension: "json".to_string(),
                 host: dest_host.to_string(),
                 copy_dir: false,
+                delete_remote: false,
             })
         }
     }
@@ -124,6 +125,7 @@ impl MonitorInfraConfUploadBuilder {
                     DeploymentPackage::Prometheus,
                 ),
                 copy_dir: false,
+                delete_remote: false,
             };
 
             // Add the alert.rules file to the upload list
@@ -139,6 +141,7 @@ impl MonitorInfraConfUploadBuilder {
                     DeploymentPackage::Prometheus,
                 ),
                 copy_dir: false,
+                delete_remote: false,
             };
 
             // Add the Prometheus configuration file to the upload list
@@ -164,6 +167,7 @@ impl MonitorInfraConfUploadBuilder {
                     DeploymentPackage::Grafana,
                 ),
                 copy_dir: false,
+                delete_remote: false,
             };
 
             // Prepare the Grafana datasource UploadFile
@@ -176,6 +180,7 @@ impl MonitorInfraConfUploadBuilder {
                     DeploymentPackage::Grafana,
                 ),
                 copy_dir: false,
+                delete_remote: false,
             };
 
             // Add the Grafana files to the upload list

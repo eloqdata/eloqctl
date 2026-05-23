@@ -14,6 +14,7 @@ use strum_macros::AsRefStr;
 
 pub mod cli;
 pub mod config;
+pub mod github_release;
 pub mod state;
 
 #[macro_export]

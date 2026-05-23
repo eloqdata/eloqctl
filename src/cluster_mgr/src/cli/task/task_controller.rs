@@ -37,6 +37,65 @@ impl TaskController {
         Self { rx, tx }
     }
 
+    fn stage_label_from_tasks(task_group: &str, task_split: &[TaskInstance]) -> String {
+        if task_split.is_empty() {
+            return Self::stage_label(task_group);
+        }
+
+        let task_ids = task_split
+            .iter()
+            .map(|task| task.task.identifier())
+            .collect_vec();
+
+        if task_ids.iter().all(|id| id.cmd == "ssh-check") {
+            return "Check SSH connectivity".to_string();
+        }
+        if task_ids.iter().all(|id| id.cmd == "run_deps") {
+            return "Install runtime dependencies".to_string();
+        }
+        if task_ids.iter().all(|id| id.cmd == "check") {
+            return "Check port availability".to_string();
+        }
+        if task_ids
+            .iter()
+            .all(|id| id.cmd == "deploy" && id.task == "mkdir")
+        {
+            return "Create remote directories".to_string();
+        }
+        if task_ids
+            .iter()
+            .all(|id| id.cmd == "deploy" && id.task.ends_with("_download"))
+        {
+            return "Download release packages".to_string();
+        }
+        if task_ids.iter().all(|id| id.cmd == "extract") {
+            return "Extract release packages locally".to_string();
+        }
+        if task_ids.iter().all(|id| {
+            matches!(id.cmd.as_str(), "deploy" | "update")
+                && (id.task.contains("upload") || id.task.starts_with("deploy_eloq_all_"))
+        }) {
+            return "Sync binaries and support files".to_string();
+        }
+        if task_ids.iter().all(|id| id.cmd == "config-update") {
+            return "Upload generated configuration".to_string();
+        }
+        if task_ids.iter().all(|id| id.cmd == "install") {
+            return "Bootstrap cluster metadata".to_string();
+        }
+        if task_ids.iter().all(|id| id.cmd == "start") {
+            return "Start services".to_string();
+        }
+        if task_ids.iter().all(|id| id.cmd == "topology") {
+            return "Refresh cluster topology".to_string();
+        }
+        if task_ids.iter().all(|id| id.cmd == "monitor") {
+            return "Start monitor components".to_string();
+        }
+
+        Self::stage_label(task_group)
+    }
+
     fn split_task(task_execution_context: &TaskExecutionContext) -> Vec<&'static [TaskInstance]> {
         let barrier = &task_execution_context.barrier;
         let task_install_vec = task_execution_context
@@ -242,9 +301,10 @@ impl TaskController {
                     task_names.join(", ")
                 );
             } else {
+                let stage_label = Self::stage_label_from_tasks(&task_group_string, task_split);
                 println!(
                     "[{stage_num}/{total_stages}] {} ({})",
-                    Self::stage_label(&task_group_string),
+                    stage_label,
                     Self::stage_summary(task_split.len())
                 );
             }

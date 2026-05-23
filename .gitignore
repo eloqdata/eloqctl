@@ -38,6 +38,7 @@ src/log/
 log/
 .monograph_waiter/
 .bin/
+.tmp-eloqctl/
 tests/ssh_keys/test_rsa
 tests/**/.eloqctl/
 tests/**/topology.generated.yaml
@@ -46,3 +47,6 @@ tests/**/id_ed25519
 tests/**/id_ed25519.pub
 tests/**/authorized_keys
 tests/**/exported.yaml
+tests/**/node_modules/
+tests/**/__pycache__/
+tests/**/go-cluster-tls-stress

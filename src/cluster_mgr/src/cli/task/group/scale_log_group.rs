@@ -1,8 +1,10 @@
 use crate::cli::task::db_update_log_task::DbDeploymentUpdateLogTask;
+use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::eloq_log_ctl_task::{EloqLogCtlTask, LogCtlCmd};
 use crate::cli::task::eloq_log_probe_task::EloqLogProbeTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{Config, ScaleLogTaskGroup, TaskGroup};
+use crate::cli::task::local_extract_task::LocalExtractTask;
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::scale_log_cleanup_task::ScaleLogCleanupTask;
 use crate::cli::task::scale_log_op_task::ScaleLogOpTask;
@@ -15,7 +17,7 @@ use crate::cli::task::topology_display_task::TopologyDisplayTask;
 use crate::cli::task::topology_update_task::TopologyUpdateTask;
 use crate::cli::task::upload::upload_task_builder::{build_task_instance, get_source_host};
 use crate::cli::SubCommand;
-use crate::config::config_base::{UploadFile, LOG_SERVICE_HOME};
+use crate::config::config_base::{UploadFile, ELOQ_LOG_FILE_KEY, LOG_SERVICE_HOME};
 use crate::config::log_service::{LogProcessKey, LogServiceNode};
 use crate::config::DownloadUrl;
 use anyhow::anyhow;
@@ -23,10 +25,8 @@ use async_trait::async_trait;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::env;
-use std::path::PathBuf;
 use tokio::sync::watch;
-use tracing::{info, warn};
+use tracing::info;
 use uuid::Uuid;
 
 #[async_trait]
@@ -216,18 +216,6 @@ impl TaskGroup for ScaleLogTaskGroup {
                     let log_scripts_paths = temp_config.gen_log_start_script()?;
                     info!("Generated log scripts: {:?}", log_scripts_paths);
 
-                    // Extract existing host names from the original config - needed to identify truly new hosts
-                    let existing_hosts: Vec<String> = deploy_cfg
-                        .deployment
-                        .log_service
-                        .as_ref()
-                        .unwrap()
-                        .nodes
-                        .iter()
-                        .map(|node| node.host.clone())
-                        .unique()
-                        .collect();
-
                     // Extract all host names with ports from the temp_log_service (includes both existing and new nodes)
                     let all_log_nodes: Vec<String> = temp_log_service
                         .nodes
@@ -263,46 +251,58 @@ impl TaskGroup for ScaleLogTaskGroup {
                     barrier.push(mkdir_remote_dir.len());
                     executable.extend(mkdir_remote_dir);
 
-                    // Step 5: Create upload tasks for the newly added log nodes scripts
-                    info!("Setting up upload tasks for log start scripts");
+                    if !hosts_to_upload_log_binary.is_empty() {
+                        let log_image = deploy_cfg
+                            .deployment
+                            .log_image()
+                            .ok_or_else(|| anyhow!("Log service image not configured"))?;
+                        let log_download_url = DownloadUrl::from_url_str(log_image)?;
 
-                    // Upload log start bash file for all nodes
-                    for node_str in &node_list_to_upload_bash {
-                        if let Some((host, _port_str)) = node_str.split_once(':') {
-                            // Gather all start_tx_log_*.bash scripts for this host
-                            let mut sources = Vec::new();
-                            if let Some(script_list) = &log_scripts_paths {
-                                for path in script_list {
-                                    if path.to_string_lossy().contains(host) {
-                                        sources.push(path.to_string_lossy().to_string());
-                                        info!("Adding script to upload: {}", path.display());
-                                    }
-                                }
-                            }
+                        let download_tasks =
+                            DownloadTask::instances(DownloadTask::from_urls(vec![
+                                log_image.to_string()
+                            ]));
+                        if !download_tasks.is_empty() {
+                            barrier.push(download_tasks.len());
+                            executable.extend(download_tasks);
+                        }
 
-                            info!(
-                                "Found {} files to upload binary for host:port {}",
-                                sources.len(),
-                                node_str
-                            );
+                        let extract_tasks = LocalExtractTask::from_urls(vec![(
+                            ELOQ_LOG_FILE_KEY.to_string(),
+                            log_download_url.clone(),
+                            LOG_SERVICE_HOME.to_string(),
+                        )]);
+                        if !extract_tasks.is_empty() {
+                            barrier.push(extract_tasks.len());
+                            executable.extend(extract_tasks);
+                        }
 
-                            // Create an upload file that includes all sources
+                        let staged_dir =
+                            LocalExtractTask::staged_dir_for(&log_download_url, LOG_SERVICE_HOME);
+                        if !staged_dir.exists() {
+                            return Err(anyhow!(
+                                "Log service staged directory not found: {}",
+                                staged_dir.display()
+                            ));
+                        }
+
+                        for host in &hosts_to_upload_log_binary {
                             let upload_file = UploadFile {
-                                source: sources.join(" "),
-                                dest: deploy_cfg.install_dir(),
-                                extension: "bash".to_string(),
+                                source: staged_dir.to_string_lossy().to_string(),
+                                dest: format!("{}/{}", deploy_cfg.install_dir(), LOG_SERVICE_HOME),
+                                extension: "dir".to_string(),
                                 host: host.to_string(),
-                                copy_dir: false,
+                                copy_dir: true,
+                                delete_remote: true,
                             };
 
-                            // Create the upload task
                             let source_host = get_source_host(None);
                             let (id, instance) = build_task_instance(
                                 source_host,
                                 upload_file,
                                 config,
                                 "deploy",
-                                &format!("deploy_log_start_bash_to_{}", node_str),
+                                "deploy_eloq_log_dir",
                             );
 
                             barrier.push(1);
@@ -310,99 +310,50 @@ impl TaskGroup for ScaleLogTaskGroup {
                         }
                     }
 
-                    // Upload log binary tarball for newly added hosts
-                    for host in &hosts_to_upload_log_binary {
-                        let mut sources = Vec::new();
+                    // Step 5: Create upload tasks for the newly added log nodes scripts
+                    info!("Setting up upload tasks for log start scripts");
 
-                        // Add the log service tarball if it exists in the deployment configuration
-                        if let Some(log_image) = deploy_cfg.deployment.log_image() {
-                            if let Ok(download_url) = DownloadUrl::from_url_str(log_image) {
-                                let file_name = download_url.file_name();
-                                // Check if the file exists in the download directory
-                                let download_dir = PathBuf::from(format!(
-                                    "{}/.eloqctl/download",
-                                    env::var("HOME").unwrap_or_else(|_| "/home/eloq".to_string())
-                                ));
-                                let file_path = download_dir
-                                    .join("eloqkv")
-                                    .join("logservice")
-                                    .join(&file_name);
-
-                                if file_path.exists() {
-                                    info!("Found log service tarball at {}", file_path.display());
-                                    sources.push(file_path.to_string_lossy().to_string());
-                                } else {
-                                    warn!(
-                                        "Log service tarball not found at expected path: {}",
-                                        file_path.display()
-                                    );
+                    // Upload log start bash file for all nodes
+                    for host in node_list_to_upload_bash
+                        .iter()
+                        .filter_map(|node| node.split_once(':').map(|(host, _)| host.to_string()))
+                        .unique()
+                    {
+                        if let Some(script_list) = &log_scripts_paths {
+                            for path in script_list {
+                                if !path.to_string_lossy().contains(&host) {
+                                    continue;
                                 }
+                                info!("Adding script to upload: {}", path.display());
+                                let upload_file = UploadFile {
+                                    source: path.to_string_lossy().to_string(),
+                                    dest: deploy_cfg.install_dir(),
+                                    extension: "bash".to_string(),
+                                    host: host.clone(),
+                                    copy_dir: false,
+                                    delete_remote: false,
+                                };
+
+                                let task_name = path
+                                    .file_name()
+                                    .and_then(|name| name.to_str())
+                                    .map(|name| format!("deploy_{}", name.replace('.', "_")))
+                                    .unwrap_or_else(|| {
+                                        format!("deploy_log_start_bash_to_{}", host)
+                                    });
+                                let source_host = get_source_host(None);
+                                let (id, instance) = build_task_instance(
+                                    source_host,
+                                    upload_file,
+                                    config,
+                                    "deploy",
+                                    &task_name,
+                                );
+
+                                barrier.push(1);
+                                executable.insert(id, instance);
                             }
                         }
-
-                        info!(
-                            "Found {} files to upload binary for host {}",
-                            sources.len(),
-                            host
-                        );
-
-                        // Create an upload file that includes all sources
-                        let upload_file = UploadFile {
-                            source: sources.join(" "),
-                            dest: deploy_cfg.install_dir(),
-                            extension: "gz".to_string(),
-                            host: host.to_string(),
-                            copy_dir: false,
-                        };
-
-                        // Create the upload task
-
-                        let source_host = get_source_host(None);
-                        let (id, instance) = build_task_instance(
-                            source_host,
-                            upload_file,
-                            config,
-                            "deploy",
-                            "deploy_eloq_all_gz",
-                        );
-
-                        barrier.push(1);
-                        executable.insert(id, instance);
-                    }
-
-                    // Step 6: Create unpack tasks for the log service tarball on new nodes
-
-                    // Filter for only truly new hosts (in hosts_to_upload but not in existing_hosts)
-                    let new_log_hosts = hosts_to_upload_log_binary
-                        .iter()
-                        .filter(|h| !existing_hosts.contains(&h.to_string()))
-                        .map(|h| h.to_string())
-                        .collect::<Vec<_>>();
-
-                    if !new_log_hosts.is_empty() {
-                        // Create a temporary deployment config with just these new hosts as log nodes
-                        let mut temp_config = temp_config.clone();
-                        if let Some(log_srv) = &mut temp_config.deployment.log_service {
-                            // Filter the nodes to only include the new hosts
-                            log_srv
-                                .nodes
-                                .retain(|node| new_log_hosts.contains(&node.host));
-                        }
-
-                        // Generate the unpack tasks - only unpack logservice, not eloqkv
-                        let log_unpack_tasks =
-                            crate::cli::task::unpack_file_task::UnpackFileTask::unpack_log_servers(
-                                &temp_config,
-                            );
-
-                        // Add the tasks to the executable
-                        for (task_id, instance) in log_unpack_tasks {
-                            info!("Added unpack task for log service on host {}", task_id.host);
-                            barrier.push(1);
-                            executable.insert(task_id, instance);
-                        }
-                    } else {
-                        info!("No new log hosts to unpack");
                     }
 
                     // Step 7: Use EloqLogCtlTask to start the new log nodes
@@ -811,46 +762,45 @@ impl TaskGroup for ScaleLogTaskGroup {
                     info!("Setting up upload tasks for updated log start scripts");
 
                     // Upload log start bash file for all remaining nodes
-                    for node_str in &node_list_to_upload_bash {
-                        if let Some((host, _port_str)) = node_str.split_once(':') {
-                            // Gather all start_tx_log_*.bash scripts for this host
-                            let mut sources = Vec::new();
-                            if let Some(script_list) = &log_scripts_paths {
-                                for path in script_list {
-                                    if path.to_string_lossy().contains(host) {
-                                        sources.push(path.to_string_lossy().to_string());
-                                        info!("Adding script to upload: {}", path.display());
-                                    }
+                    for host in node_list_to_upload_bash
+                        .iter()
+                        .filter_map(|node| node.split_once(':').map(|(host, _)| host.to_string()))
+                        .unique()
+                    {
+                        if let Some(script_list) = &log_scripts_paths {
+                            for path in script_list {
+                                if !path.to_string_lossy().contains(&host) {
+                                    continue;
                                 }
+                                info!("Adding script to upload: {}", path.display());
+                                let upload_file = UploadFile {
+                                    source: path.to_string_lossy().to_string(),
+                                    dest: deploy_cfg.install_dir(),
+                                    extension: "bash".to_string(),
+                                    host: host.clone(),
+                                    copy_dir: false,
+                                    delete_remote: false,
+                                };
+
+                                let task_name = path
+                                    .file_name()
+                                    .and_then(|name| name.to_str())
+                                    .map(|name| format!("deploy_{}", name.replace('.', "_")))
+                                    .unwrap_or_else(|| {
+                                        format!("deploy_log_start_bash_to_{}", host)
+                                    });
+                                let source_host = get_source_host(None);
+                                let (id, instance) = build_task_instance(
+                                    source_host,
+                                    upload_file,
+                                    config,
+                                    "deploy",
+                                    &task_name,
+                                );
+
+                                barrier.push(1);
+                                executable.insert(id, instance);
                             }
-
-                            info!(
-                                "Found {} files to upload for host:port {}",
-                                sources.len(),
-                                node_str
-                            );
-
-                            // Create an upload file that includes all sources
-                            let upload_file = UploadFile {
-                                source: sources.join(" "),
-                                dest: deploy_cfg.install_dir(),
-                                extension: "bash".to_string(),
-                                host: host.to_string(),
-                                copy_dir: false,
-                            };
-
-                            // Create the upload task
-                            let source_host = get_source_host(None);
-                            let (id, instance) = build_task_instance(
-                                source_host,
-                                upload_file,
-                                config,
-                                "deploy",
-                                &format!("deploy_log_start_bash_to_{}", node_str),
-                            );
-
-                            barrier.push(1);
-                            executable.insert(id, instance);
                         }
                     }
                 }

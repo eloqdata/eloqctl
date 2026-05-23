@@ -55,10 +55,10 @@ impl MonitorComponentCommand {
                         format!(" {retention_flags}")
                     };
                     format!(
-                         r#"{home}/prometheus --web.listen-address="0.0.0.0:{port}" --storage.tsdb.path={home}/data{retention_flags} --config.file={home}/{PROMETHEUS_CONFIG_FILE} > /tmp/eloq_prometheus.log 2>&1 &"#,
-                        home = home,
-                        port = prom.port,
-                        retention_flags = retention_flags,
+                         r#"{home}/prometheus --web.listen-address="0.0.0.0:{port}" --web.enable-lifecycle --storage.tsdb.path={home}/data{retention_flags} --config.file={home}/{PROMETHEUS_CONFIG_FILE} > /tmp/eloq_prometheus.log 2>&1 &"#,
+                         home = home,
+                         port = prom.port,
+                         retention_flags = retention_flags,
                     )
                 })
             }
@@ -118,6 +118,7 @@ mod tests {
         .start(&monitor)
         .unwrap();
 
+        assert!(cmd.contains("--web.enable-lifecycle"));
         assert!(cmd.contains(r#"--storage.tsdb.retention.time="30d""#));
         assert!(cmd.contains(r#"--storage.tsdb.retention.size="50GB""#));
     }

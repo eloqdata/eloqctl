@@ -173,6 +173,8 @@ impl Product {
 pub struct Hardware {
     pub cpu: u16,
     pub memory: u32, // MiB
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_dispatcher_num: Option<u16>,
 }
 
 pub enum Version {
@@ -1489,7 +1491,7 @@ impl Deployment {
                 let key = "event_dispatcher_num";
                 let val = set_by_user!(ini.get(SECTION_LOCAL, key), u16);
                 if val.is_none() {
-                    let core_io = core_tx.div_ceil(8);
+                    let core_io = hw.event_dispatcher_num.unwrap_or(core_tx.div_ceil(8));
                     ini.set(SECTION_LOCAL, key, Some(core_io.to_string()));
                 }
 

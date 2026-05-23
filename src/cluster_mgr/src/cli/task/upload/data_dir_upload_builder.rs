@@ -32,6 +32,7 @@ impl UploadTaskBuilder for DataDirUploadBuilder {
                 extension: "datafarm".to_string(),
                 host: host.to_string(),
                 copy_dir: true,
+                delete_remote: true,
             })
             .map(|upload_file| {
                 build_task_instance(

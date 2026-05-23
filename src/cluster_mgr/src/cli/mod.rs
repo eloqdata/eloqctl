@@ -36,6 +36,13 @@ pub struct Command {
     pub subcmd: Option<SubCommand>,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, clap::ValueEnum)]
+pub enum UpdateMonitorComponent {
+    Grafana,
+    Prometheus,
+    NodeExporter,
+}
+
 #[derive(Subcommand, Clone, Debug, Hash, PartialEq, Eq, AsRefStr)]
 #[command(next_line_help = true)]
 pub enum SubCommand {
@@ -120,17 +127,47 @@ pub enum SubCommand {
         detail: bool,
     },
 
-    #[command(long_about = "Update cluster version. This will stop/update/start the cluster")]
+    #[command(long_about = "Update an existing cluster to a target version.\n\
+                      By default this performs a rolling upgrade that stops, replaces, and restarts services.\n\
+                      Use `--download-only` to resolve the requested version and download the required EloqKV tarballs\n\
+                      into the local cache without changing remote hosts or cluster state.\n\
+                      Use `--monitor` to update only one monitor component without touching the EloqKV cluster.")]
     #[strum(serialize = "update")]
     Update {
+        #[arg(
+            help = "Existing cluster name; required for rolling updates, download-only, and monitor-only updates"
+        )]
         cluster: Option<String>,
+        #[arg(
+            help = "Target EloqKV version or `latest`; required unless using --monitor without a version change"
+        )]
         version: Option<String>,
-        #[arg(long, value_name = "password for graceful shutdown")]
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "Download the target release tarballs into the local cache only; do not update remote hosts. Use as: `eloqctl update <cluster> <version> --download-only`"
+        )]
+        download_only: bool,
+        #[arg(
+            long,
+            value_enum,
+            help = "Update only the selected monitor component instead of the EloqKV cluster"
+        )]
+        monitor: Option<UpdateMonitorComponent>,
+        #[arg(
+            long,
+            help = "Override the tarball URL for the selected monitor component; valid only with --monitor"
+        )]
+        monitor_url: Option<String>,
+        #[arg(
+            long,
+            value_name = "password for graceful shutdown and redis operations"
+        )]
         password: Option<String>,
         #[arg(
             short,
             long,
-            value_name = "enable this when cluster cannot perform graceful shutdown or is already down",
+            value_name = "enable this when graceful shutdown is impossible or the cluster is already down",
             default_value_t = false
         )]
         force: bool,

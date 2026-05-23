@@ -2,8 +2,8 @@ use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{Config, DeploymentTaskGroup, TaskGroup};
 use crate::cli::task::local_copy_task::LocalCopyTask;
+use crate::cli::task::local_extract_task::LocalExtractTask;
 use crate::cli::task::task_base::{TaskExecutionContext, TaskId, TaskInstance};
-use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
 use crate::config::config_base::DEPLOYMENT_CHECK_SUCCESS_TASK;
@@ -71,22 +71,14 @@ impl TaskGroup for DeploymentTaskGroup {
         } else {
             true
         };
-        let (db_upload_task, unpack_task) = if need_skip_success_task {
-            (
-                DeploymentTaskGroup::skip_success_task_execution(
-                    &upload_tasks(UploadTaskBuilderType::EloqAll, config),
-                    &success_task_vec,
-                ),
-                DeploymentTaskGroup::skip_success_task_execution(
-                    &UnpackFileTask::from_config(cluster_config)?,
-                    &success_task_vec,
-                ),
+        let local_extract_task = LocalExtractTask::from_config(cluster_config)?;
+        let db_upload_task = if need_skip_success_task {
+            DeploymentTaskGroup::skip_success_task_execution(
+                &upload_tasks(UploadTaskBuilderType::EloqAll, config),
+                &success_task_vec,
             )
         } else {
-            (
-                upload_tasks(UploadTaskBuilderType::EloqAll, config),
-                UnpackFileTask::from_config(cluster_config)?,
-            )
+            upload_tasks(UploadTaskBuilderType::EloqAll, config)
         };
 
         let upload_tx_conf = upload_tasks(UploadTaskBuilderType::TxConf, config);
@@ -109,16 +101,16 @@ impl TaskGroup for DeploymentTaskGroup {
         let barrier = Some(vec![
             mkdir_remote_dir.len(),
             copy_or_download_task_instances.len(),
+            local_extract_task.len(),
             db_upload_task.len(),
-            unpack_task.len(),
             upload_tx_conf.len(),
             upload_monitor_conf_tasks.len(),
         ]);
         let mut executable = IndexMap::new();
         executable.extend(mkdir_remote_dir);
         executable.extend(copy_or_download_task_instances);
+        executable.extend(local_extract_task);
         executable.extend(db_upload_task);
-        executable.extend(unpack_task);
         executable.extend(upload_tx_conf);
         executable.extend(upload_monitor_conf_tasks);
         Ok(TaskExecutionContext {

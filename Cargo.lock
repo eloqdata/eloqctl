@@ -1086,7 +1086,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cluster_mgr"
-version = "1.6.4"
+version = "1.6.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1100,6 +1100,7 @@ dependencies = [
  "crossbeam-channel",
  "dirs",
  "dyn-clone",
+ "flate2",
  "futures",
  "futures-async-stream",
  "humantime",
@@ -1125,10 +1126,12 @@ dependencies = [
  "serde_json",
  "serde_with",
  "serde_yaml",
+ "sha2",
  "sqlx",
  "strum_macros",
  "sysinfo 0.30.12",
  "tabled",
+ "tar",
  "thiserror",
  "tokio",
  "tokio-postgres",
@@ -1529,7 +1532,7 @@ dependencies = [
 
 [[package]]
 name = "devtools"
-version = "1.6.4"
+version = "1.6.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1830,6 +1833,16 @@ name = "fiat-crypto"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
+
+[[package]]
+name = "filetime"
+version = "0.2.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
+dependencies = [
+ "cfg-if",
+ "libc",
+]
 
 [[package]]
 name = "find-msvc-tools"
@@ -3692,7 +3705,7 @@ dependencies = [
 
 [[package]]
 name = "rest_api"
-version = "1.6.4"
+version = "1.6.6"
 dependencies = [
  "actix-server",
  "actix-web",
@@ -4658,6 +4671,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5587,6 +5611,17 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "xattr"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e105d177a3871454f754b33bb0ee637ecaaac997446375fd3e5d43a2ed00c909"
+dependencies = [
+ "libc",
+ "linux-raw-sys",
+ "rustix",
+]
 
 [[package]]
 name = "xmlparser"

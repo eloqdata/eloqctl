@@ -49,7 +49,7 @@ eloqctl remove eloqkv-cluster --force
 | `connect <cluster>` | Print an EloqKV client command for the cluster. |
 | `plan <topology.yaml>` | Preview supported changes without mutating local state or remote hosts. |
 | `apply <topology.yaml>` | Execute the same plan shown by `plan`, gated by live critical-service health and verified afterward. |
-| `update <cluster> <version>` | Rolling version update for an existing cluster. |
+| `update <cluster> <version>` | Rolling version update for an existing cluster. Version lookup and tarball selection come from GitHub Releases for `eloqdata/eloqkv`. `--download-only` resolves and caches the required tarballs without touching remote hosts. `--monitor` updates only one monitor component. |
 | `update-conf <cluster>` | Apply selected config fields and optionally restart tx nodes. |
 | `scale <cluster>` | Add or remove EloqKV tx/standby nodes. Duplicate add/remove requests are no-ops. |
 | `scalelog <cluster>` | Add or remove log service nodes. Duplicate add/remove requests are no-ops. |
@@ -59,7 +59,7 @@ eloqctl remove eloqkv-cluster --force
 | `backup <cluster> ...` | Create, list, remove, restore, and dump backups. |
 | `export <cluster> [--output file]` | Write the saved launch-compatible topology YAML. |
 | `list` | List locally registered clusters. |
-| `versions` | List available EloqKV versions. |
+| `versions` | List available EloqKV versions by scanning GitHub Release assets for `eloqdata/eloqkv`. |
 | `completion <shell>` | Generate shell completion scripts. |
 | `upgrade` | Run local SQLite schema upgrades. |
 | `remove <cluster> [--force]` | Remove local cluster metadata and perform best-effort remote cleanup. |

@@ -1,7 +1,7 @@
 use crate::cli::task::task_base::{
     CmdErr, ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId,
 };
-use crate::cli::task::upload::upload_task_builder::{SCP_ARGS, SCP_COMMAND};
+use crate::cli::task::upload::upload_task_builder::{TRANSFER_ARGS, TRANSFER_COMMAND};
 use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::task_return_value;
 use anyhow::anyhow;
@@ -33,29 +33,29 @@ impl TaskExecutor for UploadTask {
         task_arg: HashMap<String, TaskArgValue>,
     ) -> anyhow::Result<Option<ExecutionValue>> {
         info!("execute {}", self.task_id.format_string());
-        let scp = task_arg
-            .get(SCP_COMMAND)
+        let sync = task_arg
+            .get(TRANSFER_COMMAND)
             .map(|value| value.to_string())
-            .unwrap_or_else(|| "scp".to_string());
-        let scp_args = task_arg
-            .get(SCP_ARGS)
+            .unwrap_or_else(|| "rsync".to_string());
+        let sync_args = task_arg
+            .get(TRANSFER_ARGS)
             .cloned()
             .map(TaskArgValue::into_inner_value::<Vec<String>>)
             .ok_or_else(|| {
                 anyhow!(CmdErr::UploadErr(
-                    scp.clone(),
-                    "missing scp args".to_string()
+                    sync.clone(),
+                    "missing sync args".to_string()
                 ))
             })?;
 
-        info!("Running local scp: {}", scp);
+        info!("Running local sync: {}", sync);
         let output = timeout(
             Duration::from_secs(120),
-            Command::new("scp").args(&scp_args).output(),
+            Command::new(&sync).args(&sync_args).output(),
         )
         .await
-        .map_err(|_| anyhow!(CmdErr::UploadErr(scp.clone(), "timed out".to_string())))?
-        .map_err(|e| anyhow!(CmdErr::UploadErr(scp.clone(), e.to_string())))?;
+        .map_err(|_| anyhow!(CmdErr::UploadErr(sync.clone(), "timed out".to_string())))?
+        .map_err(|e| anyhow!(CmdErr::UploadErr(sync.clone(), e.to_string())))?;
         let code = output.status.code().unwrap_or(-1);
         let command_output = format!(
             "{}{}",
@@ -68,7 +68,7 @@ impl TaskExecutor for UploadTask {
             format!("{}: {}", code, command_output.trim())
         };
         let mut result = std::collections::HashMap::new();
-        result.insert(CMD.to_string(), TaskArgValue::Str(scp.clone()));
+        result.insert(CMD.to_string(), TaskArgValue::Str(sync.clone()));
         result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(code));
         result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(command_output));
         task_return_value!(
@@ -79,7 +79,7 @@ impl TaskExecutor for UploadTask {
                 } else {
                     status_code.to_string()
                 };
-                CmdErr::UploadErr(scp.clone(), detail)
+                CmdErr::UploadErr(sync.clone(), detail)
             },
             "UploadTask"
         )

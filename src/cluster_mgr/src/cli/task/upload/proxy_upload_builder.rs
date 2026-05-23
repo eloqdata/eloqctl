@@ -99,6 +99,7 @@ impl UploadTaskBuilder for ProxyUploadBuilder {
                 extension: "".to_string(), // Empty because filename already includes extension
                 host: host.clone(),
                 copy_dir: false,
+                delete_remote: false,
             };
 
             let (id, task) = build_task_instance(
@@ -118,6 +119,7 @@ impl UploadTaskBuilder for ProxyUploadBuilder {
                 extension: "".to_string(),
                 host: host.clone(),
                 copy_dir: false,
+                delete_remote: false,
             };
             let (id, task) = build_task_instance(
                 source_host.clone(),

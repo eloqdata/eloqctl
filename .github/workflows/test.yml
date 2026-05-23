@@ -1,0 +1,120 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "EloqKV version"
+        required: false
+        default: "1.2.2"
+      workers:
+        description: "Stress test workers"
+        required: false
+        default: "32"
+      duration:
+        description: "Stress duration (seconds)"
+        required: false
+        default: "60"
+      repeat:
+        description: "Per-command repeat factor"
+        required: false
+        default: "10"
+      inflight:
+        description: "Concurrent execution slots per worker"
+        required: false
+        default: "4"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: protobuf-compiler pkg-config libssl-dev
+          version: test-ubuntu24-v1
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-04-21
+          components: rustfmt, clippy
+
+      - name: Cache Rust build artifacts
+        uses: swatinem/rust-cache@v2
+        with:
+          shared-key: test-ubuntu24
+          cache-on-failure: true
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --tests -- --test-threads=1
+
+      - name: Build eloqctl
+        run: |
+          cargo build -p cluster_mgr
+          mkdir -p ~/.eloqctl/bin
+          cp target/debug/cluster_mgr ~/.eloqctl/bin/cluster_mgr
+          chmod 755 ~/.eloqctl/bin/cluster_mgr
+          rm -f ~/.eloqctl/config
+          ln -s "$PWD/src/cluster_mgr/config" ~/.eloqctl/config
+
+      - name: Run E2E test
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            workers="${{ github.event.inputs.workers || '32' }}"
+            duration="${{ github.event.inputs.duration || '60' }}"
+            repeat="${{ github.event.inputs.repeat || '10' }}"
+            inflight="${{ github.event.inputs.inflight || '4' }}"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            workers="16"
+            duration="60"
+            repeat="10"
+            inflight="4"
+          else
+            workers="32"
+            duration="60"
+            repeat="20"
+            inflight="4"
+          fi
+
+          export DOCKER_E2E_DIR="$PWD/tests/docker_ha"
+          export ELOQCTL_HOME="$HOME/.eloqctl"
+          export ELOQCTL="$HOME/.eloqctl/bin/cluster_mgr"
+          export ELOQKV_VERSION="${{ github.event.inputs.version || '1.2.2' }}"
+          export DURATION_SECONDS="${duration}"
+          export WORKERS="${workers}"
+          export INFLIGHT="${inflight}"
+          export REPEAT="${repeat}"
+          export SKIP_DEPS=1
+          export STEPS="launch,py-stress,go-stress,ts-stress,remove"
+          echo "Running E2E with WORKERS=${WORKERS} INFLIGHT=${INFLIGHT} DURATION_SECONDS=${DURATION_SECONDS} REPEAT=${REPEAT}"
+          bash tests/e2e/cmd_stress_test.sh
+
+      - name: Cleanup Docker
+        if: always()
+        run: |
+          docker compose -f tests/docker_ha/docker-compose.yaml down -v --remove-orphans 2>/dev/null || true
+          docker system prune -af --volumes 2>/dev/null || true
