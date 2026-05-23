@@ -5,7 +5,7 @@
 Install the desired release tag with the installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/eloqdb/eloq_waiter/main/install.sh | sh -s -- vX.Y.Z
+curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/install.sh | sh -s -- v1.6.7
 ```
 
 For local development builds, reinstall from the current checkout:
@@ -13,6 +13,10 @@ For local development builds, reinstall from the current checkout:
 ```sh
 scripts/install-dev.sh
 ```
+
+The release installer now runs `eloqctl upgrade` automatically when it detects
+an existing local state directory, so previously registered clusters remain
+visible after an upgrade.
 
 ## Upgrade Local State Schema
 

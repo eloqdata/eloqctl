@@ -36,10 +36,21 @@ DURATION_SECONDS=120 INFO_ONLY_DURATION_SECONDS=120 \
 ## Control Node Usage
 
 The Docker E2E environment uses `eloq-node-4` as the control node. Install the
-current host-built `eloqctl` into that container with:
+current host-built `eloqctl` into that container from the host shell. The
+Docker E2E environment must already be running:
 
 ```sh
-tests/install_control_eloqctl.sh
+bash tests/install_control_eloqctl.sh
+```
+
+If the environment is not running yet, start it first:
+
+```sh
+export DOCKER_E2E_DIR=/home/starrysky/workspace/eloqdata-kernel/eloq_waiter/tests/docker_ha
+export REPO_ROOT=/home/starrysky/workspace/eloqdata-kernel/eloq_waiter
+source tests/docker_env.sh
+start_docker_env
+bash tests/install_control_eloqctl.sh
 ```
 
 Then log in directly:

@@ -9,13 +9,13 @@ The active cluster manager product target is **EloqKV**. Legacy EloqSQL, MonoSQL
 Install the latest release:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/eloqdb/eloq_waiter/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/install.sh | sh
 ```
 
 Install a specific release tag:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/eloqdb/eloq_waiter/main/install.sh | sh -s -- v1.4.0
+curl -fsSL https://raw.githubusercontent.com/monographdb/eloq_waiter/main/install.sh | sh -s -- v1.6.7
 ```
 
 For local development, build and install the current checkout:
@@ -25,6 +25,9 @@ scripts/install-dev.sh
 ```
 
 This installs `${ELOQCTL_HOME:-$HOME/.eloqctl}/bin/cluster_mgr` and links `${ELOQCTL_HOME:-$HOME/.eloqctl}/config` to `src/cluster_mgr/config` in this repository.
+
+When the installer detects an existing `eloqctl` state directory, it also runs
+`eloqctl upgrade` automatically to migrate local cluster metadata.
 
 ## Quick Start
 

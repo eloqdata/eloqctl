@@ -36,8 +36,15 @@ if [ -z "${ELOQCTL_HOME:-}" ]; then
 fi
 
 BIN_DIR="${ELOQCTL_HOME}/bin"
+BIN_PATH="${BIN_DIR}/cluster_mgr"
+STATE_DB_PATH="${ELOQCTL_HOME}/db/cluster_mgr_state.db"
 TMP_TARBALL="${TMPDIR:-/tmp}/eloqctl.tar.gz"
 mkdir -p "${BIN_DIR}"
+
+HAD_EXISTING_INSTALL=false
+if [ -x "${BIN_PATH}" ] || [ -f "${STATE_DB_PATH}" ]; then
+    HAD_EXISTING_INSTALL=true
+fi
 
 resolve_latest_tag() {
     latest_tag="$(
@@ -93,6 +100,15 @@ if ! install_binary; then
 fi
 
 chmod 755 "${BIN_DIR}/cluster_mgr"
+
+if [ "${HAD_EXISTING_INSTALL}" = true ]; then
+    echo "Running local state upgrade..."
+    if ! ELOQCTL_HOME="${ELOQCTL_HOME}" "${BIN_PATH}" upgrade; then
+        echo "WARNING: eloqctl was installed, but local state upgrade failed." >&2
+        echo "Run this manually before using existing clusters:" >&2
+        echo "  ELOQCTL_HOME=${ELOQCTL_HOME} ${BIN_PATH} upgrade" >&2
+    fi
+fi
 
 print_completion_help() {
     echo "Shell completion is available but is not enabled automatically."
