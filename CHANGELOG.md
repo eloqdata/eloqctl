@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.6.7](https://github.com/monographdb/eloq_waiter/compare/v1.6.6...v1.6.7) (2026-05-23)
+
+
+### Bug Fixes
+
+* disable PG SSL to fix versions command connection ([#403](https://github.com/monographdb/eloq_waiter/issues/403)) ([621d1de](https://github.com/monographdb/eloq_waiter/commit/621d1de98523eb6152993942f541e8213a56b3fd))
+* increase launch/status timeouts in stress test ([#402](https://github.com/monographdb/eloq_waiter/issues/402)) ([179683a](https://github.com/monographdb/eloq_waiter/commit/179683af595bd2741d8e0ed8d495e3a53ae4cd85))
+* only remove step cleans up Docker containers in stress test ([#404](https://github.com/monographdb/eloq_waiter/issues/404)) ([74978d0](https://github.com/monographdb/eloq_waiter/commit/74978d08f6ce50424a019017545333c04e62fef7))
+* sanitize backup_name for branch support - replace . and : with - ([#405](https://github.com/monographdb/eloq_waiter/issues/405)) ([33f226f](https://github.com/monographdb/eloq_waiter/commit/33f226fb8c7c1bcc87be6cc647a275a909323c2d))
+
+
+### Code Refactoring
+
+* split stress test into standalone script, clean up E2E ([#401](https://github.com/monographdb/eloq_waiter/issues/401)) ([0bfd8ee](https://github.com/monographdb/eloq_waiter/commit/0bfd8ee88469b202cd2862f18d76b36a911e1b7c))
+
+
+### Tests
+
+* add 30K concurrent connection stress test with redis-py ([#400](https://github.com/monographdb/eloq_waiter/issues/400)) ([34c2b63](https://github.com/monographdb/eloq_waiter/commit/34c2b637398af9cc31b8730ee3cb15abea6259f6))
+* add multi-SDK e2e command stress tests with dual-client mode ([#406](https://github.com/monographdb/eloq_waiter/issues/406)) ([b5b1861](https://github.com/monographdb/eloq_waiter/commit/b5b18612d3292ce01be1c1d608ce1db56fca72a3))
+* add stress test mode to E2E with maxclients=60000 ([#398](https://github.com/monographdb/eloq_waiter/issues/398)) ([e7b0194](https://github.com/monographdb/eloq_waiter/commit/e7b0194838b9654d07f6379ec0af0d1279799e32))
+
 ## [1.6.6](https://github.com/monographdb/eloq_waiter/compare/v1.6.5...v1.6.6) (2026-05-20)
 
 
