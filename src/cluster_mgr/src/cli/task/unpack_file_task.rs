@@ -227,7 +227,7 @@ impl UnpackFileTask {
         }
         tasks
     }
-    fn make_task_pair(
+    pub fn make_task_pair(
         config: &DeployConfig,
         host: &str,
         image: &str,

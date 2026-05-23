@@ -14,9 +14,13 @@ use futures::stream::StreamExt;
 use indexmap::IndexMap;
 use indicatif::{MultiProgress, ProgressBar};
 use itertools::Itertools;
+use reqwest::header::{ACCEPT, USER_AGENT};
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs;
+use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 use tracing::{error, info};
@@ -137,6 +141,74 @@ impl DownloadTask {
             })
             .collect::<IndexMap<TaskId, TaskInstance>>()
     }
+
+    async fn expected_digest(&self) -> Result<Option<String>> {
+        let download_url = DownloadUrl::from_url_str(&self.url)?;
+        let DownloadUrl::Remote(url) = download_url else {
+            return Ok(None);
+        };
+        if url.domain() != Some("github.com") {
+            return Ok(None);
+        }
+
+        let segments = url
+            .path_segments()
+            .map(|segments| segments.collect_vec())
+            .unwrap_or_default();
+        if segments.len() < 8
+            || segments[0] != "eloqdata"
+            || segments[1] != "eloqkv"
+            || segments[2] != "releases"
+            || segments[3] != "download"
+        {
+            return Ok(None);
+        }
+
+        let tag = segments[4];
+        let file_name = segments.last().unwrap();
+        let api_url = format!("https://api.github.com/repos/eloqdata/eloqkv/releases/tags/{tag}");
+        let response = HTTP_CLIENT
+            .get(api_url)
+            .header(USER_AGENT, "eloqctl")
+            .header(ACCEPT, "application/vnd.github+json")
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            return Ok(None);
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct ReleaseResponse {
+            assets: Vec<GitHubAssetEntry>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct GitHubAssetEntry {
+            name: String,
+            digest: Option<String>,
+        }
+
+        let release = response.json::<ReleaseResponse>().await?;
+        Ok(release
+            .assets
+            .into_iter()
+            .find(|asset| asset.name == *file_name)
+            .and_then(|asset| asset.digest))
+    }
+
+    fn sha256_file(path: &PathBuf) -> Result<String> {
+        let mut file = std::fs::File::open(path)?;
+        let mut hasher = Sha256::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            let read = file.read(&mut buf)?;
+            if read == 0 {
+                break;
+            }
+            hasher.update(&buf[..read]);
+        }
+        Ok(format!("sha256:{:x}", hasher.finalize()))
+    }
 }
 
 #[async_trait::async_trait]
@@ -163,6 +235,7 @@ impl TaskExecutor for DownloadTask {
             return Err(anyhow!(DownloadErr(self.url.clone(), err.to_string())));
         }
         let save_path = save_dir.join(&self.name);
+        let expected_digest = self.expected_digest().await.ok().flatten();
 
         // Try HEAD first to check remote content-length for cache validation
         let remote_len = HTTP_CLIENT
@@ -172,16 +245,33 @@ impl TaskExecutor for DownloadTask {
             .ok()
             .and_then(|r| r.content_length());
 
-        // Use cache if file exists and size matches remote
-        if let Some(expected_len) = remote_len {
-            if save_path.exists()
-                && fs::metadata(&save_path)
-                    .map(|m| m.len() == expected_len)
-                    .unwrap_or(false)
+        if save_path.exists() {
+            let digest_matches = match &expected_digest {
+                Some(expected) => Self::sha256_file(&save_path)
+                    .map(|actual| actual == *expected)
+                    .unwrap_or(false),
+                None => false,
+            };
+
+            if digest_matches {
+                info!(
+                    "local file cache {:?} found (sha256 matches), skipping download.",
+                    save_path
+                );
+                return Ok(None);
+            }
+
+            if expected_digest.is_none()
+                && remote_len.is_some_and(|expected_len| {
+                    fs::metadata(&save_path)
+                        .map(|m| m.len() == expected_len)
+                        .unwrap_or(false)
+                })
             {
                 info!(
                     "local file cache {:?} found ({} bytes, matches remote), skipping download.",
-                    save_path, expected_len
+                    save_path,
+                    remote_len.unwrap()
                 );
                 return Ok(None);
             }
@@ -200,13 +290,22 @@ impl TaskExecutor for DownloadTask {
         let file_len = response.content_length().unwrap();
 
         // Double-check cache after successful GET (in case of concurrent download)
-        if save_path.exists()
-            && fs::metadata(&save_path)
-                .map(|m| m.len() == file_len)
-                .unwrap_or(false)
-        {
-            info!("local file cache {:?} found.", save_path);
-            return Ok(None);
+        if save_path.exists() {
+            let digest_matches = match &expected_digest {
+                Some(expected) => Self::sha256_file(&save_path)
+                    .map(|actual| actual == *expected)
+                    .unwrap_or(false),
+                None => false,
+            };
+            if digest_matches
+                || (expected_digest.is_none()
+                    && fs::metadata(&save_path)
+                        .map(|m| m.len() == file_len)
+                        .unwrap_or(false))
+            {
+                info!("local file cache {:?} found.", save_path);
+                return Ok(None);
+            }
         }
         // TODO(zhanghao): Use HTTP range header to resume download
         let part_path = append_ext(save_path.clone(), "partial");
@@ -232,6 +331,19 @@ impl TaskExecutor for DownloadTask {
         }
         self.pg_bar
             .finish_with_message(format!("{} Downloaded!", self.name));
+
+        if let Some(expected) = &expected_digest {
+            let actual = Self::sha256_file(&part_path)
+                .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+            if &actual != expected {
+                let _ = fs::remove_file(&part_path);
+                return Err(anyhow!(DownloadErr(
+                    self.url.clone(),
+                    format!("sha256 mismatch: expected {expected}, got {actual}")
+                )));
+            }
+        }
+
         fs::rename(part_path, save_path.as_path())
             .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
 

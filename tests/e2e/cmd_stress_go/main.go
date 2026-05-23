@@ -444,6 +444,14 @@ func cmdTests(replicaAddr string) []cmdTestCase {
 	}
 }
 
+func selectCmdTests(replicaAddr string, commandSet string) []cmdTestCase {
+	tests := cmdTests(replicaAddr)
+	if commandSet == "info-only" {
+		return []cmdTestCase{tests[4]}
+	}
+	return tests
+}
+
 // ---------------------------------------------------------------------------
 // Stats
 // ---------------------------------------------------------------------------
@@ -602,19 +610,23 @@ func main() {
 	var inflight int
 	var repeat int
 	var logPrefix string
+	var readFromReplicas bool
+	var commandSet string
 
 	flag.StringVar(&startupNodes, "startup-nodes", "127.0.0.1:6379,127.0.0.1:6380",
 		"comma-separated startup nodes (host:port)")
 	flag.StringVar(&password, "password", "testpass", "redis password")
 	flag.IntVar(&workers, "workers", 16, "number of concurrent stress workers")
 	flag.IntVar(&inflight, "inflight", 4, "concurrent execution slots per worker")
-	flag.DurationVar(&duration, "duration", 60*time.Second, "test duration")
+	flag.DurationVar(&duration, "duration", 300*time.Second, "test duration")
 	flag.DurationVar(&progressInterval, "progress-interval", 5*time.Second, "progress print interval")
 	flag.IntVar(&keyCount, "key-count", 256, "key space size")
 	flag.BoolVar(&insecureTLS, "tls-insecure", true, "skip TLS verification")
 	flag.DurationVar(&cmdTimeout, "cmd-timeout", 5*time.Second, "per-command timeout")
 	flag.IntVar(&repeat, "repeat", 10, "times to repeat each command per round")
 	flag.StringVar(&logPrefix, "log-prefix", "", "optional prefix in log lines")
+	flag.BoolVar(&readFromReplicas, "read-from-replicas", false, "route read-only standalone requests to a discovered replica when available")
+	flag.StringVar(&commandSet, "command-set", "full", "command mix to run: full or info-only")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "", log.LstdFlags|log.Lmicroseconds)
@@ -630,8 +642,8 @@ func main() {
 	}
 
 	logger.Printf("%sstarting eloqkv command stress test", pref(logPrefix))
-	logger.Printf("%snodes=%s workers=%d inflight=%d duration=%s key_count=%d",
-		pref(logPrefix), strings.Join(addrs, ","), workers, inflight, duration, keyCount)
+	logger.Printf("%snodes=%s workers=%d inflight=%d duration=%s key_count=%d command_set=%s read_from_replicas=%t",
+		pref(logPrefix), strings.Join(addrs, ","), workers, inflight, duration, keyCount, commandSet, readFromReplicas)
 
 	totalSlots := workers * inflight
 
@@ -735,7 +747,7 @@ func main() {
 	}
 	logger.Printf("%sKeyspace ready", pref(logPrefix))
 
-	tests := cmdTests(replicaAddr)
+	tests := selectCmdTests(replicaAddr, commandSet)
 
 	// Quick coverage check — standalone
 	logger.Printf("%sRunning coverage check (standalone) ...", pref(logPrefix))

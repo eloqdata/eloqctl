@@ -1,4 +1,5 @@
 use crate::cli::task::group::Config;
+use crate::cli::task::local_extract_task::LocalExtractTask;
 use crate::cli::task::task_base::{TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, list_files_by_host, UploadTaskBuilder,
@@ -55,26 +56,40 @@ impl EloqUploadBuilder {
                     GRAFANA_FILE_KEY => config.get_host_list(DeploymentPackage::Grafana),
                     _ => unreachable!(),
                 };
-                (dest_hosts, download_url)
+                (dest_hosts, download_url, file_key.clone())
             })
-            .filter(|(hosts, _url)| !hosts.is_empty())
-            .flat_map(|(hosts, url)| {
+            .filter(|(hosts, _url, _file_key)| !hosts.is_empty())
+            .flat_map(|(hosts, url, file_key)| {
                 hosts
                     .iter()
                     .map(|host| {
-                        let source = format!("{}/{}", url.cache_dir().unwrap(), url.file_name());
+                        let remote_home = Self::remote_home_for_key(config, &file_key);
+                        let source = LocalExtractTask::staged_dir_for(url, &remote_home)
+                            .to_string_lossy()
+                            .to_string();
                         UploadFile {
                             source,
-                            dest: install_dir.clone(),
-                            // fixme later
-                            extension: "gz".to_string(),
+                            dest: format!("{}/{}", install_dir, remote_home),
+                            extension: "dir".to_string(),
                             host: host.to_string(),
-                            copy_dir: false,
+                            copy_dir: true,
+                            delete_remote: true,
                         }
                     })
                     .collect_vec()
             })
             .collect_vec()
+    }
+
+    fn remote_home_for_key(config: &DeployConfig, file_key: &str) -> String {
+        match file_key {
+            ELOQ_FILE_KEY => config.deployment.product().home().to_string(),
+            ELOQ_LOG_FILE_KEY => "LogServer".to_string(),
+            PROMETHEUS_FILE_KEY => "prometheus".to_string(),
+            GRAFANA_FILE_KEY => "grafana".to_string(),
+            NODE_EXPORTER_FILE_KEY => "node_exporter".to_string(),
+            _ => unreachable!(),
+        }
     }
 
     fn build_eloq_misc_upload_file(&self, config: &DeployConfig) -> Vec<UploadFile> {
@@ -170,6 +185,7 @@ impl EloqUploadBuilder {
                             extension,
                             host: host.clone(),
                             copy_dir: false,
+                            delete_remote: false,
                         }
                     })
                     .collect_vec()
@@ -283,10 +299,12 @@ impl EloqUpload {
     }
 
     pub fn eloq_image_upload(config: &Deployment) -> Vec<UploadFile> {
-        let install_dir = config.install_dir();
         let img = config.tx_image();
         let url = DownloadUrl::from_url_str(img).unwrap();
-        let img_src = format!("{}/{}", url.cache_dir().unwrap(), url.file_name());
+        let img_src = LocalExtractTask::staged_dir_for(&url, config.product().home())
+            .to_string_lossy()
+            .to_string();
+        let install_dir = format!("{}/{}", config.install_dir(), config.product().home());
         let mut uploads = config
             .tx_service
             .tx_host_ports
@@ -296,9 +314,10 @@ impl EloqUpload {
                 UploadFile {
                     source: img_src.clone(),
                     dest: install_dir.clone(),
-                    extension: "gz".to_string(),
+                    extension: "dir".to_string(),
                     host: host.to_string(),
-                    copy_dir: false,
+                    copy_dir: true,
+                    delete_remote: false,
                 }
             })
             .collect_vec();
@@ -311,9 +330,10 @@ impl EloqUpload {
                     UploadFile {
                         source: img_src.clone(),
                         dest: install_dir.clone(),
-                        extension: "gz".to_string(),
+                        extension: "dir".to_string(),
                         host: host.to_string(),
-                        copy_dir: false,
+                        copy_dir: true,
+                        delete_remote: false,
                     }
                 })
                 .collect_vec();
@@ -328,9 +348,10 @@ impl EloqUpload {
                     UploadFile {
                         source: img_src.clone(),
                         dest: install_dir.clone(),
-                        extension: "gz".to_string(),
+                        extension: "dir".to_string(),
                         host: host.to_string(),
-                        copy_dir: false,
+                        copy_dir: true,
+                        delete_remote: false,
                     }
                 })
                 .collect_vec();
@@ -340,16 +361,20 @@ impl EloqUpload {
         if let Some(srv) = &config.log_service {
             let img = srv.image.as_ref().unwrap();
             let url = DownloadUrl::from_url_str(img).unwrap();
-            let img_src = format!("{}/{}", url.cache_dir().unwrap(), url.file_name());
+            let img_src = LocalExtractTask::staged_dir_for(&url, "LogServer")
+                .to_string_lossy()
+                .to_string();
+            let log_install_dir = format!("{}/LogServer", config.install_dir());
             let ups = srv
                 .log_host_unique()
                 .iter()
                 .map(|host| UploadFile {
                     source: img_src.clone(),
-                    dest: install_dir.clone(),
-                    extension: "gz".to_string(),
+                    dest: log_install_dir.clone(),
+                    extension: "dir".to_string(),
                     host: host.to_string(),
-                    copy_dir: false,
+                    copy_dir: true,
+                    delete_remote: false,
                 })
                 .collect_vec();
             uploads.extend(ups);

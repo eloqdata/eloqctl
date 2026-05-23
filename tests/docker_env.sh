@@ -100,8 +100,20 @@ prepare_control_node() {
         install -d -m 755 -o eloq -g eloq '${CONTROL_ELOQCTL_HOME}/bin'
         cp '${CONTROL_REPO_ROOT}/target/debug/cluster_mgr' '${CONTROL_ELOQCTL}'
         chmod 755 '${CONTROL_ELOQCTL}'
+        rm -f /usr/local/bin/eloqctl
+        printf '%s\n' '#!/bin/bash' \
+            'export HOME=/home/eloq' \
+            'export ELOQCTL_HOME=/home/eloq/.eloqctl' \
+            'exec /home/eloq/.eloqctl/bin/cluster_mgr "\$@"' \
+            > /usr/local/bin/eloqctl
+        chmod 755 /usr/local/bin/eloqctl
         rm -f '${CONTROL_ELOQCTL_HOME}/config'
         ln -s '${CONTROL_REPO_ROOT}/src/cluster_mgr/config' '${CONTROL_ELOQCTL_HOME}/config'
+        cat > /etc/profile.d/eloqctl.sh <<'EOF'
+export ELOQCTL_HOME='${CONTROL_ELOQCTL_HOME}'
+EOF
+        grep -qxF 'export ELOQCTL_HOME=${ELOQCTL_HOME:-/home/eloq/.eloqctl}' /home/eloq/.bashrc || \
+            printf '\nexport ELOQCTL_HOME=${ELOQCTL_HOME:-/home/eloq/.eloqctl}\n' >> /home/eloq/.bashrc
         chown -h eloq:eloq '${CONTROL_ELOQCTL_HOME}/config'
         chown -R eloq:eloq '${CONTROL_ELOQCTL_HOME}'
     "

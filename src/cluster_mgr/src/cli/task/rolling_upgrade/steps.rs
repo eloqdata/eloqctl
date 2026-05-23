@@ -7,9 +7,9 @@ use crate::cli::task::eloq_tx_ctl_task::{EloqTxCtlTask, ServerType};
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::failover_op_task::FailoverOpTask;
 use crate::cli::task::group::Config;
+use crate::cli::task::local_extract_task::LocalExtractTask;
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
-use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
@@ -248,12 +248,14 @@ impl Step for DownloadAndUpload {
         ));
 
         let download_task = DownloadTask::instances(DownloadTask::from_urls(downloads));
-        let barrier: Vec<usize> = [download_task.len(), upload_img.len()]
+        let extract_task = LocalExtractTask::from_config(&self.ctx.deploy)?;
+        let barrier: Vec<usize> = [download_task.len(), extract_task.len(), upload_img.len()]
             .into_iter()
             .filter(|&n| n > 0)
             .collect();
         let mut executable = IndexMap::new();
         executable.extend(download_task);
+        executable.extend(extract_task);
         executable.extend(upload_img);
 
         Ok(TaskExecutionContext {
@@ -375,8 +377,7 @@ impl Step for UnpackTxLog {
     }
 
     async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
-        let unpack = UnpackFileTask::unpack_tx_and_log_nodes(&self.ctx.deploy);
-        Ok(single_barrier_ctx("unpack-tx-log", unpack))
+        Ok(TaskExecutionContext::dummy())
     }
 }
 
@@ -622,11 +623,7 @@ impl Step for UnpackStandby {
     }
 
     async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
-        if !self.ctx.has_standby() {
-            return Ok(TaskExecutionContext::dummy());
-        }
-        let unpack = UnpackFileTask::unpack_standby_nodes(&self.ctx.deploy);
-        Ok(single_barrier_ctx("unpack-standby", unpack))
+        Ok(TaskExecutionContext::dummy())
     }
 }
 

@@ -24,6 +24,8 @@ const { values: args } = parseArgs({
     repeat: { type: "string", default: "10" },
     duration: { type: "string", default: "0" },
     "tls-insecure": { type: "string", default: "true" },
+    "read-from-replicas": { type: "string", default: "true" },
+    "command-set": { type: "string", default: "full" },
     "log-prefix": { type: "string", default: "" },
   },
 });
@@ -38,6 +40,8 @@ const INFLIGHT = parseInt(args.inflight!);
 const REPEAT = parseInt(args.repeat!);
 const DURATION = parseInt(args.duration!);
 const TLS_INSECURE = args["tls-insecure"] !== "false";
+const READ_FROM_REPLICAS = args["read-from-replicas"] !== "false";
+const COMMAND_SET = args["command-set"] === "info-only" ? "info-only" : "full";
 const LOG_PREFIX = args["log-prefix"] || "";
 
 const P = (s: string) => (LOG_PREFIX ? `[${LOG_PREFIX}] ${s}` : s);
@@ -201,6 +205,10 @@ const CMD_TESTS: [string, CmdFn][] = [
   }],
 ];
 
+const SELECTED_CMD_TESTS: [string, CmdFn][] = COMMAND_SET === "info-only"
+  ? CMD_TESTS.filter(([name]) => name === "INFO")
+  : CMD_TESTS;
+
 // ---------------------------------------------------------------------------
 // Stats
 // ---------------------------------------------------------------------------
@@ -290,13 +298,14 @@ async function stressWorker(
 // ---------------------------------------------------------------------------
 async function main() {
   console.log(P(`starting eloqkv command stress test (TypeScript/ioredis)`));
-  console.log(P(`nodes=${startupNodes} workers=${WORKERS} inflight=${INFLIGHT} duration=${DURATION}s key_count=${KEY_COUNT}`));
+  console.log(P(`nodes=${startupNodes} workers=${WORKERS} inflight=${INFLIGHT} duration=${DURATION}s key_count=${KEY_COUNT} command_set=${COMMAND_SET} read_from_replicas=${READ_FROM_REPLICAS}`));
 
   // Cluster discovery
   const cluster = new Cluster(startupNodes.map(addr => {
     const [host, portStr] = addr.split(":");
     return { host, port: parseInt(portStr || "6379") };
   }), {
+    scaleReads: READ_FROM_REPLICAS ? "slave" : "master",
     slotsRefreshTimeout: CMD_TIMEOUT,
     redisOptions: {
       password,
@@ -350,7 +359,7 @@ async function main() {
   console.log(P("Running coverage check (standalone) ..."));
   let covOK = 0, covFail = 0;
   const failures: string[] = [];
-  for (const [name, fn] of CMD_TESTS) {
+  for (const [name, fn] of SELECTED_CMD_TESTS) {
     try {
       await fn(master, 0);
       covOK++;
@@ -366,7 +375,7 @@ async function main() {
   console.log(P("Running coverage check (cluster) ..."));
   let ccovOK = 0, ccovFail = 0;
   const cfailures: string[] = [];
-  for (const [name, fn] of CMD_TESTS) {
+  for (const [name, fn] of SELECTED_CMD_TESTS) {
     try {
       await fn(cluster, 0);
       ccovOK++;
@@ -390,10 +399,10 @@ async function main() {
 
   const workers: Promise<void>[] = [];
   for (let w = 0; w < totalStandaloneSlots; w++) {
-    workers.push(stressWorker(master, CMD_TESTS, standaloneStats, controller.signal, w, KEY_COUNT, REPEAT));
+    workers.push(stressWorker(master, SELECTED_CMD_TESTS, standaloneStats, controller.signal, w, KEY_COUNT, REPEAT));
   }
   for (let w = 0; w < totalClusterSlots; w++) {
-    workers.push(stressWorker(cluster, CMD_TESTS, clusterStats, controller.signal, w + totalStandaloneSlots, KEY_COUNT, REPEAT));
+    workers.push(stressWorker(cluster, SELECTED_CMD_TESTS, clusterStats, controller.signal, w + totalStandaloneSlots, KEY_COUNT, REPEAT));
   }
 
   const start = Date.now();

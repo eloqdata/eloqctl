@@ -31,8 +31,8 @@ pub trait UploadTaskBuilder {
     fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance>;
 }
 
-pub(crate) const SCP_COMMAND: &str = "_scp_cmd_";
-pub(crate) const SCP_ARGS: &str = "_scp_args_";
+pub(crate) const TRANSFER_COMMAND: &str = "_transfer_cmd_";
+pub(crate) const TRANSFER_ARGS: &str = "_transfer_args_";
 pub(crate) const SOURCE_IP: &str = "_source_ip_";
 
 pub(crate) fn scp_args(upload_file: &UploadFile, conn: Connection) -> Vec<String> {
@@ -60,6 +60,39 @@ pub(crate) fn scp_args(upload_file: &UploadFile, conn: Connection) -> Vec<String
         args.push("-r".to_string());
     }
     args.push(upload_file.source.trim().to_string());
+    args.push(format!(
+        "{}@{}:{}",
+        conn.username,
+        remote_host,
+        upload_file.dest.trim()
+    ));
+    args
+}
+
+pub(crate) fn sync_args(upload_file: &UploadFile, conn: Connection) -> Vec<String> {
+    let auth_key = conn.ssh_auth_key().unwrap();
+    let (remote_host, port) = conn.ssh_endpoint(&upload_file.host);
+    let ssh_cmd = format!(
+        "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes -o ConnectTimeout=10 -o PreferredAuthentications=publickey -i {} -p {}",
+        auth_key, port
+    );
+    let mut args = vec![
+        "-az".to_string(),
+        "-e".to_string(),
+        ssh_cmd,
+        "--rsync-path".to_string(),
+        format!("mkdir -p {} && rsync", upload_file.dest.trim()),
+        "--partial".to_string(),
+        "--progress".to_string(),
+    ];
+    if upload_file.delete_remote {
+        args.push("--delete".to_string());
+    }
+    let mut source = upload_file.source.trim().to_string();
+    if upload_file.copy_dir && !source.ends_with('/') {
+        source.push('/');
+    }
+    args.push(source);
     args.push(format!(
         "{}@{}:{}",
         conn.username,
@@ -200,15 +233,21 @@ pub(crate) fn build_task_instance(
     };
 
     let conn = config.conn_ref();
-    let scp_args = scp_args(&upload_file, conn.clone());
-    let scp_cmd = format!("scp {}", scp_args.join(" "));
+    let (transfer_bin, transfer_args) = if upload_file.copy_dir {
+        ("rsync".to_string(), sync_args(&upload_file, conn.clone()))
+    } else {
+        ("scp".to_string(), scp_args(&upload_file, conn.clone()))
+    };
     let upload_task = UploadTask::new(task_id.clone());
     (
         task_id,
         TaskInstance {
             task_input: HashMap::from([
-                (SCP_COMMAND.to_string(), TaskArgValue::Str(scp_cmd)),
-                (SCP_ARGS.to_string(), TaskArgValue::List(scp_args)),
+                (
+                    TRANSFER_COMMAND.to_string(),
+                    TaskArgValue::Str(transfer_bin),
+                ),
+                (TRANSFER_ARGS.to_string(), TaskArgValue::List(transfer_args)),
                 (SOURCE_IP.to_string(), TaskArgValue::Str(source_host)),
             ]),
             task: Box::new(upload_task),

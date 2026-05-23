@@ -68,6 +68,7 @@ pub struct UploadFile {
     pub extension: String,
     pub host: String,
     pub copy_dir: bool,
+    pub delete_remote: bool,
 }
 
 #[serde_with::skip_serializing_none]

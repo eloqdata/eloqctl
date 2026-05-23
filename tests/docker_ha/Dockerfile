@@ -11,6 +11,8 @@ RUN apt-get update \
         net-tools \
         openssh-server \
         procps \
+        redis-tools \
+        rsync \
         file \
         strace \
         sudo \

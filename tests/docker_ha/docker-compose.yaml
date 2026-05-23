@@ -80,8 +80,8 @@ services:
 
   stress-client:
     build:
-      context: .
-      dockerfile: Dockerfile.stress
+      context: ../..
+      dockerfile: tests/docker_ha/Dockerfile.stress
     image: eloqctl-e2e-stress:latest
     container_name: eloqctl-e2e-stress
     hostname: stress-client

@@ -12,7 +12,9 @@ RUN apt-get update \
         strace \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir redis==5.2.1
+COPY tests/e2e/cmd_stress_py/requirements.txt /tmp/cmd_stress_py_requirements.txt
+
+RUN pip install --no-cache-dir -r /tmp/cmd_stress_py_requirements.txt
 
 WORKDIR /workspace/eloq_waiter
 

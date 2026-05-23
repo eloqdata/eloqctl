@@ -33,6 +33,8 @@ parser.add_argument("--progress-interval", type=float, default=5.0)
 parser.add_argument("--key-count", type=int, default=256)
 parser.add_argument("--tls", action="store_true")
 parser.add_argument("--read-from-replicas", action="store_true")
+parser.add_argument("--command-set", choices=["full", "info-only"], default="full",
+                    help="Command mix to run during coverage and stress phases")
 parser.add_argument("--base-connections", type=int, default=20)
 parser.add_argument("--target-connections", type=int, default=10000)
 parser.add_argument("--ramp-per-second", type=float, default=10.0)
@@ -96,6 +98,7 @@ def build_cluster_client() -> RedisCluster:
         socket_timeout=args.cmd_timeout,
         socket_connect_timeout=args.cmd_timeout,
         max_connections=max_connections,
+        read_from_replicas=args.read_from_replicas,
         decode_responses=True, **TLS_KWARGS,
     )
 
@@ -271,10 +274,10 @@ COMMAND_TESTS: List[Tuple[str, Callable[[Redis, int], Any]]] = [
 ]
 
 
-def run_cmd_coverage(client: Redis) -> Dict[str, Tuple[int, int, List[str]]]:
+def run_cmd_coverage(client: Redis, tests: List[Tuple[str, Callable[[Redis, int], Any]]]) -> Dict[str, Tuple[int, int, List[str]]]:
     """Run every command once and report per-command pass/fail."""
     results: Dict[str, Tuple[int, int, List[str]]] = {}
-    for name, fn in COMMAND_TESTS:
+    for name, fn in tests:
         ok, fail, errs = 0, 0, []
         try:
             fn(client, 0)
@@ -291,6 +294,12 @@ def run_cmd_coverage(client: Redis) -> Dict[str, Tuple[int, int, List[str]]]:
 # ---------------------------------------------------------------------------
 _CMD_ORDER = [name for name, _ in COMMAND_TESTS]
 _CMD_FNS = {name: fn for name, fn in COMMAND_TESTS}
+
+
+def selected_command_tests() -> List[Tuple[str, Callable[[Redis, int], Any]]]:
+    if args.command_set == "info-only":
+        return [("INFO", _CMD_FNS["INFO"])]
+    return COMMAND_TESTS
 
 def stress_worker(client: Redis, stop_event: threading.Event, phase_event: threading.Event,
                   stats_lock: threading.Lock, cmd_stats: Dict[str, Dict[str, Any]],
@@ -337,6 +346,10 @@ def fmt_cmd_stats(cmd_stats: Dict[str, Dict[str, Any]]) -> str:
 # Main
 # ---------------------------------------------------------------------------
 def main() -> None:
+    command_tests = selected_command_tests()
+    command_order = [name for name, _ in command_tests]
+    print(f"Command set: {args.command_set} (read_from_replicas={args.read_from_replicas})", flush=True)
+
     # ── Preload keys (via cluster client to handle MOVED redirects) ──
     print(f"Preloading keyspace: key_count={args.key_count}", flush=True)
     client = build_cluster_client()
@@ -359,7 +372,7 @@ def main() -> None:
     # ── Quick command coverage check (standalone + cluster) ──
     if not args.skip_cmd_coverage:
         print("Running command coverage check (standalone) ...", flush=True)
-        coverage = run_cmd_coverage(client := build_client(master_node))
+        coverage = run_cmd_coverage(client := build_client(master_node), command_tests)
         close_client(client)
         total_ok = sum(v[0] for v in coverage.values())
         total_fail = sum(v[1] for v in coverage.values())
@@ -369,7 +382,7 @@ def main() -> None:
             print(f"    FAIL {name}: {errs[0][:120] if errs else ''}", flush=True)
 
         print("Running command coverage check (cluster) ...", flush=True)
-        ccoverage = run_cmd_coverage(client := build_cluster_client())
+        ccoverage = run_cmd_coverage(client := build_cluster_client(), command_tests)
         close_client(client)
         ctotal_ok = sum(v[0] for v in ccoverage.values())
         ctotal_fail = sum(v[1] for v in ccoverage.values())
@@ -385,8 +398,14 @@ def main() -> None:
     cluster_client = build_cluster_client()
 
     workers: List[Tuple[Redis, threading.Thread]] = []
-    standalone_stats = make_cmd_stats()
-    cluster_stats = make_cmd_stats()
+    standalone_stats = {
+        name: {"ok": 0, "fail": 0, "error_types": Counter(), "samples": []}
+        for name in command_order
+    }
+    cluster_stats = {
+        name: {"ok": 0, "fail": 0, "error_types": Counter(), "samples": []}
+        for name in command_order
+    }
     stats_lock = threading.Lock()
     phase_event = threading.Event()
 
@@ -405,7 +424,7 @@ def main() -> None:
         th = threading.Thread(target=stress_worker,
                                args=(cli, stop_event, phase_event,
                                      stats_lock, standalone_stats, i),
-                               daemon=True)
+                                daemon=True)
         th.start()
         workers.append((cli, th))
     for i in range(total_cluster_slots):
@@ -413,7 +432,7 @@ def main() -> None:
         th = threading.Thread(target=stress_worker,
                                args=(cli, stop_event, phase_event,
                                      stats_lock, cluster_stats, i + total_standalone_slots),
-                               daemon=True)
+                                daemon=True)
         th.start()
         workers.append((cli, th))
 
@@ -456,7 +475,7 @@ def main() -> None:
         total_fail = sum(v["fail"] for v in stats.values())
         print(f"\n--- {title} ---")
         print(f"total_commands: ok={total_ok} fail={total_fail}")
-        for name in _CMD_ORDER:
+        for name in command_order:
             ok, fail = stats[name]["ok"], stats[name]["fail"]
             if fail > 0:
                 print(f"  {name}: ok={ok} fail={fail}")
@@ -500,4 +519,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    _SELECTED_COMMAND_TESTS = selected_command_tests()
+    _CMD_ORDER = [name for name, _ in _SELECTED_COMMAND_TESTS]
+    _CMD_FNS = {name: fn for name, fn in _SELECTED_COMMAND_TESTS}
     main()

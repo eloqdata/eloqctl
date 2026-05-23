@@ -2,18 +2,28 @@ use crate::cli::reconcile::{
     ObservedCluster, ObservedServiceStatus, ReconcileAction, ReconcilePlan,
 };
 use crate::cli::task::backup_utils::split_manifests;
+use crate::cli::task::download_task::DownloadTask;
 use crate::cli::task::group::Config;
-use crate::cli::task::task_base::{set_verbose_task_output, TaskMgr, TaskResultPair};
+use crate::cli::task::monitor_ctl_task::MonitorCtlTask;
+use crate::cli::task::task_base::{
+    set_verbose_task_output, TaskExecutionContext, TaskMgr, TaskResultPair,
+};
+use crate::cli::task::unpack_file_task::UnpackFileTask;
+use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
 use crate::cli::util::{cpu_arch, file_pg_bar, os_id, os_major_version};
-use crate::cli::{upload_dir, SubCommand, HOME_DIR};
+use crate::cli::{upload_dir, SubCommand, UpdateMonitorComponent, HOME_DIR};
 use crate::cli::{BackupCommand, ProxyCommand};
 use crate::config::config_base::{DeployConfig, VersionRow};
-use crate::config::deployment::{Deployment, Product};
+use crate::config::config_base::{GRAFANA_FILE_KEY, NODE_EXPORTER_FILE_KEY, PROMETHEUS_FILE_KEY};
+use crate::config::deployment::{version_digits, Deployment, Product};
 use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::storage_service_config::{
     DataStoreServiceBackend, DataStoreServiceMode, RocksDB, RocksLocal, StorageService,
 };
 use crate::config::{DeploymentPackage, StorageProvider, CDN, CONFIG_PATH_DIR, UPLOAD_PATH_DIR};
+use crate::github_release::{
+    fetch_eloqkv_releases, find_eloqkv_asset, find_product_asset, list_versions_from_releases,
+};
 use crate::state::proxy_operation::{ProxyEntity, ProxyOperation};
 use crate::state::state_base::{QueryCondition, StateOperation};
 use crate::state::state_mgr::{StateMgr, PROXY_STATE, STATE_MGR};
@@ -29,10 +39,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 use std::{env, fs};
-use tokio::sync::OnceCell;
-use tokio_postgres::config::SslMode;
-use tokio_postgres::NoTls;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 #[derive(tabled::Tabled)]
 struct StatusSummaryRow {
@@ -63,7 +70,6 @@ pub static HTTP_INTERNAL: LazyLock<reqwest::Client> = LazyLock::new(|| {
 pub struct CmdExecutor {
     task_mgr: Arc<TaskMgr>,
     state_mgr: Arc<StateMgr>,
-    pg_client: OnceCell<tokio_postgres::Client>,
     pub home: PathBuf,
 }
 
@@ -163,7 +169,6 @@ impl CmdExecutor {
         Self {
             task_mgr: Arc::new(TaskMgr::new()),
             state_mgr: Arc::new(STATE_MGR.clone()),
-            pg_client: OnceCell::new(),
             home,
         }
     }
@@ -203,33 +208,6 @@ impl CmdExecutor {
             std::fs::create_dir(log_dir)?;
         }
         Ok(home)
-    }
-
-    async fn pg_client(&self) -> Result<&tokio_postgres::Client> {
-        self.pg_client
-            .get_or_try_init(|| async {
-                let pg_password = env::var("ELOQCTL_PG_PASSWORD")
-                    .unwrap_or_else(|_| "eloq_readonly123!".to_string());
-                let (client, conn) = tokio_postgres::Config::new()
-                    .user("readonly_user")
-                    .password(pg_password)
-                    .host("18.177.72.104")
-                    .port(5432)
-                    .dbname("eloq_release")
-                    .ssl_mode(SslMode::Disable)
-                    .connect(NoTls)
-                    .await
-                    .map_err(|e| anyhow!("connect postgres failed: {e}"))?;
-                // The connection object performs the actual communication with the database,
-                // so spawn it off to run on its own.
-                tokio::spawn(async move {
-                    if let Err(e) = conn.await {
-                        error!("PG connection error: {}", e);
-                    }
-                });
-                Ok(client)
-            })
-            .await
     }
 
     pub fn task_mgr(&self) -> &Arc<TaskMgr> {
@@ -273,6 +251,55 @@ impl CmdExecutor {
             return;
         }
         println!("{}", tabled::Table::new(rows));
+    }
+
+    fn shell_single_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+
+    fn redis_cli_connect_command(
+        config: &DeployConfig,
+        cli_password: Option<&str>,
+    ) -> Option<String> {
+        let host_port = config.deployment.tx_service.tx_host_ports.first()?;
+        let parts: Vec<&str> = host_port.split(':').collect();
+        let port = parts.get(1)?.parse::<u16>().ok()?;
+        let (host, port) = config.service_endpoint(parts[0], port);
+
+        let mut command = format!("redis-cli -h {host} -p {port}");
+        if let Some(password) = config.redis_password(cli_password.map(ToOwned::to_owned)) {
+            command.push_str(" -a ");
+            command.push_str(&Self::shell_single_quote(&password));
+        }
+        Some(command)
+    }
+
+    fn print_status_connect_hint(config: &DeployConfig, cli_password: Option<&str>) {
+        if let Some(command) = Self::redis_cli_connect_command(config, cli_password) {
+            println!("Connect with redis-cli:\n\t{command}");
+        }
+    }
+
+    fn print_status_output(
+        cmd: &SubCommand,
+        deploy_config: &DeployConfig,
+        task_results: &[TaskResultPair],
+        verbose: bool,
+    ) {
+        if let SubCommand::Status {
+            detail, password, ..
+        } = cmd
+        {
+            if !detail {
+                Self::print_status_summary(task_results);
+                Self::print_status_connect_hint(deploy_config, password.as_deref());
+                if !verbose {
+                    println!("Tip: use `--verbose` to show per-task execution details.");
+                }
+            } else {
+                Self::print_status_connect_hint(deploy_config, password.as_deref());
+            }
+        }
     }
 
     async fn observe_cluster(
@@ -461,6 +488,488 @@ impl CmdExecutor {
 
     fn dir_download(&self) -> PathBuf {
         self.home.join("download")
+    }
+
+    fn update_monitor_component_name(component: &UpdateMonitorComponent) -> &'static str {
+        match component {
+            UpdateMonitorComponent::Grafana => "grafana",
+            UpdateMonitorComponent::Prometheus => "prometheus",
+            UpdateMonitorComponent::NodeExporter => "node_exporter",
+        }
+    }
+
+    fn configure_monitor_update(
+        config: &mut DeployConfig,
+        component: &UpdateMonitorComponent,
+        monitor_url: Option<String>,
+    ) -> Result<()> {
+        let monitor = config.deployment.monitor.as_mut().ok_or_else(|| {
+            anyhow!(
+                "cluster '{}' has no monitor configuration",
+                config.deployment.cluster_name
+            )
+        })?;
+
+        match component {
+            UpdateMonitorComponent::Grafana => {
+                let grafana = monitor.grafana.as_mut().ok_or_else(|| {
+                    anyhow!(
+                        "cluster '{}' has no grafana configuration",
+                        config.deployment.cluster_name
+                    )
+                })?;
+                if let Some(url) = monitor_url {
+                    grafana.download_url = url;
+                }
+            }
+            UpdateMonitorComponent::Prometheus => {
+                let prometheus = monitor.prometheus.as_mut().ok_or_else(|| {
+                    anyhow!(
+                        "cluster '{}' has no prometheus configuration",
+                        config.deployment.cluster_name
+                    )
+                })?;
+                if let Some(url) = monitor_url {
+                    prometheus.download_url = url;
+                }
+            }
+            UpdateMonitorComponent::NodeExporter => {
+                let exporter = monitor.node_exporter.as_mut().ok_or_else(|| {
+                    anyhow!(
+                        "cluster '{}' has no node_exporter configuration",
+                        config.deployment.cluster_name
+                    )
+                })?;
+                if let Some(url) = monitor_url {
+                    exporter.url = url;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn monitor_update_context(
+        &self,
+        cmd: &SubCommand,
+        config: &DeployConfig,
+        component: &UpdateMonitorComponent,
+    ) -> TaskExecutionContext {
+        let mut executable = indexmap::IndexMap::new();
+        let mut barrier = vec![];
+
+        let download = DownloadTask::from_config(config).unwrap_or_default();
+        if !download.is_empty() {
+            barrier.push(download.len());
+            executable.extend(download);
+        }
+
+        let monitor_conf_upload = upload_tasks(
+            UploadTaskBuilderType::MonitorConf,
+            &Config::Cluster(config.clone()),
+        );
+        if !monitor_conf_upload.is_empty() {
+            barrier.push(monitor_conf_upload.len());
+            executable.extend(monitor_conf_upload);
+        }
+
+        let monitor_hosts = config.get_host_as_map();
+        let unpack_tasks = match component {
+            UpdateMonitorComponent::Grafana => monitor_hosts
+                .get(&DeploymentPackage::Grafana)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|host| {
+                    UnpackFileTask::make_task_pair(
+                        config,
+                        &host,
+                        config
+                            .deployment
+                            .monitor
+                            .as_ref()
+                            .unwrap()
+                            .grafana
+                            .as_ref()
+                            .unwrap()
+                            .download_url
+                            .split('/')
+                            .next_back()
+                            .unwrap(),
+                        GRAFANA_FILE_KEY,
+                        vec![],
+                    )
+                })
+                .collect::<indexmap::IndexMap<_, _>>(),
+            UpdateMonitorComponent::Prometheus => monitor_hosts
+                .get(&DeploymentPackage::Prometheus)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|host| {
+                    UnpackFileTask::make_task_pair(
+                        config,
+                        &host,
+                        config
+                            .deployment
+                            .monitor
+                            .as_ref()
+                            .unwrap()
+                            .prometheus
+                            .as_ref()
+                            .unwrap()
+                            .download_url
+                            .split('/')
+                            .next_back()
+                            .unwrap(),
+                        PROMETHEUS_FILE_KEY,
+                        vec![],
+                    )
+                })
+                .collect::<indexmap::IndexMap<_, _>>(),
+            UpdateMonitorComponent::NodeExporter => config
+                .get_unique_host_list()
+                .into_iter()
+                .map(|host| {
+                    UnpackFileTask::make_task_pair(
+                        config,
+                        &host,
+                        config
+                            .deployment
+                            .monitor
+                            .as_ref()
+                            .unwrap()
+                            .node_exporter
+                            .as_ref()
+                            .unwrap()
+                            .url
+                            .split('/')
+                            .next_back()
+                            .unwrap(),
+                        NODE_EXPORTER_FILE_KEY,
+                        vec![],
+                    )
+                })
+                .collect::<indexmap::IndexMap<_, _>>(),
+        };
+        if !unpack_tasks.is_empty() {
+            barrier.push(unpack_tasks.len());
+            executable.extend(unpack_tasks);
+        }
+
+        let stop_cmd = SubCommand::Monitor {
+            cluster: match cmd {
+                SubCommand::Update {
+                    cluster: Some(cluster),
+                    ..
+                } => cluster.clone(),
+                _ => unreachable!(),
+            },
+            command: "stop".to_string(),
+        };
+        let start_cmd = SubCommand::Monitor {
+            cluster: match cmd {
+                SubCommand::Update {
+                    cluster: Some(cluster),
+                    ..
+                } => cluster.clone(),
+                _ => unreachable!(),
+            },
+            command: "start".to_string(),
+        };
+
+        let stop_tasks = match component {
+            UpdateMonitorComponent::Grafana => {
+                MonitorCtlTask::grafana_ctl_task(stop_cmd.clone(), config)
+            }
+            UpdateMonitorComponent::Prometheus => {
+                MonitorCtlTask::prometheus_ctl_task(stop_cmd.clone(), config)
+            }
+            UpdateMonitorComponent::NodeExporter => {
+                MonitorCtlTask::exporter_ctl_task(stop_cmd.clone(), config)
+            }
+        };
+        if !stop_tasks.is_empty() {
+            barrier.push(stop_tasks.len());
+            executable.extend(stop_tasks);
+        }
+
+        let start_tasks = match component {
+            UpdateMonitorComponent::Grafana => {
+                MonitorCtlTask::grafana_ctl_task(start_cmd.clone(), config)
+            }
+            UpdateMonitorComponent::Prometheus => {
+                MonitorCtlTask::prometheus_ctl_task(start_cmd.clone(), config)
+            }
+            UpdateMonitorComponent::NodeExporter => {
+                MonitorCtlTask::exporter_ctl_task(start_cmd.clone(), config)
+            }
+        };
+        if !start_tasks.is_empty() {
+            barrier.push(start_tasks.len());
+            executable.extend(start_tasks);
+        }
+
+        TaskExecutionContext {
+            task_group: format!(
+                "update-monitor-{}",
+                Self::update_monitor_component_name(component)
+            ),
+            barrier: Some(barrier),
+            executable,
+        }
+    }
+
+    async fn run_update_command(
+        &'static self,
+        cmd: SubCommand,
+        config: Config,
+        quiet: bool,
+        verbose: bool,
+    ) -> Result<()> {
+        let Config::Cluster(cfg) = config.clone() else {
+            unreachable!();
+        };
+
+        let (download_only, monitor_component) = match &cmd {
+            SubCommand::Update {
+                download_only,
+                monitor,
+                ..
+            } => (*download_only, monitor.clone()),
+            _ => unreachable!(),
+        };
+
+        if download_only {
+            let tasks = DownloadTask::from_config(&cfg)?;
+            let context = TaskExecutionContext {
+                task_group: "update-download".to_string(),
+                barrier: Some(vec![tasks.len()]),
+                executable: tasks,
+            };
+            let outfile = if quiet {
+                let f = fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(true)
+                    .open(self.home.join("task-result"))?;
+                Some(f)
+            } else {
+                None
+            };
+            let task_mgr = self.task_mgr.clone();
+            let recv_rs_and_print_join = tokio::task::spawn(async move {
+                task_mgr
+                    .write_task_result(outfile, verbose)
+                    .await
+                    .expect("write task result failed");
+            });
+            self.task_mgr.run_context(context, config, true).await?;
+            recv_rs_and_print_join.await?;
+            println!("required tarballs downloaded into cache");
+            return Ok(());
+        }
+
+        if let Some(component) = monitor_component {
+            let context = self.monitor_update_context(&cmd, &cfg, &component);
+            let outfile = if quiet {
+                let f = fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(true)
+                    .open(self.home.join("task-result"))?;
+                Some(f)
+            } else {
+                None
+            };
+            let task_mgr = self.task_mgr.clone();
+            let recv_rs_and_print_join = tokio::task::spawn(async move {
+                task_mgr
+                    .write_task_result(outfile, verbose)
+                    .await
+                    .expect("write task result failed");
+            });
+            self.task_mgr.run_context(context, config, true).await?;
+            recv_rs_and_print_join.await?;
+            self.save_deployment_config(&cfg, true).await?;
+            println!(
+                "cluster {} monitor component {} is updated!",
+                cfg.deployment.cluster_name,
+                Self::update_monitor_component_name(&component)
+            );
+            return Ok(());
+        }
+
+        self.run_impl_default(cmd, Some(config), quiet, verbose)
+            .await
+    }
+
+    async fn run_impl_default(
+        &'static self,
+        mut cmd: SubCommand,
+        option_config: Option<Config>,
+        quiet: bool,
+        verbose: bool,
+    ) -> Result<()> {
+        let config = match option_config {
+            Some(config) => config,
+            None => self.get_config(cmd.clone()).await?,
+        };
+
+        match config {
+            Config::Cluster(mut deploy_config) => {
+                let cmd_for_match = cmd.clone();
+                match cmd_for_match {
+                    SubCommand::Connect { .. } => {
+                        println!("{}", deploy_config.client_conn());
+                    }
+                    SubCommand::Export { cluster, output } => {
+                        let yaml_str = deploy_config.to_yaml()?;
+                        if let Some(path) = output {
+                            std::fs::write(path.clone(), &yaml_str)
+                                .map_err(|e| anyhow!("failed to write {}: {}", path, e))?;
+                            println!("Exported cluster '{}' topology to {}", cluster, path);
+                        } else {
+                            println!("{}", yaml_str);
+                        }
+                    }
+                    _ => {
+                        if let SubCommand::Scale {
+                            version: requested_version,
+                            add_nodes,
+                            remove_nodes,
+                            ..
+                        } = &mut cmd
+                        {
+                            if let Some(version_value) = requested_version.clone() {
+                                if add_nodes.is_empty() {
+                                    bail!("--version requires at least one entry in --add-nodes");
+                                }
+                                if !remove_nodes.is_empty() {
+                                    bail!("--version cannot be combined with --remove-nodes");
+                                }
+
+                                let mut version_config = deploy_config.clone();
+                                version_config.deployment.version = Some(version_value.clone());
+                                version_config.deployment.tx_service.image = None;
+                                if let Some(logsrv) = version_config.deployment.log_service.as_mut()
+                                {
+                                    logsrv.image = None;
+                                }
+
+                                self.resolve_version(&mut version_config.deployment).await?;
+                                let resolved_version =
+                                    version_config.deployment.version.clone().unwrap();
+                                let resolved_image =
+                                    version_config.deployment.tx_service.image.clone().unwrap();
+
+                                deploy_config.tx_version_override = Some(resolved_version.clone());
+                                deploy_config.tx_image_override = Some(resolved_image);
+
+                                *requested_version = Some(resolved_version);
+                            }
+                        }
+
+                        if let Some(noop_msg) = Self::idempotent_noop_message(&cmd, &deploy_config)
+                        {
+                            println!("{noop_msg}");
+                            return Ok(());
+                        }
+
+                        let task_mgr = self.task_mgr.clone();
+                        let outfile = if quiet {
+                            let f = fs::OpenOptions::new()
+                                .create(true)
+                                .truncate(true)
+                                .open(self.home.join("task-result"))?;
+                            Some(f)
+                        } else {
+                            None
+                        };
+
+                        let recv_rs_and_print_join = tokio::task::spawn(async move {
+                            task_mgr
+                                .write_task_result(outfile, verbose)
+                                .await
+                                .expect("write task result failed");
+                        });
+
+                        let rs = self
+                            .task_mgr
+                            .run_tasks(cmd.clone(), Config::Cluster(deploy_config.clone()))
+                            .await?;
+                        recv_rs_and_print_join.await?;
+                        info!(r#"all tasks complete. task_size={}"#, rs.len());
+                        Self::print_status_output(&cmd, &deploy_config, &rs, verbose);
+
+                        let should_verify_after_finish = matches!(
+                            &cmd,
+                            SubCommand::Update {
+                                cluster: Some(_),
+                                ..
+                            } | SubCommand::UpdateConf { .. }
+                                | SubCommand::Scale { .. }
+                                | SubCommand::ScaleLog { .. }
+                        );
+                        let final_config = deploy_config.clone();
+                        let verify_cluster = match &cmd {
+                            SubCommand::Scale { cluster, .. }
+                            | SubCommand::ScaleLog { cluster, .. } => Some(cluster.clone()),
+                            _ => None,
+                        };
+                        self.finishing(cmd, Config::Cluster(deploy_config)).await?;
+                        if should_verify_after_finish {
+                            let verify_config = if let Some(cluster) = verify_cluster {
+                                self.state_mgr
+                                    .load_deployment_from_state(&cluster)
+                                    .await?
+                                    .unwrap_or(final_config)
+                            } else {
+                                final_config
+                            };
+                            self.ensure_critical_services_healthy(
+                                &verify_config,
+                                "verify mutation",
+                            )
+                            .await?;
+                        }
+                    }
+                }
+            }
+            Config::Proxy(proxy_config) => {
+                proxy_config.connection.auth.check_keypair()?;
+                match cmd.clone() {
+                    SubCommand::Proxy { .. } => {
+                        let task_mgr = self.task_mgr.clone();
+                        let outfile = if quiet {
+                            let f = fs::OpenOptions::new()
+                                .create(true)
+                                .truncate(true)
+                                .open(self.home.join("task-result"))?;
+                            Some(f)
+                        } else {
+                            None
+                        };
+
+                        let recv_rs_and_print_join = tokio::task::spawn(async move {
+                            task_mgr
+                                .write_task_result(outfile, verbose)
+                                .await
+                                .expect("write task result failed");
+                        });
+
+                        let rs = self
+                            .task_mgr
+                            .run_tasks(cmd.clone(), Config::Proxy(proxy_config.clone()))
+                            .await?;
+                        recv_rs_and_print_join.await?;
+                        info!(r#"all tasks complete. task_size={}"#, rs.len());
+
+                        self.finishing(cmd, Config::Proxy(proxy_config)).await?;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+
+        Ok(())
     }
 
     async fn save_deployment_config(&self, config: &DeployConfig, upsert: bool) -> Result<()> {
@@ -1008,8 +1517,27 @@ impl CmdExecutor {
             SubCommand::Update {
                 cluster: Some(cluster),
                 version,
+                download_only,
+                monitor,
+                monitor_url,
                 ..
             } => {
+                if download_only && monitor.is_some() {
+                    bail!("--download-only cannot be combined with --monitor");
+                }
+                if download_only && version.is_none() {
+                    bail!(
+                        "`update --download-only` requires a target version. Use `eloqctl update {cluster} <version> --download-only`"
+                    );
+                }
+                if version
+                    .as_deref()
+                    .is_some_and(|v| v.eq_ignore_ascii_case("download-only"))
+                {
+                    bail!(
+                        "`download-only` is a flag, not a version. Use `eloqctl update {cluster} <version> --download-only`"
+                    );
+                }
                 let mut config = self
                     .state_mgr
                     .load_deployment_from_state(&cluster)
@@ -1025,6 +1553,9 @@ impl CmdExecutor {
                         logsrv.image = None;
                     }
                     self.resolve_version(&mut config.deployment).await?;
+                }
+                if let Some(component) = monitor.as_ref() {
+                    Self::configure_monitor_update(&mut config, component, monitor_url.clone())?;
                 }
                 Self::validate_metrics_config(&config)?;
 
@@ -1156,6 +1687,20 @@ impl CmdExecutor {
             _ => {}
         }
 
+        if matches!(
+            &cmd,
+            SubCommand::Update {
+                cluster: Some(_),
+                ..
+            }
+        ) {
+            let config = match option_config {
+                Some(config) => config,
+                None => self.get_config(cmd.clone()).await?,
+            };
+            return self.run_update_command(cmd, config, quiet, verbose).await;
+        }
+
         // Extract cluster_config from option_config or load it
         let config = match option_config {
             Some(config) => match config {
@@ -1255,16 +1800,7 @@ impl CmdExecutor {
                             .await?;
                         recv_rs_and_print_join.await?;
                         info!(r#"all tasks complete. task_size={}"#, rs.len());
-                        if let SubCommand::Status { detail, .. } = &cmd {
-                            if !detail {
-                                Self::print_status_summary(&rs);
-                                if !verbose {
-                                    println!(
-                                        "Tip: use `--verbose` to show per-task execution details."
-                                    );
-                                }
-                            }
-                        }
+                        Self::print_status_output(&cmd, &deploy_config, &rs, verbose);
 
                         // Using cluster_config again without moving it
                         let should_verify_after_finish = matches!(
@@ -1590,95 +2126,41 @@ impl CmdExecutor {
         product: Option<Product>,
         store: Option<StorageProvider>,
     ) -> Result<()> {
-        let client = self.pg_client().await?;
-        let arch = cpu_arch();
-        let os = self.os_vers();
-        let product_name = product.as_ref().map(|p| p.name().to_string());
         let store_name = store.as_ref().map(|s| s.to_string());
-
-        let mut sql = "SELECT * FROM tx_release WHERE arch=$1 AND os=$2".to_owned();
-        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&arch, &os];
-        if let Some(ref p) = product_name {
-            sql.push_str(&format!(" AND product=${}", params.len() + 1));
-            params.push(p);
-        }
-        if let Some(ref s) = store_name {
-            sql.push_str(&format!(" AND store=${}", params.len() + 1));
-            params.push(s);
-        }
-
-        let list = client
-            .query(&sql, &params)
-            .await?
-            .into_iter()
-            .map(|row| {
-                let product: String = row.get("product");
-                let store: String = row.get("store");
-                let major: i32 = row.get("version_major");
-                let minor: i32 = row.get("version_minor");
-                let build: i32 = row.get("version_build");
-                let version: String = format!("{major}.{minor}.{build}");
-                VersionRow {
-                    product,
-                    store,
-                    version,
-                }
-            })
-            .collect_vec();
+        let releases = fetch_eloqkv_releases(&HTTP_CLIENT).await?;
+        let list = list_versions_from_releases(&releases, product, store_name.as_deref());
         let table = tabled::Table::new(list);
         println!("{table}\n");
         Ok(())
     }
 
     pub async fn resolve_version(&self, cnf: &mut Deployment) -> Result<()> {
-        let product = cnf.product().name().to_owned();
-        let arch = cpu_arch();
         let os = self.os_vers();
+        let arch = cpu_arch();
 
         // Get store name once and reuse it, if not set, use rocksdb as default
         let store = cnf
             .storage_service
             .as_ref()
             .map_or("rocksdb".to_string(), |s| s.pretty_name());
+        let releases = fetch_eloqkv_releases(&HTTP_CLIENT).await?;
 
         if cnf.version.is_some() && cnf.version_str().eq_ignore_ascii_case("latest") {
-            let client = self.pg_client().await?;
-
-            // Use the correct query based on storage_service existence
-            let row = if cnf.storage_service.is_some() {
-                client.query_one(
-                    "SELECT * FROM tx_release WHERE product=$1 AND arch=$2 AND os=$3 AND store=$4
-                     ORDER BY version_major DESC,version_minor DESC,version_build DESC LIMIT 1",
-                    &[&product, &arch, &os, &store]
-                ).await
-            } else {
-                client
-                    .query_one(
-                        "SELECT * FROM tx_release WHERE product=$1 AND arch=$2 AND os=$3
-                     ORDER BY version_major DESC,version_minor DESC,version_build DESC LIMIT 1",
-                        &[&product, &arch, &os],
-                    )
-                    .await
-            }
-            .map_err(|e| anyhow!("fetch latest version failed: {e}"))?;
-
-            if row.is_empty() {
-                bail!("no available release found")
-            }
-            let major: i32 = row.get("version_major");
-            let minor: i32 = row.get("version_minor");
-            let build: i32 = row.get("version_build");
-            let latest: String = format!("{major}.{minor}.{build}");
+            let latest =
+                list_versions_from_releases(&releases, Some(cnf.product()), Some(store.as_str()))
+                    .into_iter()
+                    .map(|row: VersionRow| row.version)
+                    .max_by(|a, b| version_digits(a).ok().cmp(&version_digits(b).ok()))
+                    .ok_or_else(|| {
+                        anyhow!("no available GitHub release found for store={store}")
+                    })?;
             info!("latest release version = {latest}");
             cnf.version = Some(latest);
         }
 
-        let mut prefix = PathBuf::from(CDN);
-        prefix.push(&product);
-        let prefix = prefix.as_path().to_str().unwrap();
         if cnf.tx_service.image.is_none() {
             let vers = cnf.version.as_deref().expect("version is missing");
-            let img = format!("{prefix}/{store}/{product}-{vers}-{os}-{arch}.tar.gz");
+            let img = find_eloqkv_asset(&releases, cnf.product(), vers, &store, &os, &arch)?.url;
             info!("tx service image is set: {img}");
             cnf.tx_service.image = Some(img);
         }
@@ -1686,7 +2168,7 @@ impl CmdExecutor {
             if logsrv.image.is_none() {
                 let vers = cnf.version.as_deref().expect("version is missing");
                 let img =
-                    format!("{prefix}/logservice/{store}/log-service-{vers}-{os}-{arch}.tar.gz");
+                    find_product_asset(&releases, "log-service", vers, &store, &os, &arch)?.url;
                 info!("log service image is set: {img}");
                 logsrv.image = Some(img);
             }

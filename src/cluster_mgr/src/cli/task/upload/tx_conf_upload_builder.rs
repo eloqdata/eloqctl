@@ -116,6 +116,7 @@ impl UploadTaskBuilder for TxConfUpload {
                             extension: "ini".to_string(),
                             host: host.to_string(),
                             copy_dir: false,
+                            delete_remote: false,
                         });
                     }
 
@@ -150,6 +151,7 @@ impl UploadTaskBuilder for TxConfUpload {
                             extension: "ini".to_string(),
                             host: host.to_string(),
                             copy_dir: false,
+                            delete_remote: false,
                         });
                     }
                     continue;
@@ -204,6 +206,7 @@ impl UploadTaskBuilder for TxConfUpload {
                         extension: "ini".to_string(),
                         host: host.to_string(),
                         copy_dir: false,
+                        delete_remote: false,
                     });
                 }
             }
@@ -231,6 +234,7 @@ impl UploadTaskBuilder for TxConfUpload {
                             extension: "ini".to_string(),
                             host: host.to_string(),
                             copy_dir: false,
+                            delete_remote: false,
                         })
                 })
                 .collect_vec();
@@ -302,6 +306,7 @@ impl TxConfUpload {
                                     extension: "tls".to_string(),
                                     host: host.to_string(),
                                     copy_dir: false,
+                                    delete_remote: false,
                                 })
                             })
                             .collect::<Vec<UploadFile>>()
@@ -416,6 +421,7 @@ impl TxConfUpload {
                             extension: "ini".to_string(),
                             host: host.to_string(),
                             copy_dir: false,
+                            delete_remote: false,
                         });
                     }
                     continue;
@@ -476,6 +482,7 @@ impl TxConfUpload {
                             extension: "ini".to_string(),
                             host: host.clone(),
                             copy_dir: false,
+                            delete_remote: false,
                         });
                     }
                 }
@@ -568,6 +575,7 @@ impl TxConfUpload {
                     extension: "ini".to_string(),
                     host: host.clone(),
                     copy_dir: false,
+                    delete_remote: false,
                 };
 
                 let (id, instance) = build_task_instance(
@@ -644,6 +652,7 @@ impl TxConfUpload {
                     extension: "".to_string(), // No extension for this file
                     host: host.clone(),
                     copy_dir: false,
+                    delete_remote: false,
                 };
 
                 let (task_id, task_instance) = build_task_instance(

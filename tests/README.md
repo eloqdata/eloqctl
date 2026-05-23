@@ -16,6 +16,9 @@ scripts/install-dev.sh
 bash tests/e2e/cmd_stress_test.sh
 ```
 
+The default stress duration is now `300` seconds per SDK step. The appended
+high-concurrency `INFO` burst in each SDK step also defaults to `300` seconds.
+
 ## Run specific steps
 
 ```sh
@@ -24,6 +27,57 @@ STEPS=launch bash tests/e2e/cmd_stress_test.sh
 
 # Stress only (against already-running cluster)
 STEPS=py-stress,go-stress,ts-stress bash tests/e2e/cmd_stress_test.sh
+
+# Override the default 300-second stress duration
+DURATION_SECONDS=120 INFO_ONLY_DURATION_SECONDS=120 \
+  STEPS=py-stress,go-stress,ts-stress bash tests/e2e/cmd_stress_test.sh
+```
+
+## Control Node Usage
+
+The Docker E2E environment uses `eloq-node-4` as the control node. Install the
+current host-built `eloqctl` into that container with:
+
+```sh
+tests/install_control_eloqctl.sh
+```
+
+Then log in directly:
+
+```sh
+ssh -i "tests/docker_ha/id_ed25519" -p 2224 eloq@127.0.0.1
+```
+
+Inside `node4`, `eloqctl` is installed at `/usr/local/bin/eloqctl` and uses
+`/home/eloq/.eloqctl` as `ELOQCTL_HOME`.
+
+### Generate launch topology inside `node4`
+
+The template topology lives at `tests/e2e/topology.yaml`. From a shell inside
+`node4`, generate the control-node-ready topology and launch from it:
+
+```sh
+cd /workspace/eloq_waiter
+export DOCKER_E2E_DIR=/workspace/eloq_waiter/tests/docker_ha
+export REPO_ROOT=/workspace/eloq_waiter
+source tests/docker_env.sh
+render_topology_for_control tests/e2e/topology.yaml tests/e2e/topology.generated.yaml
+eloqctl launch --skip-deps tests/e2e/topology.generated.yaml
+```
+
+To use a different EloqKV version, set `ELOQKV_VERSION` before sourcing:
+
+```sh
+export ELOQKV_VERSION=1.3.0
+```
+
+### Check status and connect
+
+After launch, `eloqctl status <cluster>` prints both the status table and a
+ready-to-copy `redis-cli` command:
+
+```sh
+eloqctl status test-e2e
 ```
 
 ## Configuration
@@ -32,7 +86,11 @@ STEPS=py-stress,go-stress,ts-stress bash tests/e2e/cmd_stress_test.sh
 |----------|---------|-------------|
 | `STEPS` | `launch,py-stress,go-stress,ts-stress,remove` | Comma-separated steps |
 | `WORKERS` | `16` | Total workers (split evenly: standalone / cluster client) |
-| `DURATION_SECONDS` | `60` | Stress duration |
+| `DURATION_SECONDS` | `300` | Main stress duration per SDK step |
+| `INFO_ONLY_DURATION_SECONDS` | `300` | Duration of the appended high-concurrency `INFO` burst |
+| `INFO_ONLY_WORKERS` | `64` | Worker count for the appended `INFO` burst |
+| `INFO_ONLY_INFLIGHT` | `16` | Inflight slots per worker for the appended `INFO` burst |
+| `INFO_ONLY_REPEAT` | `50` | Repeat count per round for the appended `INFO` burst |
 | `KEY_COUNT` | `256` | Preloaded key count |
 | `CMD_TIMEOUT` | `5` | Per-command timeout (seconds) |
 | `PROGRESS_INTERVAL` | `5` | Progress report interval (seconds) |
@@ -56,7 +114,8 @@ tests/
 └── e2e/
     ├── cmd_stress_test.sh          # main entry point ★
     ├── cmd_stress_py/
-    │   └── main.py                 # Python full-command stress client
+    │   ├── main.py                 # Python full-command stress client
+    │   └── requirements.txt        # pinned redis-py dependency (5.0.1)
     ├── cmd_stress_go/
     │   ├── main.go                 # Go full-command stress client
     │   ├── go.mod / go.sum
@@ -73,7 +132,11 @@ Each SDK stress test covers **104 Redis commands** across all families
 
 Every test runs **half the workers with a standalone client** (direct to master)
 and **half with a cluster-aware client** (auto slot routing). Results for both
-modes are reported separately.
+modes are reported separately. The standalone client always targets the master.
+Only the cluster-aware client is configured to read from replicas.
+
+After the normal mixed-command phase, each SDK appends a dedicated,
+high-concurrency `INFO` burst.
 
 TLS is enabled by default with self-signed certs (`rejectUnauthorized: false` /
 `ssl_cert_reqs=CERT_NONE` / `InsecureSkipVerify`).
@@ -89,7 +152,7 @@ cd tests/docker_ha && docker compose build --no-cache
 Check cluster health:
 
 ```sh
-~/.eloqctl/bin/eloqctl status test-e2e --wait 30
+eloqctl status test-e2e --wait 30
 ```
 
 Logs auto-clean unless `KEEP_LOGS=1` is set.

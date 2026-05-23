@@ -5,6 +5,7 @@ use crate::cli::task::eloq_tx_ctl_task::{EloqTxCtlTask, ServerType};
 use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::{Config, ScaleTaskGroup};
 use crate::cli::task::install_dep_pkg::DepPkgTask;
+use crate::cli::task::local_extract_task::LocalExtractTask;
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::scale_op_task::{ScaleOpConfig, ScaleOpTask};
 use crate::cli::task::ssh_check_task::SshCheckTask;
@@ -13,14 +14,13 @@ use crate::cli::task::task_utils::{ClusterNodesWithConfig, ScaleOperationType};
 use crate::cli::task::topology_display_task::TopologyDisplayTask;
 use crate::cli::task::topology_update_task::TopologyUpdateTask;
 use crate::cli::task::tx_conf_update_task::TxConfUpdateTask;
-use crate::cli::task::unpack_file_task::UnpackFileTask;
 use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, upload_tasks, upload_tasks_with_nodes,
     UploadTaskBuilderType,
 };
-use crate::cli::{download_dir, SubCommand};
-use crate::config::config_base::UploadFile;
-use crate::config::DeploymentPackage;
+use crate::cli::SubCommand;
+use crate::config::config_base::{UploadFile, ELOQ_FILE_KEY};
+use crate::config::{DeploymentPackage, DownloadUrl};
 use anyhow::{anyhow, bail};
 use async_trait::async_trait;
 use indexmap::IndexMap;
@@ -177,11 +177,6 @@ impl super::TaskGroup for ScaleTaskGroup {
             .as_ref()
             .cloned()
             .unwrap_or_else(|| deploy_config.deployment.tx_image().to_string());
-        let tx_image_filename = effective_tx_image_url
-            .split('/')
-            .next_back()
-            .unwrap_or("")
-            .to_string();
         let effective_version = deploy_config
             .tx_version_override
             .as_ref()
@@ -244,16 +239,6 @@ impl super::TaskGroup for ScaleTaskGroup {
         } else {
             (ScaleOperationType::RemoveNodes, remove_nodes, None)
         };
-
-        if version.is_some() {
-            let download_tasks = DownloadTask::instances(DownloadTask::from_urls(vec![
-                effective_tx_image_url.clone(),
-            ]));
-            if !download_tasks.is_empty() {
-                barrier.push(download_tasks.len());
-                executable.extend(download_tasks);
-            }
-        }
 
         let candidate_nodes_after_scale = match operation_type {
             ScaleOperationType::AddNodes => {
@@ -398,74 +383,62 @@ impl super::TaskGroup for ScaleTaskGroup {
             }
 
             if !new_nodes_to_upload_tarball.is_empty() {
-                if tx_image_filename.is_empty() {
+                let tx_download_url = DownloadUrl::from_url_str(&effective_tx_image_url)?;
+                let tx_home = deploy_config.deployment.product().home().to_string();
+
+                let download_tasks = DownloadTask::instances(DownloadTask::from_urls(vec![
+                    effective_tx_image_url.clone(),
+                ]));
+                if !download_tasks.is_empty() {
+                    barrier.push(download_tasks.len());
+                    executable.extend(download_tasks);
+                }
+
+                let extract_tasks = LocalExtractTask::from_urls(vec![(
+                    ELOQ_FILE_KEY.to_string(),
+                    tx_download_url.clone(),
+                    tx_home.clone(),
+                )]);
+                if !extract_tasks.is_empty() {
+                    barrier.push(extract_tasks.len());
+                    executable.extend(extract_tasks);
+                }
+
+                let staged_dir = LocalExtractTask::staged_dir_for(&tx_download_url, &tx_home);
+                if !staged_dir.exists() {
                     bail!(
-                        "Unable to determine TX service image filename from {}",
-                        effective_tx_image_url
+                        "TX service staged directory not found: {}",
+                        staged_dir.display()
                     );
                 }
 
                 info!(
-                    "Preparing to upload TX service tarball '{}' to {} new hosts",
-                    tx_image_filename,
+                    "Preparing to sync TX service directory '{}' to {} new hosts",
+                    staged_dir.display(),
                     new_nodes_to_upload_tarball.len()
                 );
 
-                let download_dir = download_dir();
-                let product_dir = "eloqkv";
-                let store = deploy_config
-                    .deployment
-                    .storage_service
-                    .as_ref()
-                    .map_or("rocksdb".to_string(), |s| s.pretty_name());
-                let tarball_path = download_dir
-                    .join(product_dir)
-                    .join(&store)
-                    .join(&tx_image_filename);
+                for host in &new_hosts_to_upload_tarball {
+                    let source_host = get_source_host(None);
+                    let upload_file = UploadFile {
+                        source: staged_dir.to_string_lossy().to_string(),
+                        dest: format!("{}/{}", deploy_config.install_dir(), tx_home),
+                        extension: "dir".to_string(),
+                        host: host.clone(),
+                        copy_dir: true,
+                        delete_remote: true,
+                    };
 
-                if tarball_path.exists() {
-                    for host in &new_hosts_to_upload_tarball {
-                        let source_host = get_source_host(None);
-                        let upload_file = UploadFile {
-                            source: tarball_path.to_string_lossy().to_string(),
-                            dest: deploy_config.install_dir(),
-                            extension: "gz".to_string(),
-                            host: host.clone(),
-                            copy_dir: false,
-                        };
-
-                        let (id, instance) = build_task_instance(
-                            source_host,
-                            upload_file,
-                            config,
-                            "deploy",
-                            "tx_service_upload",
-                        );
-                        barrier.push(1);
-                        executable.insert(id, instance);
-                        info!("Added upload task for TX service tarball to host {}", host);
-                    }
-
-                    let mut temp_config = deploy_config.clone();
-                    temp_config.deployment.tx_service.tx_host_ports =
-                        new_nodes_to_upload_tarball.clone();
-                    temp_config.deployment.tx_service.standby_host_ports = None;
-                    temp_config.deployment.tx_service.voter_host_ports = None;
-                    temp_config.deployment.log_service = None;
-                    temp_config.deployment.tx_service.image = Some(effective_tx_image_url.clone());
-                    temp_config.tx_image_override = Some(effective_tx_image_url.clone());
-
-                    let tx_unpack_tasks = UnpackFileTask::unpack_eloqservers(&temp_config);
-                    for (task_id, instance) in tx_unpack_tasks {
-                        info!("Added unpack task for TX service on host {}", task_id.host);
-                        barrier.push(1);
-                        executable.insert(task_id, instance);
-                    }
-                } else {
-                    bail!(
-                        "TX service tarball not found at expected path: {}",
-                        tarball_path.display()
+                    let (id, instance) = build_task_instance(
+                        source_host,
+                        upload_file,
+                        config,
+                        "deploy",
+                        "tx_service_upload",
                     );
+                    barrier.push(1);
+                    executable.insert(id, instance);
+                    info!("Added TX service sync task for host {}", host);
                 }
             }
         }

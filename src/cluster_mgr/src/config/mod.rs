@@ -40,7 +40,6 @@ pub const GRAFANA_PROMETHEUS_DS_FILE: &str = "prometheus-datasource.yml";
 pub const GRAFANA_CONFIG_TEMPLATE: &str = "grafana_config.ini";
 pub const GRAFANA_CONFIG_FILE: &str = "defaults.ini";
 
-pub const CLOUDFRONT: &str = "download.eloqdata.com";
 pub const CDN: &str = "https://download.eloqdata.com";
 
 #[macro_export]
@@ -116,11 +115,21 @@ impl DownloadUrl {
         match self {
             DownloadUrl::Local(_) => {}
             DownloadUrl::Remote(url) => {
-                if url.domain() == Some(CLOUDFRONT) {
+                if url.domain() == Some("download.eloqdata.com") {
                     let mut seg = url.path_segments().unwrap();
                     let _filename = seg.next_back();
                     for d in seg {
                         dir.push(d);
+                    }
+                } else if url.domain() == Some("github.com") {
+                    let file_name = self.file_name();
+                    if let Some(parsed) = crate::github_release::parse_asset_name(&file_name) {
+                        let product_dir = match parsed.product.as_str() {
+                            "log-service" => "logservice",
+                            other => other,
+                        };
+                        dir.push(product_dir);
+                        dir.push(parsed.store);
                     }
                 }
             }

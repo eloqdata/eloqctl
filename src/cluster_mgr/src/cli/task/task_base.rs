@@ -491,4 +491,15 @@ impl TaskMgr {
             .run_all_tasks(tasks_execution, config, err_brk)
             .await
     }
+
+    pub async fn run_context(
+        &'static self,
+        tasks_execution: TaskExecutionContext,
+        config: Config,
+        err_brk: bool,
+    ) -> anyhow::Result<Vec<TaskResultPair>> {
+        self.task_controller
+            .run_all_tasks(tasks_execution, config, err_brk)
+            .await
+    }
 }
