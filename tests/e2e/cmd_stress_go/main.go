@@ -485,7 +485,7 @@ func (s *cmdStats) snapshot() map[string]struct{ ok, fail int64 } {
 // Worker
 // ---------------------------------------------------------------------------
 func stressWorker(ctx context.Context, client redis.UniversalClient, tests []cmdTestCase,
-	stats *cmdStats, wg *sync.WaitGroup, startKeyIdx, keyMod int) {
+	stats *cmdStats, wg *sync.WaitGroup, startKeyIdx, keyMod, repeat int) {
 	defer wg.Done()
 	cmdIdx := 0
 	keyIdx := startKeyIdx
@@ -497,11 +497,18 @@ func stressWorker(ctx context.Context, client redis.UniversalClient, tests []cmd
 		}
 		tc := tests[cmdIdx%len(tests)]
 		ki := keyIdx % keyMod
-		err := tc.Fn(ctx, client, ki)
-		if err != nil {
-			stats.addFail(tc.Name)
-		} else {
-			stats.addOK(tc.Name)
+		for r := 0; r < repeat; r++ {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			err := tc.Fn(ctx, client, ki)
+			if err != nil {
+				stats.addFail(tc.Name)
+			} else {
+				stats.addOK(tc.Name)
+			}
 		}
 		cmdIdx++
 		if cmdIdx%len(tests) == 0 {
@@ -522,6 +529,7 @@ func main() {
 	var keyCount int
 	var insecureTLS bool
 	var cmdTimeout time.Duration
+	var repeat int
 	var logPrefix string
 
 	flag.StringVar(&startupNodes, "startup-nodes", "127.0.0.1:6379,127.0.0.1:6380",
@@ -533,6 +541,7 @@ func main() {
 	flag.IntVar(&keyCount, "key-count", 256, "key space size")
 	flag.BoolVar(&insecureTLS, "tls-insecure", true, "skip TLS verification")
 	flag.DurationVar(&cmdTimeout, "cmd-timeout", 5*time.Second, "per-command timeout")
+	flag.IntVar(&repeat, "repeat", 10, "times to repeat each command per round")
 	flag.StringVar(&logPrefix, "log-prefix", "", "optional prefix in log lines")
 	flag.Parse()
 
@@ -701,11 +710,11 @@ func main() {
 	var wg sync.WaitGroup
 	for w := 0; w < nStandalone; w++ {
 		wg.Add(1)
-		go stressWorker(testCtx, masterClient, tests, standaloneStats, &wg, w, keyCount)
+		go stressWorker(testCtx, masterClient, tests, standaloneStats, &wg, w, keyCount, repeat)
 	}
 	for w := 0; w < nCluster; w++ {
 		wg.Add(1)
-		go stressWorker(testCtx, clusterClient, tests, clusterStats, &wg, w+nStandalone, keyCount)
+		go stressWorker(testCtx, clusterClient, tests, clusterStats, &wg, w+nStandalone, keyCount, repeat)
 	}
 
 	// Progress reporter

@@ -42,6 +42,8 @@ parser.add_argument("--duration", type=int, default=0,
                     help="Phase-2 seconds; <=0 means run until interrupted")
 parser.add_argument("--workers", type=int, default=16,
                     help="Worker threads for command execution")
+parser.add_argument("--repeat", type=int, default=10,
+                    help="Times to repeat each command per round (higher = more concurrency per command)")
 parser.add_argument("--skip-cmd-coverage", action="store_true",
                     help="Skip full command coverage (only SET/GET)")
 parser.add_argument("--results-file", default="",
@@ -261,22 +263,25 @@ def stress_worker(client: Redis, stop_event: threading.Event, phase_event: threa
     phase_event.wait()
     idx = worker_id
     key_mod = args.key_count
+    repeat = args.repeat
     while not stop_event.is_set():
         for cmd_name in _CMD_ORDER:
             if stop_event.is_set():
                 break
             fn = _CMD_FNS[cmd_name]
             ki = idx % key_mod
-            try:
-                fn(client, ki)
-                with stats_lock:
-                    cmd_stats[cmd_name]["ok"] += 1
-            except Exception as e:
-                # ECHO can't be routed by cluster client (no key) — skip, not fail
-                if cmd_name == "ECHO" and "Missing key" in str(e):
-                    continue
-                with stats_lock:
-                    cmd_stats[cmd_name]["fail"] += 1
+            for _ in range(repeat):
+                if stop_event.is_set():
+                    break
+                try:
+                    fn(client, ki)
+                    with stats_lock:
+                        cmd_stats[cmd_name]["ok"] += 1
+                except Exception as e:
+                    if cmd_name == "ECHO" and "Missing key" in str(e):
+                        continue
+                    with stats_lock:
+                        cmd_stats[cmd_name]["fail"] += 1
             idx += 1
 
 

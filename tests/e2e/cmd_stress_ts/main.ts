@@ -20,6 +20,7 @@ const { values: args } = parseArgs({
     "progress-interval": { type: "string", default: "5000" },
     "key-count": { type: "string", default: "256" },
     workers: { type: "string", default: "16" },
+    repeat: { type: "string", default: "10" },
     duration: { type: "string", default: "0" },
     "tls-insecure": { type: "string", default: "true" },
     "log-prefix": { type: "string", default: "" },
@@ -32,6 +33,7 @@ const CMD_TIMEOUT = parseInt(args["cmd-timeout"]!) * 1000;
 const PROGRESS_INTERVAL = parseInt(args["progress-interval"]!) * 1000;
 const KEY_COUNT = parseInt(args["key-count"]!);
 const WORKERS = parseInt(args.workers!);
+const REPEAT = parseInt(args.repeat!);
 const DURATION = parseInt(args.duration!);
 const TLS_INSECURE = args["tls-insecure"] !== "false";
 const LOG_PREFIX = args["log-prefix"] || "";
@@ -216,18 +218,20 @@ class CmdStats {
 // ---------------------------------------------------------------------------
 async function stressWorker(
   client: any, tests: [string, CmdFn][], stats: CmdStats, stop: AbortSignal,
-  startKeyIdx: number, keyMod: number,
+  startKeyIdx: number, keyMod: number, repeat: number,
 ): Promise<void> {
   let cmdIdx = 0;
   let keyIdx = startKeyIdx;
   while (!stop.aborted) {
     const [name, fn] = tests[cmdIdx % tests.length];
     const ki = keyIdx % keyMod;
-    try {
-      await fn(client, ki);
-      stats.addOK(name);
-    } catch {
-      stats.addFail(name);
+    for (let r = 0; r < repeat && !stop.aborted; r++) {
+      try {
+        await fn(client, ki);
+        stats.addOK(name);
+      } catch {
+        stats.addFail(name);
+      }
     }
     cmdIdx++;
     if (cmdIdx % tests.length === 0) keyIdx++;
@@ -334,10 +338,10 @@ async function main() {
 
   const workers: Promise<void>[] = [];
   for (let w = 0; w < nStandalone; w++) {
-    workers.push(stressWorker(master, CMD_TESTS, standaloneStats, controller.signal, w, KEY_COUNT));
+    workers.push(stressWorker(master, CMD_TESTS, standaloneStats, controller.signal, w, KEY_COUNT, REPEAT));
   }
   for (let w = 0; w < nCluster; w++) {
-    workers.push(stressWorker(cluster, CMD_TESTS, clusterStats, controller.signal, w + nStandalone, KEY_COUNT));
+    workers.push(stressWorker(cluster, CMD_TESTS, clusterStats, controller.signal, w + nStandalone, KEY_COUNT, REPEAT));
   }
 
   const start = Date.now();

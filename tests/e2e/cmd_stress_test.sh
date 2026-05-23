@@ -24,6 +24,7 @@ STEPS="${STEPS:-launch,py-stress,go-stress,ts-stress,remove}"
 
 DURATION="${DURATION_SECONDS:-60}"
 WORKERS="${WORKERS:-16}"
+REPEAT="${REPEAT:-10}"
 KEY_COUNT="${KEY_COUNT:-256}"
 CMD_TIMEOUT="${CMD_TIMEOUT:-5}"
 PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-5}"
@@ -120,6 +121,7 @@ do_py_stress() {
         --password "${PASSWD}" --cmd-timeout "${CMD_TIMEOUT}" \
         --progress-interval "${PROGRESS_INTERVAL}" --key-count "${KEY_COUNT}" \
         --workers "${WORKERS}" --duration "${DURATION}" --read-from-replicas \
+        --repeat "${REPEAT}" \
         ${TLS_FLAG} 2>&1 | tee "${SCRIPT_DIR}/cmd-stress-py.log"
     local rc=${PIPESTATUS[0]}
     [ "${rc}" -eq 0 ] || { echo "FAIL: Python stress failed (rc=${rc})"; exit 1; }
@@ -142,6 +144,7 @@ do_go_stress() {
             --duration ${DURATION}s \
             --progress-interval ${PROGRESS_INTERVAL}s \
             --key-count ${KEY_COUNT} \
+            --repeat ${REPEAT} \
             --cmd-timeout ${CMD_TIMEOUT}s \
             $([ "${TLS_ENABLED}" = "1" ] && echo '--tls-insecure')" \
         2>&1 | tee "${SCRIPT_DIR}/cmd-stress-go.log"
@@ -166,6 +169,7 @@ do_ts_stress() {
             --duration ${DURATION} \
             --progress-interval ${PROGRESS_INTERVAL} \
             --key-count ${KEY_COUNT} \
+            --repeat ${REPEAT} \
             --cmd-timeout ${CMD_TIMEOUT} \
             --tls-insecure '${TLS_ENABLED}'" \
         2>&1 | tee "${SCRIPT_DIR}/cmd-stress-ts.log"
