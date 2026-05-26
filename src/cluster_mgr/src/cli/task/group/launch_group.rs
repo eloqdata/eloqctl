@@ -13,7 +13,7 @@ use crate::cli::task::task_base::{
 };
 use crate::cli::task::topology_display_task::TopologyDisplayTask;
 use crate::cli::task::topology_update_task::TopologyUpdateTask;
-use crate::cli::SubCommand;
+use crate::cli::{MonitorCommand, SubCommand};
 use crate::config::CONFIG_PATH_DIR;
 use std::collections::HashMap;
 use std::env;
@@ -189,8 +189,11 @@ impl TaskGroup for LaunchTaskGroup {
             MonitorCtlTaskGroup
                 .tasks(
                     SubCommand::Monitor {
-                        cluster: cluster_config.deployment.cluster_name.clone(),
-                        command: "start".to_string(),
+                        cluster: Some(cluster_config.deployment.cluster_name.clone()),
+                        command: MonitorCommand::Start {
+                            cluster: None,
+                            components: vec![],
+                        },
                     },
                     config,
                 )

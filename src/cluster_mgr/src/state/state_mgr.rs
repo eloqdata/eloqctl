@@ -586,22 +586,66 @@ impl StateMgr {
 
 #[cfg(test)]
 mod tests {
+    use crate::cli::HOME_DIR;
     use crate::state::cluster_index_operation::ClusterIndexOperation;
     use crate::state::state_base::{QueryCondition, StateOperation};
     use crate::state::state_mgr::{StateMgr, CLUSTER_INDEX_STATE, ELOQ_CLUSTER_MGR_SCHEMA_PATH};
     use sqlx::testing::TestTermination;
+    use std::fs;
     use std::path::PathBuf;
-    use std::sync::LazyLock;
+    use std::sync::{LazyLock, Mutex, MutexGuard};
     use tracing::Level;
+    use uuid::Uuid;
 
     static SETUP: LazyLock<()> = LazyLock::new(|| {
         tracing_subscriber::fmt()
             .with_max_level(Level::DEBUG)
             .init();
     });
+    static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn setup() {
         assert!(SETUP.is_success());
+    }
+
+    fn test_guard() -> MutexGuard<'static, ()> {
+        TEST_MUTEX.lock().expect("test mutex poisoned")
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set_path(key: &'static str, value: &std::path::Path) -> Self {
+            let previous = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+
+        fn set_string(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(prev) = &self.previous {
+                std::env::set_var(self.key, prev);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    fn setup_test_home() -> (PathBuf, EnvVarGuard) {
+        let home = std::env::temp_dir().join(format!("eloqctl-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&home).expect("create test home");
+        let guard = EnvVarGuard::set_path(HOME_DIR, &home);
+        (home, guard)
     }
 
     pub fn schema_path() -> String {
@@ -613,10 +657,12 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     pub async fn test_db_init() {
+        let _guard = test_guard();
         setup();
+        let (home, _home_guard) = setup_test_home();
         let schema_path = schema_path();
         println!("schema_path {schema_path:?}");
-        std::env::set_var(ELOQ_CLUSTER_MGR_SCHEMA_PATH, schema_path.clone());
+        let _schema_guard = EnvVarGuard::set_string(ELOQ_CLUSTER_MGR_SCHEMA_PATH, &schema_path);
         let state_mgr = StateMgr::new(schema_path).await;
         assert!(state_mgr.is_ok());
         let all_tables = state_mgr.unwrap().list_tables().await;
@@ -633,14 +679,17 @@ mod tests {
                 "t_topology_log",
             ]
         );
+        fs::remove_dir_all(home).ok();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     pub async fn test_state_load() {
+        let _guard = test_guard();
         setup();
+        let (home, _home_guard) = setup_test_home();
         let schema_path = schema_path();
         println!("schema_path {schema_path:?}");
-        std::env::set_var(ELOQ_CLUSTER_MGR_SCHEMA_PATH, schema_path.clone());
+        let _schema_guard = EnvVarGuard::set_string(ELOQ_CLUSTER_MGR_SCHEMA_PATH, &schema_path);
         let state_mgr_rs = StateMgr::new(schema_path).await;
         assert!(state_mgr_rs.is_ok());
         let state_mgr = state_mgr_rs.unwrap();
@@ -652,5 +701,6 @@ mod tests {
         assert!(deployment_result.is_ok());
         let deployment_vec = deployment_result.unwrap();
         assert!(deployment_vec.is_empty());
+        fs::remove_dir_all(home).ok();
     }
 }

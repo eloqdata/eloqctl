@@ -29,16 +29,22 @@ pub const ELOQKV_NODE_INI: &str = "EloqKv-node";
 pub const START_LOG_TEMPLATE: &str = "start_tx_log.bash";
 pub const JVM_SETTING_HOLDER: &str = "_GC_SETTINGS_PLACEHOLDER_";
 pub const PROMETHEUS_CONFIG_TEMPLATE: &str = "mono_prometheus.yaml";
+pub const ALERTMANAGER_CONFIG_TEMPLATE: &str = "mono_alertmanager.yaml";
 pub const MONITOR_DIR: &str = "monitor";
 pub const ALERT_RULES_TEMPLATE: &str = "alert.rules";
 
 pub const GRAFANA_DASHBOARDS_CONFIG_TEMPLATE: &str = "grafana_dashboards.yaml";
 
 pub const PROMETHEUS_CONFIG_FILE: &str = "prometheus.yml";
+pub const ALERTMANAGER_CONFIG_FILE: &str = "alertmanager.yml";
 pub const GRAFANA_PROMETHEUS_DS_FILE: &str = "prometheus-datasource.yml";
 
-pub const GRAFANA_CONFIG_TEMPLATE: &str = "grafana_config.ini";
-pub const GRAFANA_CONFIG_FILE: &str = "defaults.ini";
+pub const GRAFANA_CONFIG_TEMPLATE_V9: &str = "grafana_config.ini";
+pub const GRAFANA_CONFIG_TEMPLATE_V13: &str = "grafana_config_v13.ini";
+pub const GRAFANA_CONFIG_FILE: &str = "custom.ini";
+pub const ALERTMANAGER_WEBHOOK_ADAPTER_FEISHU_TEMPLATE: &str = "feishu.zh.tmpl";
+pub const PROMETHEUSALERT_CONFIG_TEMPLATE: &str = "prometheusalert_app.conf";
+pub const PROMETHEUSALERT_CONFIG_FILE: &str = "app.conf";
 
 pub const CDN: &str = "https://download.eloqdata.com";
 
@@ -176,8 +182,12 @@ pub enum DeploymentPackage {
     Storage,
     #[strum(serialize = "prometheus")]
     Prometheus,
+    #[strum(serialize = "alertmanager")]
+    Alertmanager,
     #[strum(serialize = "grafana")]
     Grafana,
+    #[strum(serialize = "prometheusalert")]
+    PrometheusAlert,
     #[strum(serialize = "eloq_log")]
     EloqLog,
     #[strum(serialize = "eloq_standby")]

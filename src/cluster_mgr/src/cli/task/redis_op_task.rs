@@ -9,7 +9,7 @@ use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use futures::future::join_all;
 use redis::{Client, ErrorKind, RedisError, RedisResult, Value};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -28,6 +28,7 @@ pub struct RedisOpTask {
     password: Option<String>,
     skip_checkpoint: bool,
     service_endpoints: Option<HashMap<String, ServiceEndpoint>>,
+    topology_retries: usize,
 }
 
 impl RedisOpTask {
@@ -47,6 +48,7 @@ impl RedisOpTask {
             password,
             skip_checkpoint,
             service_endpoints: None,
+            topology_retries: TOPOLOGY_RETRIES,
         }
     }
 
@@ -55,6 +57,11 @@ impl RedisOpTask {
         service_endpoints: Option<HashMap<String, ServiceEndpoint>>,
     ) -> Self {
         self.service_endpoints = service_endpoints;
+        self
+    }
+
+    pub fn with_topology_retries(mut self, topology_retries: usize) -> Self {
+        self.topology_retries = topology_retries.max(1);
         self
     }
 
@@ -163,10 +170,11 @@ mod tests {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NodeInfo {
     pub ip: String,
     pub port: u16,
+    pub connected: bool,
 }
 
 // Implement Eq and Hash for NodeInfo
@@ -192,7 +200,7 @@ impl fmt::Display for NodeInfo {
     }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ClusterNodes {
     pub masters: Vec<NodeInfo>,
     pub replicas: Vec<NodeInfo>,
@@ -329,7 +337,12 @@ pub fn parse_cluster_nodes(value: Value) -> RedisResult<Vec<ClusterNodes>> {
         let is_master = !flags.contains("slave");
 
         // Add node to appropriate list
-        let node_info = NodeInfo { ip, port };
+        let connected = parts[7].eq_ignore_ascii_case("connected");
+        let node_info = NodeInfo {
+            ip,
+            port,
+            connected,
+        };
 
         if is_master {
             masters.push(node_info);
@@ -385,7 +398,11 @@ pub fn parse_cluster_nodes_single(value: Value, default_host: &str) -> RedisResu
     };
 
     Ok(ClusterNodes {
-        masters: vec![NodeInfo { ip, port }],
+        masters: vec![NodeInfo {
+            ip,
+            port,
+            connected: true,
+        }],
         replicas: vec![],
     })
 }
@@ -509,7 +526,7 @@ impl TaskExecutor for RedisOpTask {
                     ErrorKind::IoError,
                     "cluster topology query did not run",
                 )));
-                for attempt in 1..=TOPOLOGY_RETRIES {
+                for attempt in 1..=self.topology_retries {
                     for node_url in &nodes {
                         let client = match Client::open(node_url.clone()) {
                             Ok(client) => client,
@@ -540,10 +557,13 @@ impl TaskExecutor for RedisOpTask {
                         break;
                     }
                     info!(
-                        "RedisOpTask: cluster topology query failed, retrying {attempt}/{TOPOLOGY_RETRIES}. Attempted nodes: [{}]. Last error: {:?}",
+                        "RedisOpTask: cluster topology query failed, retrying {attempt}/{}. Attempted nodes: [{}]. Last error: {:?}",
+                        self.topology_retries,
                         nodes_info, last_error
                     );
-                    sleep(TOPOLOGY_RETRY_DELAY).await;
+                    if attempt < self.topology_retries {
+                        sleep(TOPOLOGY_RETRY_DELAY).await;
+                    }
                 }
                 query_result
             }

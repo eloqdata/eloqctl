@@ -44,3 +44,4 @@ pub mod topology_update_task;
 mod tx_conf_update_task;
 pub mod unpack_file_task;
 pub mod upload;
+pub mod wait_replica_ready_task;

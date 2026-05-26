@@ -2139,8 +2139,14 @@ impl Deployment {
             DeploymentPackage::Prometheus => {
                 extract_monitor_host!(self, prometheus)
             }
+            DeploymentPackage::Alertmanager => {
+                extract_monitor_host!(self, alertmanager)
+            }
             DeploymentPackage::Grafana => {
                 extract_monitor_host!(self, grafana)
+            }
+            DeploymentPackage::PrometheusAlert => {
+                extract_monitor_host!(self, alertmanager)
             }
             DeploymentPackage::Proxy => unreachable!(),
         }
@@ -2173,8 +2179,48 @@ impl Deployment {
             DeploymentPackage::EloqVoter => {
                 self.get_host_port_list_internal(&self.tx_service.voter_host_ports)
             }
-            DeploymentPackage::Prometheus => vec![],
-            DeploymentPackage::Grafana => vec![],
+            DeploymentPackage::Prometheus => self
+                .monitor
+                .as_ref()
+                .and_then(|monitor| {
+                    monitor
+                        .prometheus
+                        .as_ref()
+                        .map(|component| vec![format!("{}:{}", component.host, component.port)])
+                })
+                .unwrap_or_default(),
+            DeploymentPackage::Alertmanager => self
+                .monitor
+                .as_ref()
+                .and_then(|monitor| {
+                    monitor
+                        .alertmanager
+                        .as_ref()
+                        .map(|component| vec![format!("{}:{}", component.host, component.port)])
+                })
+                .unwrap_or_default(),
+            DeploymentPackage::Grafana => self
+                .monitor
+                .as_ref()
+                .and_then(|monitor| {
+                    monitor
+                        .grafana
+                        .as_ref()
+                        .map(|component| vec![format!("{}:{}", component.host, component.port)])
+                })
+                .unwrap_or_default(),
+            DeploymentPackage::PrometheusAlert => self
+                .monitor
+                .as_ref()
+                .and_then(|monitor| {
+                    monitor.alertmanager.as_ref().map(|component| {
+                        vec![format!(
+                            "{}:{}",
+                            component.host, component.webhook_adapter_port
+                        )]
+                    })
+                })
+                .unwrap_or_default(),
             DeploymentPackage::Proxy => unreachable!(),
         }
     }
@@ -2201,7 +2247,9 @@ impl Deployment {
         self.populate_topo(&mut topo, DeploymentPackage::EloqStandby);
         self.populate_topo(&mut topo, DeploymentPackage::EloqVoter);
         self.populate_topo(&mut topo, DeploymentPackage::Prometheus);
+        self.populate_topo(&mut topo, DeploymentPackage::Alertmanager);
         self.populate_topo(&mut topo, DeploymentPackage::Grafana);
+        self.populate_topo(&mut topo, DeploymentPackage::PrometheusAlert);
         self.populate_topo(&mut topo, DeploymentPackage::EloqLog);
         topo
     }

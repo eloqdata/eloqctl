@@ -4,7 +4,7 @@ use actix_web::{get, post, web, HttpResponse, Responder};
 use anyhow::anyhow;
 use cluster_mgr::cli::task::group::Config;
 use cluster_mgr::cli::task::task_base::TaskId;
-use cluster_mgr::cli::SubCommand;
+use cluster_mgr::cli::{MonitorCommand, SubCommand};
 use cluster_mgr::config::config_base::{DeployConfig, DEPLOYMENT_CHECK_SUCCESS_TASK};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -86,12 +86,14 @@ fn build_command_from_str(cmd_str: &str, cluster: Option<String>) -> SubCommand 
             topology_file: "_NONE".to_string(),
         },
         "start_monitor" => SubCommand::Monitor {
-            cluster: cluster.unwrap(),
-            command: "start".to_string(),
+            command: MonitorCommand::Start {
+                cluster: cluster.unwrap(),
+            },
         },
         "stop_monitor" => SubCommand::Monitor {
-            cluster: cluster.unwrap(),
-            command: "stop".to_string(),
+            command: MonitorCommand::Stop {
+                cluster: cluster.unwrap(),
+            },
         },
         "start_log" => SubCommand::LogService {
             cluster: cluster.unwrap(),

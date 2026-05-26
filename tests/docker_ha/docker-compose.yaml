@@ -14,12 +14,12 @@ services:
       eloqctl-e2e-net:
         ipv4_address: 172.28.10.20
 
-  eloq-node-1:
+  eloq-tx:
     build:
       context: .
     image: eloqctl-e2e-ubuntu:24.04
-    container_name: eloqctl-e2e-node-1
-    hostname: eloq-node-1
+    container_name: eloqctl-e2e-tx
+    hostname: eloq-tx
     ports:
       - "127.0.0.1:2221:22"
       - "127.0.0.1:16371:6379"
@@ -31,123 +31,76 @@ services:
     depends_on:
       - minio
 
-  eloq-node-2:
+  eloq-standby:
     image: eloqctl-e2e-ubuntu:24.04
-    container_name: eloqctl-e2e-node-2
-    hostname: eloq-node-2
+    container_name: eloqctl-e2e-standby
+    hostname: eloq-standby
     ports:
       - "127.0.0.1:2222:22"
       - "127.0.0.1:16372:6379"
       - "127.0.0.1:26372:16380"
     depends_on:
-      - eloq-node-1
+      - eloq-tx
       - minio
     networks:
       eloqctl-e2e-net:
         ipv4_address: 172.28.10.12
 
-  eloq-node-3:
+  eloq-voter:
     image: eloqctl-e2e-ubuntu:24.04
-    container_name: eloqctl-e2e-node-3
-    hostname: eloq-node-3
+    container_name: eloqctl-e2e-voter
+    hostname: eloq-voter
     ports:
       - "127.0.0.1:2223:22"
       - "127.0.0.1:16373:6379"
       - "127.0.0.1:26373:16380"
     depends_on:
-      - eloq-node-1
+      - eloq-tx
       - minio
     networks:
       eloqctl-e2e-net:
         ipv4_address: 172.28.10.13
 
-  eloq-node-4:
+  eloq-control:
     image: eloqctl-e2e-ubuntu:24.04
-    container_name: eloqctl-e2e-node-4
-    hostname: eloq-node-4
+    container_name: eloqctl-e2e-control
+    hostname: eloq-control
     ports:
       - "127.0.0.1:2224:22"
       - "127.0.0.1:19010:9000"
+      - "127.0.0.1:19500:9500"
+      - "127.0.0.1:19093:9093"
+      - "127.0.0.1:13301:3301"
+      - "127.0.0.1:18080:8080"
     working_dir: /workspace/eloq_waiter
     volumes:
       - "../..:/workspace/eloq_waiter"
     depends_on:
-      - eloq-node-1
+      - eloq-tx
       - minio
     networks:
       eloqctl-e2e-net:
         ipv4_address: 172.28.10.14
 
-  stress-client:
+  stress-python:
     build:
       context: ../..
       dockerfile: tests/docker_ha/Dockerfile.stress
     image: eloqctl-e2e-stress:latest
-    container_name: eloqctl-e2e-stress
-    hostname: stress-client
+    container_name: eloqctl-e2e-stress-python
+    hostname: stress-python
     working_dir: /workspace/eloq_waiter
     command: ["sleep", "infinity"]
     volumes:
       - "../..:/workspace/eloq_waiter"
     depends_on:
-      - eloq-node-1
-      - eloq-node-2
-      - eloq-node-3
-      - eloq-node-4
+      - eloq-tx
+      - eloq-standby
+      - eloq-voter
+      - eloq-control
     networks:
       eloqctl-e2e-net:
         ipv4_address: 172.28.10.30
-
-  stress-client-2:
-    image: eloqctl-e2e-stress:latest
-    container_name: eloqctl-e2e-stress-2
-    hostname: stress-client-2
-    working_dir: /workspace/eloq_waiter
-    command: ["sleep", "infinity"]
-    volumes:
-      - "../..:/workspace/eloq_waiter"
-    depends_on:
-      - eloq-node-1
-      - eloq-node-2
-      - eloq-node-3
-      - eloq-node-4
-    networks:
-      eloqctl-e2e-net:
-        ipv4_address: 172.28.10.31
-
-  stress-client-3:
-    image: eloqctl-e2e-stress:latest
-    container_name: eloqctl-e2e-stress-3
-    hostname: stress-client-3
-    working_dir: /workspace/eloq_waiter
-    command: ["sleep", "infinity"]
-    volumes:
-      - "../..:/workspace/eloq_waiter"
-    depends_on:
-      - eloq-node-1
-      - eloq-node-2
-      - eloq-node-3
-      - eloq-node-4
-    networks:
-      eloqctl-e2e-net:
-        ipv4_address: 172.28.10.32
-
-  stress-client-4:
-    image: eloqctl-e2e-stress:latest
-    container_name: eloqctl-e2e-stress-4
-    hostname: stress-client-4
-    working_dir: /workspace/eloq_waiter
-    command: ["sleep", "infinity"]
-    volumes:
-      - "../..:/workspace/eloq_waiter"
-    depends_on:
-      - eloq-node-1
-      - eloq-node-2
-      - eloq-node-3
-      - eloq-node-4
-    networks:
-      eloqctl-e2e-net:
-        ipv4_address: 172.28.10.33
 
   stress-go:
     build:
@@ -161,13 +114,13 @@ services:
     volumes:
       - "../..:/workspace/eloq_waiter"
     depends_on:
-      - eloq-node-1
-      - eloq-node-2
-      - eloq-node-3
-      - eloq-node-4
+      - eloq-tx
+      - eloq-standby
+      - eloq-voter
+      - eloq-control
     networks:
       eloqctl-e2e-net:
-        ipv4_address: 172.28.10.34
+        ipv4_address: 172.28.10.31
 
   stress-ts:
     build:
@@ -181,13 +134,13 @@ services:
     volumes:
       - "../..:/workspace/eloq_waiter"
     depends_on:
-      - eloq-node-1
-      - eloq-node-2
-      - eloq-node-3
-      - eloq-node-4
+      - eloq-tx
+      - eloq-standby
+      - eloq-voter
+      - eloq-control
     networks:
       eloqctl-e2e-net:
-        ipv4_address: 172.28.10.35
+        ipv4_address: 172.28.10.32
 
 networks:
   eloqctl-e2e-net:

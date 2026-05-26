@@ -118,7 +118,12 @@ fn parse_task_id_parts(task_id: &str) -> (String, String, String) {
 fn parse_monitor_status_task(task: &str) -> Option<(String, String)> {
     [
         ("prometheus-status-", "prometheus"),
+        ("alertmanager-status-", "alertmanager"),
         ("grafana-status-", "grafana"),
+        (
+            "alertmanager-webhook-adapter-status-",
+            "alertmanager_webhook_adapter",
+        ),
         ("node_exporter-status-", "node_exporter"),
     ]
     .into_iter()

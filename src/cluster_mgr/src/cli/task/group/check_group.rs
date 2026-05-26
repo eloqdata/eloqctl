@@ -66,7 +66,19 @@ impl TaskGroup for CheckTaskGroup {
                 executable
             );
             make_check_tasks!(
+                DeploymentPackage::Alertmanager,
+                cluster_config,
+                input,
+                executable
+            );
+            make_check_tasks!(
                 DeploymentPackage::Grafana,
+                cluster_config,
+                input,
+                executable
+            );
+            make_check_tasks!(
+                DeploymentPackage::PrometheusAlert,
                 cluster_config,
                 input,
                 executable

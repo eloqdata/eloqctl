@@ -1,6 +1,6 @@
 use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{
-    init_finish_signal, is_verbose_task_output, TaskExecutionContext,
+    init_finish_signal, is_verbose_task_output, TaskExecutionContext, TaskId,
 };
 use crate::cli::task::task_base::{TaskInstance, TaskResultEnum, TaskResultPair};
 use crate::post_task_execute;
@@ -90,7 +90,36 @@ impl TaskController {
             return "Refresh cluster topology".to_string();
         }
         if task_ids.iter().all(|id| id.cmd == "monitor") {
-            return "Start monitor components".to_string();
+            if task_ids.iter().all(|id| id.task.contains("-stop-")) {
+                return "Stop monitor components".to_string();
+            }
+            if task_ids.iter().all(|id| id.task.contains("-status-")) {
+                return "Check monitor status".to_string();
+            }
+            if task_ids.iter().all(|id| id.task.contains("-start-")) {
+                return "Start monitor components".to_string();
+            }
+            return "Manage monitor components".to_string();
+        }
+        if task_ids
+            .iter()
+            .all(|id| id.cmd == "remove" && id.task.starts_with("clean_log@"))
+        {
+            return "Delete log service data".to_string();
+        }
+        if task_ids
+            .iter()
+            .all(|id| id.cmd == "remove" && id.task.starts_with("clean@"))
+        {
+            return "Delete cluster install directories".to_string();
+        }
+        if task_ids.iter().all(|id| {
+            id.cmd == "backup"
+                && (id.task.starts_with("delete-")
+                    || id.task.starts_with("remove-local-")
+                    || id.task.starts_with("clean-backup"))
+        }) {
+            return "Delete backup data".to_string();
         }
 
         Self::stage_label(task_group)
@@ -215,7 +244,7 @@ impl TaskController {
                             if is_verbose_task_output() {
                                 println!("  FAIL {} -- {}", task_id.format_string(), err_msg_str);
                             } else {
-                                println!("  failed: {}", user_friendly_task_label(&task_id.task));
+                                println!("  failed: {}", user_friendly_task_summary(&task_id));
                             }
                             TaskResultEnum::Error(err_msg_str)
                         }
@@ -266,8 +295,8 @@ impl TaskController {
     fn stage_summary(task_count: usize) -> String {
         match task_count {
             0 => "no work".to_string(),
-            1 => "1 task".to_string(),
-            n => format!("{n} tasks"),
+            1 => "1 operation".to_string(),
+            n => format!("{n} operations"),
         }
     }
 
@@ -315,9 +344,9 @@ impl TaskController {
                 for pair in rs.iter() {
                     if let TaskResultEnum::Error(err) = &pair.result {
                         if !is_verbose_task_output() {
-                            println!("  failed: {err}");
+                            println!("  reason: {}", summarize_error(err));
                         }
-                        bail!("task failed: {err}");
+                        bail!("operation failed: {err}");
                     }
                 }
             }
@@ -361,4 +390,61 @@ fn user_friendly_task_label(task: &str) -> String {
         .or_else(|| task.strip_prefix("voter-"))
         .unwrap_or(task);
     humanize_task_name(task)
+}
+
+pub(crate) fn task_action_summary(cmd: &str, task: &str) -> String {
+    if cmd == "remove" && task.starts_with("clean@") {
+        return "remove cluster files".to_string();
+    }
+    if cmd == "remove" && task.starts_with("clean_log@") {
+        return "remove log service files".to_string();
+    }
+    if cmd == "monitor" {
+        if task.contains("grafana-stop") {
+            return "stop Grafana".to_string();
+        }
+        if task.contains("grafana-start") {
+            return "start Grafana".to_string();
+        }
+        if task.contains("grafana-status") {
+            return "check Grafana status".to_string();
+        }
+        if task.contains("prometheus-stop") {
+            return "stop Prometheus".to_string();
+        }
+        if task.contains("prometheus-start") {
+            return "start Prometheus".to_string();
+        }
+        if task.contains("prometheus-status") {
+            return "check Prometheus status".to_string();
+        }
+        if task.contains("node_exporter-stop") {
+            return "stop node_exporter".to_string();
+        }
+        if task.contains("node_exporter-start") {
+            return "start node_exporter".to_string();
+        }
+        if task.contains("node_exporter-status") {
+            return "check node_exporter status".to_string();
+        }
+    }
+    user_friendly_task_label(task).to_lowercase()
+}
+
+pub(crate) fn user_friendly_task_summary(task_id: &TaskId) -> String {
+    let action = task_action_summary(&task_id.cmd, &task_id.task);
+    if task_id.host.is_empty() || task_id.host == "local" || task_id.host == "127.0.0.1" {
+        action
+    } else {
+        format!("{action} on {}", task_id.host)
+    }
+}
+
+pub(crate) fn summarize_error(err: &str) -> String {
+    if let Some(rest) = err.strip_prefix("Remote cmd [") {
+        if let Some((cmd, suffix)) = rest.split_once("] execution failed. status_code=") {
+            return format!("remote command exited with status {suffix}: {cmd}");
+        }
+    }
+    err.to_string()
 }

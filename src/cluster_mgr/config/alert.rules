@@ -115,14 +115,14 @@ groups:
           summary: "Leader changes frequently"
           description: "More than three leadership changes were seen within 10 minutes for node group {{ $labels.ng_id }}"
 
-      - alert: eloqkv_instance_ops_too_low
-        expr: sum by (instance) (rate(redis_command_aggregated_total[1m])) < 100000
+      - alert: eloqkv_cluster_ops_too_low
+        expr: sum(rate(redis_command_aggregated_total[1m])) < 100000
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "EloqKV instance OPS too low"
-          description: "EloqKV instance {{ $labels.instance }} OPS has been below 10000 for 1 minutes. Current value: {{ printf \"%.2f\" $value }}"
+          summary: "EloqKV cluster OPS too low"
+          description: "EloqKV cluster ${CLUSTER_NAME} OPS has been below 100000 for 1 minute. Current value: {{ printf \"%.2f\" $value }}"
 
       - alert: eloqkv_active_connections_too_high
         expr: sum by (instance) (redis_connection_count) > 100

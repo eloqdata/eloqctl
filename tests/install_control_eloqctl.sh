@@ -44,6 +44,11 @@ compose exec -T "${CONTROL_NODE_SERVICE}" bash -lc "
     install -d -m 700 -o eloq -g eloq /home/eloq/.ssh
     install -d -m 755 -o eloq -g eloq '${INSTALL_ROOT}'
     install -d -m 755 -o eloq -g eloq '${INSTALL_ROOT}/bin'
+    install -d -m 755 -o eloq -g eloq '${INSTALL_ROOT}/db'
+    install -d -m 755 -o eloq -g eloq '${INSTALL_ROOT}/download'
+    install -d -m 755 -o eloq -g eloq '${INSTALL_ROOT}/logs'
+    install -d -m 755 -o eloq -g eloq '${INSTALL_ROOT}/upload'
+    rm -f '${INSTALL_BIN}'
     rm -rf '${INSTALL_ROOT}/config'
 "
 

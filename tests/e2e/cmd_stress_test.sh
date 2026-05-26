@@ -2,14 +2,14 @@
 # E2E multi-language command stress test for eloqkv cluster.
 #
 # Each language SDK runs inside its own Docker container (same subnet as cluster).
-#   - Python  → stress-client   (redis-py)
+#   - Python  → stress-python   (redis-py)
 #   - Go      → stress-go       (go-redis/v9)
 #   - TS      → stress-ts       (ioredis)
 #
 # Env overrides:
-#   STEPS=launch,eloqctl-mutate,py-stress,go-stress,ts-stress,remove
+#   STEPS=launch,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove
 #   DURATION_SECONDS=300   WORKERS=8   INFLIGHT=4   KEY_COUNT=256   REPEAT=10
-#   CMD_TIMEOUT=5         PROGRESS_INTERVAL=5
+#   CMD_TIMEOUT=5         INFO_CMD_TIMEOUT=10   PROGRESS_INTERVAL=5
 #   TLS_ENABLED=1         SKIP_DEPS=1
 set -euo pipefail
 
@@ -20,7 +20,7 @@ source "${REPO_ROOT}/tests/docker_env.sh"
 CLUSTER="test-e2e"
 TOPO="${SCRIPT_DIR}/topology.generated.yaml"
 CONTROL_TOPO="${CONTROL_REPO_ROOT}/tests/e2e/topology.generated.yaml"
-STEPS="${STEPS:-launch,eloqctl-mutate,py-stress,go-stress,ts-stress,remove}"
+STEPS="${STEPS:-launch,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove}"
 
 DURATION="${DURATION_SECONDS:-300}"
 WORKERS="${WORKERS:-16}"
@@ -28,6 +28,7 @@ INFLIGHT="${INFLIGHT:-4}"
 REPEAT="${REPEAT:-10}"
 KEY_COUNT="${KEY_COUNT:-256}"
 CMD_TIMEOUT="${CMD_TIMEOUT:-5}"
+INFO_CMD_TIMEOUT="${INFO_CMD_TIMEOUT:-10}"
 PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-5}"
 TLS_ENABLED="${TLS_ENABLED:-1}"
 SKIP_DEPS="${SKIP_DEPS:-1}"
@@ -35,6 +36,14 @@ INFO_ONLY_WORKERS="${INFO_ONLY_WORKERS:-64}"
 INFO_ONLY_INFLIGHT="${INFO_ONLY_INFLIGHT:-16}"
 INFO_ONLY_REPEAT="${INFO_ONLY_REPEAT:-50}"
 INFO_ONLY_DURATION="${INFO_ONLY_DURATION_SECONDS:-300}"
+TS_INFO_ONLY_WORKERS="${TS_INFO_ONLY_WORKERS:-16}"
+TS_INFO_ONLY_INFLIGHT="${TS_INFO_ONLY_INFLIGHT:-8}"
+TS_INFO_ONLY_REPEAT="${TS_INFO_ONLY_REPEAT:-50}"
+TS_INFO_ONLY_DURATION="${TS_INFO_ONLY_DURATION_SECONDS:-30}"
+GRAFANA_UPDATE_URL="${GRAFANA_UPDATE_URL:-https://dl.grafana.com/grafana/release/13.0.1+security-01/grafana_13.0.1+security-01_25720641773_linux_amd64.tar.gz}"
+GRAFANA_HTTP_URL="${GRAFANA_HTTP_URL:-http://172.28.10.14:3301}"
+ALERTMANAGER_HTTP_URL="${ALERTMANAGER_HTTP_URL:-http://172.28.10.14:9093}"
+ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL="${ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL:-http://172.28.10.14:8080}"
 
 PASSWD="testpass"
 N1="172.28.10.11"
@@ -50,26 +59,106 @@ TLS_FLAG=""
 [ "${TLS_ENABLED}" = "1" ] && TLS_FLAG="--tls"
 
 control_eloqctl_cmd() {
-    control_exec env ELOQCTL_HOME="${CONTROL_ELOQCTL_HOME}" "${CONTROL_ELOQCTL}" "$@"
+    control_ssh_cmd "$@"
+}
+
+control_ssh_exec_string() {
+    local remote_cmd
+    printf -v remote_cmd '%q ' \
+        env HOME=/home/eloq ELOQCTL_HOME="${CONTROL_ELOQCTL_HOME}" "${CONTROL_ELOQCTL}" "$@"
+    printf 'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes -o ConnectTimeout=3 -i %q eloq@127.0.0.1 -p 2224 %q' \
+        "${ELOQCTL_DOCKER_SSH_KEY}" \
+        "bash -lc $(printf '%q' "${remote_cmd}")"
 }
 
 run_control_eloqctl_with_progress() {
     local timeout_seconds="$1"
     local log_file="$2"
     shift 2
-    run_with_progress "${timeout_seconds}" "${log_file}" \
-        docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T -u eloq \
-            "${CONTROL_NODE_SERVICE}" env HOME=/home/eloq ELOQCTL_HOME="${CONTROL_ELOQCTL_HOME}" \
-            "${CONTROL_ELOQCTL}" "$@" \
+    local subcommand="$1"
+    local control_log_file="${CONTROL_ELOQCTL_HOME}/logs/last-${subcommand}.log"
+    run_with_progress "${timeout_seconds}" "${log_file}" --eloq-log "${control_log_file}" \
+        bash -lc "$(control_ssh_exec_string "$@")" \
         || { dump_failure_diagnostics "${log_file}"; return 1; }
 }
 
 wait_cluster_ready() {
-    run_with_progress 240 "${SCRIPT_DIR}/cmd-stress-status.log" \
-        docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T -u eloq \
-            "${CONTROL_NODE_SERVICE}" env HOME=/home/eloq ELOQCTL_HOME="${CONTROL_ELOQCTL_HOME}" \
-            "${CONTROL_ELOQCTL}" status "${CLUSTER}" --wait 180 >/dev/null 2>&1 \
+    run_with_progress 240 "${SCRIPT_DIR}/cmd-stress-status.log" --eloq-log "${CONTROL_ELOQCTL_HOME}/logs/last-status.log" \
+        bash -lc "$(control_ssh_exec_string status "${CLUSTER}" --wait 180)" >/dev/null 2>&1 \
         || { echo "FAIL: cluster not healthy"; return 1; }
+}
+
+wait_monitor_ready() {
+    local url="${1:-${GRAFANA_HTTP_URL}}"
+    for _ in $(seq 1 60); do
+        if control_exec curl -fsS "${url}/api/health" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 2
+    done
+    echo "FAIL: monitor endpoint not healthy at ${url}"
+    return 1
+}
+
+wait_alertmanager_ready() {
+    local url="${1:-${ALERTMANAGER_HTTP_URL}}"
+    for _ in $(seq 1 60); do
+        if control_exec curl -fsS "${url}/-/healthy" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 2
+    done
+    echo "FAIL: alertmanager endpoint not healthy at ${url}"
+    return 1
+}
+
+wait_alertmanager_webhook_adapter_ready() {
+    local url="${1:-${ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL}}"
+    for _ in $(seq 1 60); do
+        if control_exec curl -fsS "${url}" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 2
+    done
+    echo "FAIL: alertmanager-webhook-adapter endpoint not healthy at ${url}"
+    return 1
+}
+
+assert_cluster_registered() {
+    control_eloqctl_cmd list | grep -Eq "[[:space:]]${CLUSTER}[[:space:]]" \
+        || { echo "FAIL: eloqctl list does not contain cluster ${CLUSTER}"; return 1; }
+}
+
+refresh_monitor_status() {
+    run_control_eloqctl_with_progress 180 "${SCRIPT_DIR}/monitor-status.log" \
+        monitor status --cluster "${CLUSTER}" >/dev/null \
+        || return 1
+}
+
+cluster_has_monitor_service() {
+    local service="$1"
+    grep -Eq "\\|[[:space:]]*${service}[[:space:]]*\\|" "${SCRIPT_DIR}/monitor-status.log"
+}
+
+assert_monitor_version() {
+    local expected_major="$1"
+    local url="${2:-${GRAFANA_HTTP_URL}}"
+    local health
+    health=$(control_exec curl -fsS "${url}/api/health") \
+        || { echo "FAIL: failed to query monitor health from ${url}"; return 1; }
+    echo "${health}" | grep -Eq "\"version\"[[:space:]]*:[[:space:]]*\"${expected_major}\\." \
+        || {
+            echo "FAIL: expected Grafana ${expected_major}.x, got: ${health}"
+            return 1
+        }
+}
+
+assert_export_contains() {
+    local expected="$1"
+    local export_file="/tmp/${CLUSTER}-export.yaml"
+    control_eloqctl_cmd export "${CLUSTER}" --output "${export_file}" >/dev/null
+    control_exec grep -F "${expected}" "${export_file}" >/dev/null \
+        || { echo "FAIL: export does not contain expected text: ${expected}"; return 1; }
 }
 
 cleanup() {
@@ -103,7 +192,7 @@ step() {
 discover_master() {
     echo "  discovering cluster topology ..."
     local nodes_info
-    nodes_info=$(compose exec -T stress-client python3 -c "
+    nodes_info=$(docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-python python3 -c "
 import ssl
 TLS={'ssl':True,'ssl_cert_reqs':ssl.CERT_NONE,'ssl_check_hostname':False}
 from redis import Redis
@@ -139,22 +228,54 @@ do_launch() {
     if [ "${SKIP_DEPS}" = "1" ]; then
         launch_args+=(--skip-deps)
     fi
-    render_topology_for_control "${SCRIPT_DIR}/topology.yaml" "${TOPO}"
     start_docker_env
+    (cd "${REPO_ROOT}" && bash tests/install_control_eloqctl.sh)
+    render_topology_for_control "${SCRIPT_DIR}/topology.yaml" "${TOPO}"
+    control_exec test -f "${CONTROL_TOPO}" \
+        || { echo "FAIL: control topology not found at ${CONTROL_TOPO}"; return 1; }
     control_eloqctl_cmd stop "${CLUSTER}" --all --force >/dev/null 2>&1 || true
     control_eloqctl_cmd remove "${CLUSTER}" --force >/dev/null 2>&1 || true
-    run_with_progress 420 "${SCRIPT_DIR}/launch-cmd-stress.log" \
-        docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T -u eloq \
-            "${CONTROL_NODE_SERVICE}" env HOME=/home/eloq ELOQCTL_HOME="${CONTROL_ELOQCTL_HOME}" \
-            "${CONTROL_ELOQCTL}" launch "${launch_args[@]}" "${CONTROL_TOPO}" \
+    run_with_progress 420 "${SCRIPT_DIR}/launch-cmd-stress.log" --eloq-log "${CONTROL_ELOQCTL_HOME}/logs/last-launch.log" \
+        bash -lc "$(control_ssh_exec_string launch "${launch_args[@]}" "${CONTROL_TOPO}")" \
         || { dump_failure_diagnostics "${SCRIPT_DIR}/launch-cmd-stress.log"; return 1; }
-    run_with_progress 240 "${SCRIPT_DIR}/launch-cmd-stress.log" \
-        docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T -u eloq \
-            "${CONTROL_NODE_SERVICE}" env HOME=/home/eloq ELOQCTL_HOME="${CONTROL_ELOQCTL_HOME}" \
-            "${CONTROL_ELOQCTL}" status "${CLUSTER}" --wait 180 >/dev/null 2>&1 \
+    run_with_progress 240 "${SCRIPT_DIR}/launch-cmd-stress.log" --eloq-log "${CONTROL_ELOQCTL_HOME}/logs/last-status.log" \
+        bash -lc "$(control_ssh_exec_string status "${CLUSTER}" --wait 180)" >/dev/null 2>&1 \
         || { echo "FAIL: cluster not healthy after launch"; return 1; }
+    assert_cluster_registered || return 1
+    refresh_monitor_status || { echo "FAIL: monitor status failed after launch"; return 1; }
+    if cluster_has_monitor_service "grafana"; then
+        wait_monitor_ready || return 1
+    fi
+    if cluster_has_monitor_service "alertmanager"; then
+        wait_alertmanager_ready || return 1
+    fi
+    if cluster_has_monitor_service "alertmanager_webhook_adapter"; then
+        wait_alertmanager_webhook_adapter_ready || return 1
+    fi
+    if cluster_has_monitor_service "grafana"; then
+        assert_monitor_version 9 || return 1
+    fi
     echo "  cluster ready"
     discover_master || return 1
+}
+
+do_monitor_update() {
+    echo "=== Monitor Grafana update check ==="
+    assert_export_contains "grafana-9.3.6.linux-amd64.tar.gz" || return 1
+    assert_cluster_registered || return 1
+    run_control_eloqctl_with_progress 420 "${SCRIPT_DIR}/cmd-stress-monitor-update.log" \
+        monitor update --cluster "${CLUSTER}" --component grafana --url "${GRAFANA_UPDATE_URL}" \
+        || return 1
+    refresh_monitor_status || return 1
+    if ! cluster_has_monitor_service "grafana"; then
+        echo "FAIL: monitor status does not report grafana after update"
+        return 1
+    fi
+    wait_monitor_ready || return 1
+    assert_monitor_version 13 || return 1
+    wait_cluster_ready || return 1
+    assert_export_contains "${GRAFANA_UPDATE_URL}" || return 1
+    echo "  grafana update verified"
 }
 
 do_eloqctl_mutate() {
@@ -211,7 +332,7 @@ do_eloqctl_mutate() {
     echo "  eloqctl mutations verified"
 }
 
-# ── Python stress (inside stress-client container) ──
+# ── Python stress (inside stress-python container) ──
 do_py_stress() {
     discover_master || return 1
     echo "=== Python command stress (redis-py) ==="
@@ -219,7 +340,7 @@ do_py_stress() {
     if [ -n "${REPLICA}" ]; then
         py_startup_args+=(--startup-node "${REPLICA}")
     fi
-    compose exec -T stress-client python3 -u tests/e2e/cmd_stress_py/main.py \
+    docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-python python3 -u tests/e2e/cmd_stress_py/main.py \
         "${py_startup_args[@]}" \
         --password "${PASSWD}" --cmd-timeout "${CMD_TIMEOUT}" \
         --progress-interval "${PROGRESS_INTERVAL}" --key-count "${KEY_COUNT}" \
@@ -229,9 +350,9 @@ do_py_stress() {
     [ ${py_status} -eq 0 ] || return ${py_status}
 
     echo "=== Python INFO burst (redis-py) ==="
-    compose exec -T stress-client python3 -u tests/e2e/cmd_stress_py/main.py \
+    docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-python python3 -u tests/e2e/cmd_stress_py/main.py \
         "${py_startup_args[@]}" \
-        --password "${PASSWD}" --cmd-timeout "${CMD_TIMEOUT}" \
+        --password "${PASSWD}" --cmd-timeout "${INFO_CMD_TIMEOUT}" \
         --progress-interval "${PROGRESS_INTERVAL}" --key-count "${KEY_COUNT}" \
         --workers "${INFO_ONLY_WORKERS}" --inflight "${INFO_ONLY_INFLIGHT}" \
         --duration "${INFO_ONLY_DURATION}" --repeat "${INFO_ONLY_REPEAT}" \
@@ -244,9 +365,9 @@ do_py_stress() {
 do_go_stress() {
     echo "=== Go command stress (go-redis/v9) ==="
     echo "  installing Go deps ..."
-    compose exec -T stress-go bash -c \
+    docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-go bash -c \
         'cd tests/e2e/cmd_stress_go && go mod download' 2>&1 || true
-    compose exec -T stress-go bash -c \
+    docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-go bash -c \
         "cd tests/e2e/cmd_stress_go && go run . \
             --startup-nodes '${STARTUP_NODES}' \
             --password '${PASSWD}' \
@@ -263,7 +384,7 @@ do_go_stress() {
     [ ${go_status} -eq 0 ] || return ${go_status}
 
     echo "=== Go INFO burst (go-redis/v9) ==="
-    compose exec -T stress-go bash -c \
+    docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-go bash -c \
         "cd tests/e2e/cmd_stress_go && go run . \
             --startup-nodes '${STARTUP_NODES}' \
             --password '${PASSWD}' \
@@ -273,7 +394,7 @@ do_go_stress() {
             --repeat ${INFO_ONLY_REPEAT} \
             --progress-interval ${PROGRESS_INTERVAL}s \
             --key-count ${KEY_COUNT} \
-            --cmd-timeout ${CMD_TIMEOUT}s \
+            --cmd-timeout ${INFO_CMD_TIMEOUT}s \
             --command-set info-only \
             $([ "${TLS_ENABLED}" = "1" ] && echo '--tls-insecure')" \
         2>&1 | tee "${SCRIPT_DIR}/cmd-stress-go-info.log"
@@ -284,9 +405,9 @@ do_go_stress() {
 do_ts_stress() {
     echo "=== TypeScript command stress (ioredis) ==="
     echo "  installing npm deps ..."
-    compose exec -T stress-ts bash -c \
+    docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-ts bash -c \
         'cd tests/e2e/cmd_stress_ts && npm install --silent' 2>&1 || true
-    compose exec -T stress-ts bash -c \
+    docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-ts bash -c \
         "cd tests/e2e/cmd_stress_ts && npx tsx main.ts \
             --startup-nodes '${STARTUP_NODES}' \
             --password '${PASSWD}' \
@@ -304,17 +425,17 @@ do_ts_stress() {
     [ ${ts_status} -eq 0 ] || return ${ts_status}
 
     echo "=== TypeScript INFO burst (ioredis) ==="
-    compose exec -T stress-ts bash -c \
+    docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-ts bash -c \
         "cd tests/e2e/cmd_stress_ts && npx tsx main.ts \
             --startup-nodes '${STARTUP_NODES}' \
             --password '${PASSWD}' \
-            --workers ${INFO_ONLY_WORKERS} \
-            --inflight ${INFO_ONLY_INFLIGHT} \
-            --duration ${INFO_ONLY_DURATION} \
-            --repeat ${INFO_ONLY_REPEAT} \
+            --workers ${TS_INFO_ONLY_WORKERS} \
+            --inflight ${TS_INFO_ONLY_INFLIGHT} \
+            --duration ${TS_INFO_ONLY_DURATION} \
+            --repeat ${TS_INFO_ONLY_REPEAT} \
             --progress-interval ${PROGRESS_INTERVAL} \
             --key-count ${KEY_COUNT} \
-            --cmd-timeout ${CMD_TIMEOUT} \
+            --cmd-timeout ${INFO_CMD_TIMEOUT} \
             --command-set info-only \
             --read-from-replicas 'false' \
             --tls-insecure '${TLS_ENABLED}'" \
@@ -332,6 +453,7 @@ do_remove() {
 }
 
 step launch do_launch
+step monitor-update do_monitor_update
 step eloqctl-mutate do_eloqctl_mutate
 step py-stress do_py_stress
 step go-stress do_go_stress

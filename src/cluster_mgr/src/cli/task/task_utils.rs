@@ -122,6 +122,7 @@ where
         // grep returns 1 when no matches found — this is normal, not an error.
         if status_code == 1 {
             let mut no_pid_result = cmd_exec_rs.clone();
+            no_pid_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
             no_pid_result.insert(
                 PROCESS_PID.to_string(),
                 TaskArgValue::Str(PID_NOT_FOUND.to_string()),
@@ -371,7 +372,8 @@ pub async fn stop_with_hot_standby(
             redis_op_password,
             skip_checkpoint,
         )
-        .with_service_endpoints(config.connection.service_endpoints.clone());
+        .with_service_endpoints(config.connection.service_endpoints.clone())
+        .with_topology_retries(1);
 
         let task_instance = TaskInstance {
             task_input: HashMap::default(),
@@ -460,7 +462,8 @@ pub async fn stop_with_failover(
         redis_op_password.clone(),
         skip_checkpoint,
     )
-    .with_service_endpoints(config.connection.service_endpoints.clone());
+    .with_service_endpoints(config.connection.service_endpoints.clone())
+    .with_topology_retries(1);
 
     let topology_instance = TaskInstance {
         task_input: HashMap::default(),

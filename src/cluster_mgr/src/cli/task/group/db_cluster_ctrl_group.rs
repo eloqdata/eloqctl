@@ -7,10 +7,10 @@ use crate::cli::task::group::{Config, CtrlDBTaskGroup, MonitorCtlTaskGroup, Task
 use crate::cli::task::monitor_ctl_task::MonitorCtlTask;
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
-use crate::cli::task::task_utils::{stop_with_failover, stop_with_hot_standby};
+use crate::cli::task::task_utils::stop_with_hot_standby;
 use crate::cli::task::topology_display_task::TopologyDisplayTask;
 use crate::cli::task::topology_update_task::TopologyUpdateTask;
-use crate::cli::SubCommand;
+use crate::cli::{MonitorCommand, SubCommand};
 use crate::config::config_base::DeployConfig;
 use crate::config::deployment::Product;
 use crate::config::DeploymentPackage;
@@ -41,8 +41,11 @@ impl TaskGroup for CtrlDBTaskGroup {
                     .await;
                 if monitor && cluster_config.deployment.monitor.is_some() {
                     let stop_moni = SubCommand::Monitor {
-                        cluster: cluster.clone(),
-                        command: "stop".to_string(),
+                        cluster: Some(cluster.clone()),
+                        command: MonitorCommand::Stop {
+                            cluster: None,
+                            components: vec![],
+                        },
                     };
                     let TaskExecutionContext {
                         task_group: _,
@@ -156,8 +159,11 @@ impl TaskGroup for CtrlDBTaskGroup {
                     .await;
                 if monitor && cluster_config.deployment.monitor.is_some() {
                     let stop_moni = SubCommand::Monitor {
-                        cluster: cluster.clone(),
-                        command: "stop".to_string(),
+                        cluster: Some(cluster.clone()),
+                        command: MonitorCommand::Stop {
+                            cluster: None,
+                            components: vec![],
+                        },
                     };
                     let TaskExecutionContext {
                         task_group: _,
@@ -270,7 +276,15 @@ impl CtrlDBTaskGroup {
             };
 
             if has_nodes {
-                stop_with_failover(cmd.clone(), config, &mut barrier, &mut executable).await;
+                let stop_nodes = EloqTxCtlTask::from_config_with_channel(
+                    cmd.clone(),
+                    config,
+                    ServerType::Node,
+                    None,
+                )
+                .expect("stop nodes error");
+                barrier.push(stop_nodes.len());
+                executable.extend(stop_nodes);
             } else if is_from_remove || is_force_stop {
                 // Enter this branch when:
                 // - The user explicitly requests to remove or force-stop the cluster.
@@ -546,6 +560,22 @@ impl CtrlDBTaskGroup {
     ) -> IndexMap<TaskId, TaskInstance> {
         let deployment = &config.deployment;
         let mut executable = IndexMap::new();
+        let tx_status_cmd = match &cmd {
+            SubCommand::Status {
+                cluster,
+                user,
+                password,
+                wait,
+                detail,
+            } => SubCommand::Status {
+                cluster: cluster.clone(),
+                user: user.clone(),
+                password: password.clone(),
+                wait: Some(wait.unwrap_or(0)),
+                detail: *detail,
+            },
+            _ => cmd.clone(),
+        };
 
         // DSS status (when rocksdb is EloqDssRocksdb or DataStoreService Remote mode, only if not external)
         if let Some(storage) = &deployment.storage_service {
@@ -570,20 +600,23 @@ impl CtrlDBTaskGroup {
         }
         if config.deployment.tx_service.standby_host_ports.is_some() {
             let status_standby =
-                EloqTxCtlTask::from_config(cmd.clone(), config, ServerType::Standby);
+                EloqTxCtlTask::from_config(tx_status_cmd.clone(), config, ServerType::Standby);
             executable.extend(status_standby);
         }
         if config.deployment.tx_service.voter_host_ports.is_some() {
             let status_voter = EloqTxCtlTask::from_config(cmd.clone(), config, ServerType::Voter);
             executable.extend(status_voter);
         }
-        let status_tx = EloqTxCtlTask::from_config(cmd.clone(), config, ServerType::Tx);
+        let status_tx = EloqTxCtlTask::from_config(tx_status_cmd, config, ServerType::Tx);
         executable.extend(status_tx);
 
         if deployment.monitor.is_some() {
             let monitor_status_cmd = SubCommand::Monitor {
-                cluster: deployment.cluster_name.clone(),
-                command: "status".to_string(),
+                cluster: Some(deployment.cluster_name.clone()),
+                command: MonitorCommand::Status {
+                    cluster: None,
+                    components: vec![],
+                },
             };
             executable.extend(MonitorCtlTask::exporter_ctl_task(
                 monitor_status_cmd.clone(),
@@ -593,7 +626,18 @@ impl CtrlDBTaskGroup {
                 monitor_status_cmd.clone(),
                 config,
             ));
-            executable.extend(MonitorCtlTask::grafana_ctl_task(monitor_status_cmd, config));
+            executable.extend(MonitorCtlTask::alertmanager_ctl_task(
+                monitor_status_cmd.clone(),
+                config,
+            ));
+            executable.extend(MonitorCtlTask::grafana_ctl_task(
+                monitor_status_cmd.clone(),
+                config,
+            ));
+            executable.extend(MonitorCtlTask::prometheusalert_ctl_task(
+                monitor_status_cmd,
+                config,
+            ));
         }
 
         executable

@@ -70,6 +70,24 @@ function mkClient(addr: string): Redis {
   });
 }
 
+function mkClusterClient(startup: string[], readFromReplicas: boolean): Cluster {
+  return new Cluster(startup.map(addr => {
+    const [host, portStr] = addr.split(":");
+    return { host, port: parseInt(portStr || "6379") };
+  }), {
+    scaleReads: readFromReplicas ? "slave" : "master",
+    slotsRefreshTimeout: CMD_TIMEOUT,
+    redisOptions: {
+      password,
+      connectTimeout: CMD_TIMEOUT,
+      commandTimeout: CMD_TIMEOUT,
+      retryStrategy: () => null,
+      ...(TLS_INSECURE ? { tls: { rejectUnauthorized: false } as any } : {}),
+    },
+    clusterRetryStrategy: () => null,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Command test definitions
 // Each entry: [name, fn(client, idx) => Promise<void>]
@@ -301,21 +319,7 @@ async function main() {
   console.log(P(`nodes=${startupNodes} workers=${WORKERS} inflight=${INFLIGHT} duration=${DURATION}s key_count=${KEY_COUNT} command_set=${COMMAND_SET} read_from_replicas=${READ_FROM_REPLICAS}`));
 
   // Cluster discovery
-  const cluster = new Cluster(startupNodes.map(addr => {
-    const [host, portStr] = addr.split(":");
-    return { host, port: parseInt(portStr || "6379") };
-  }), {
-    scaleReads: READ_FROM_REPLICAS ? "slave" : "master",
-    slotsRefreshTimeout: CMD_TIMEOUT,
-    redisOptions: {
-      password,
-      connectTimeout: CMD_TIMEOUT,
-      commandTimeout: CMD_TIMEOUT,
-      retryStrategy: () => null,
-      ...(TLS_INSECURE ? { tls: { rejectUnauthorized: false } as any } : {}),
-    },
-    clusterRetryStrategy: () => null,
-  });
+  const cluster = mkClusterClient(startupNodes, READ_FROM_REPLICAS);
   await cluster.ping();
   console.log(P("cluster ping OK"));
 
@@ -397,12 +401,44 @@ async function main() {
   const clusterStats = new CmdStats();
   const controller = new AbortController();
 
+  const standaloneClients: Redis[] = [];
+  const clusterClients: Cluster[] = [];
   const workers: Promise<void>[] = [];
-  for (let w = 0; w < totalStandaloneSlots; w++) {
-    workers.push(stressWorker(master, SELECTED_CMD_TESTS, standaloneStats, controller.signal, w, KEY_COUNT, REPEAT));
+  for (let w = 0; w < nStandalone; w++) {
+    const client = mkClient(masterAddr);
+    standaloneClients.push(client);
+    const baseSlot = w * INFLIGHT;
+    for (let lane = 0; lane < INFLIGHT; lane++) {
+      workers.push(
+        stressWorker(
+          client,
+          SELECTED_CMD_TESTS,
+          standaloneStats,
+          controller.signal,
+          baseSlot + lane,
+          KEY_COUNT,
+          REPEAT,
+        ),
+      );
+    }
   }
-  for (let w = 0; w < totalClusterSlots; w++) {
-    workers.push(stressWorker(cluster, SELECTED_CMD_TESTS, clusterStats, controller.signal, w + totalStandaloneSlots, KEY_COUNT, REPEAT));
+  for (let w = 0; w < nCluster; w++) {
+    const client = mkClusterClient(startupNodes, READ_FROM_REPLICAS);
+    clusterClients.push(client);
+    const baseSlot = w * INFLIGHT;
+    for (let lane = 0; lane < INFLIGHT; lane++) {
+      workers.push(
+        stressWorker(
+          client,
+          SELECTED_CMD_TESTS,
+          clusterStats,
+          controller.signal,
+          totalStandaloneSlots + baseSlot + lane,
+          KEY_COUNT,
+          REPEAT,
+        ),
+      );
+    }
   }
 
   const start = Date.now();
@@ -432,6 +468,8 @@ async function main() {
   clearInterval(progressInterval);
   clearInterval(checkStop);
 
+  for (const client of standaloneClients) client.disconnect();
+  for (const client of clusterClients) client.disconnect();
   master.disconnect();
   if (replica) replica.disconnect();
   cluster.disconnect();

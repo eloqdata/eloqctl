@@ -272,7 +272,7 @@ impl TaskGroup for BackupTaskGroup {
                                 });
                             }
                         } else {
-                            println!("No backups found to delete.");
+                            println!("No backups found for this cluster; skipping backup cleanup.");
                             return Ok(TaskExecutionContext {
                                 task_group: "backup".to_string(),
                                 barrier: Some(vec![]),

@@ -6,18 +6,80 @@ use crate::cli::task::upload::upload_task_builder::{
 use crate::cli::upload_dir;
 use crate::config::config_base::{DeployConfig, UploadFile};
 use crate::config::monitor::{
-    Monitor, GRAFANA_CONFIG_DIR, GRAFANA_DASHBOARD_CONFIG_DIR, GRAFANA_DATASOURCE_CONFIG_DIR,
+    Monitor, ALERTMANAGER_CONFIG_DIR, ALERTMANAGER_WEBHOOK_ADAPTER_TEMPLATE_DIR,
+    GRAFANA_CONFIG_DIR, GRAFANA_DASHBOARD_CONFIG_DIR, GRAFANA_DATASOURCE_CONFIG_DIR,
     MONITOR_JOB_NAME, NODE_EXPORTER_JOB_NAME, PROMETHEUS_CONFIG_DIR,
 };
 use crate::config::{DeploymentPackage, ALERT_RULES_TEMPLATE, MONITOR_DIR};
+use anyhow::anyhow;
 use indexmap::IndexMap;
-use itertools::Itertools;
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 
 pub struct MonitorInfraConfUploadBuilder;
 
 impl MonitorInfraConfUploadBuilder {
+    fn stage_named_dir(
+        &self,
+        config: &DeployConfig,
+        dir_name: &str,
+        files: &[PathBuf],
+    ) -> anyhow::Result<PathBuf> {
+        let staged_dir = upload_dir()
+            .join(&config.deployment.cluster_name)
+            .join(MONITOR_DIR)
+            .join(dir_name);
+        if staged_dir.exists() {
+            fs::remove_dir_all(&staged_dir)?;
+        }
+        fs::create_dir_all(&staged_dir)?;
+
+        for source_path in files {
+            let file_name = source_path
+                .file_name()
+                .ok_or_else(|| anyhow!("staged source path has no file name"))?;
+            fs::copy(source_path, staged_dir.join(file_name))?;
+        }
+
+        Ok(staged_dir)
+    }
+
+    fn stage_dashboard_upload_dir(
+        &self,
+        config: &DeployConfig,
+        dashboard_files: &[String],
+        dashboard_config_path: &Path,
+    ) -> anyhow::Result<PathBuf> {
+        let staged_dir = upload_dir()
+            .join(&config.deployment.cluster_name)
+            .join(MONITOR_DIR)
+            .join("grafana_dashboards");
+        if staged_dir.exists() {
+            fs::remove_dir_all(&staged_dir)?;
+        }
+        fs::create_dir_all(&staged_dir)?;
+
+        for source in dashboard_files {
+            let source_path = PathBuf::from(source);
+            let file_name = source_path
+                .file_name()
+                .ok_or_else(|| anyhow!("dashboard source path has no file name: {source}"))?;
+            fs::copy(&source_path, staged_dir.join(file_name))?;
+        }
+
+        let dashboard_config_name = dashboard_config_path
+            .file_name()
+            .ok_or_else(|| anyhow!("dashboard config path has no file name"))?;
+        fs::copy(
+            dashboard_config_path,
+            staged_dir.join(dashboard_config_name),
+        )?;
+
+        Ok(staged_dir)
+    }
+
     fn dashboard_upload_files(&self, config: &DeployConfig) -> Option<UploadFile> {
         let files = config.load_monitor_dashboard();
         let install_dir = config.install_dir();
@@ -31,24 +93,22 @@ impl MonitorInfraConfUploadBuilder {
         );
         assert!(dashboard_path.is_ok());
         let path_binding = dashboard_path.unwrap();
-        let local_config_path_string = path_binding.to_str().unwrap().to_string();
-
         if files.is_empty() || monitor.grafana.is_none() {
             None
         } else {
             let host = config.get_host_list(DeploymentPackage::Grafana);
             assert_eq!(1, host.len());
             let dest_host = host.first().unwrap();
-            let mut dashboard_files = files.iter().join(" ");
-            dashboard_files.push(' ');
-            dashboard_files.push_str(local_config_path_string.as_str());
+            let staged_dashboard_dir = self
+                .stage_dashboard_upload_dir(config, &files, path_binding.as_path())
+                .expect("stage grafana dashboard upload dir");
             let install_dir = config.install_dir();
             Some(UploadFile {
-                source: dashboard_files,
+                source: staged_dashboard_dir.to_string_lossy().to_string(),
                 dest: format!("{install_dir}/{GRAFANA_DASHBOARD_CONFIG_DIR}"),
-                extension: "json".to_string(),
+                extension: "dashboard_dir".to_string(),
                 host: dest_host.to_string(),
-                copy_dir: false,
+                copy_dir: true,
                 delete_remote: false,
             })
         }
@@ -75,7 +135,10 @@ impl MonitorInfraConfUploadBuilder {
         config: &DeployConfig,
     ) -> Vec<UploadFile> {
         // Return an empty vector if both Prometheus and Grafana are not configured
-        if monitor.prometheus.is_none() && monitor.grafana.is_none() {
+        if monitor.prometheus.is_none()
+            && monitor.alertmanager.is_none()
+            && monitor.grafana.is_none()
+        {
             return vec![];
         }
 
@@ -148,6 +211,46 @@ impl MonitorInfraConfUploadBuilder {
             upload_files.push(prometheus_upload_file);
         }
 
+        if monitor.alertmanager.is_some() {
+            let alertmanager_conf = monitor
+                .gen_alertmanager_config(&config.deployment.cluster_name)
+                .unwrap();
+            let alertmanager_webhook_template = monitor
+                .gen_alertmanager_webhook_adapter_template(&config.deployment.cluster_name)
+                .unwrap();
+            let staged_template_dir = self
+                .stage_named_dir(
+                    config,
+                    "alertmanager_webhook_adapter_templates",
+                    &[alertmanager_webhook_template],
+                )
+                .unwrap();
+            let alertmanager_upload_file = UploadFile {
+                source: MonitorInfraConfUploadBuilder::path_string(alertmanager_conf),
+                dest: format!("{install_dir}/{ALERTMANAGER_CONFIG_DIR}"),
+                extension: "alertmanager".to_string(),
+                host: MonitorInfraConfUploadBuilder::monitor_host(
+                    &all_host,
+                    DeploymentPackage::Alertmanager,
+                ),
+                copy_dir: false,
+                delete_remote: false,
+            };
+            upload_files.push(alertmanager_upload_file);
+            let alertmanager_webhook_template_upload_file = UploadFile {
+                source: staged_template_dir.to_string_lossy().to_string(),
+                dest: format!("{install_dir}/{ALERTMANAGER_WEBHOOK_ADAPTER_TEMPLATE_DIR}"),
+                extension: "alertmanager-webhook-adapter.tmpl".to_string(),
+                host: MonitorInfraConfUploadBuilder::monitor_host(
+                    &all_host,
+                    DeploymentPackage::Alertmanager,
+                ),
+                copy_dir: true,
+                delete_remote: false,
+            };
+            upload_files.push(alertmanager_webhook_template_upload_file);
+        }
+
         // Handle Grafana configuration separately
         if monitor.grafana.is_some() {
             let grafana_ds_conf_path = monitor
@@ -195,6 +298,13 @@ impl MonitorInfraConfUploadBuilder {
 
 impl UploadTaskBuilder for MonitorInfraConfUploadBuilder {
     fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance> {
+        Self::build_for_cmd(config, "deploy")
+    }
+}
+
+impl MonitorInfraConfUploadBuilder {
+    pub fn build_for_cmd(config: &Config, cmd: &str) -> IndexMap<TaskId, TaskInstance> {
+        let builder = MonitorInfraConfUploadBuilder;
         let cluster_config = match config {
             Config::Cluster(cfg) => cfg,
             _ => panic!("Expected ClusterConfig for MonitorInfraConfUploadBuilder"),
@@ -210,9 +320,10 @@ impl UploadTaskBuilder for MonitorInfraConfUploadBuilder {
                     .expect("generate alert rules error");
             }
 
-            let mut all_upload_files = self.monitor_config_upload_files(monitor, cluster_config);
+            let mut all_upload_files = builder.monitor_config_upload_files(monitor, cluster_config);
             if monitor.grafana.is_some() {
-                if let Some(upload_dashboard_file) = self.dashboard_upload_files(cluster_config) {
+                if let Some(upload_dashboard_file) = builder.dashboard_upload_files(cluster_config)
+                {
                     all_upload_files.push(upload_dashboard_file);
                 }
             }
@@ -224,7 +335,7 @@ impl UploadTaskBuilder for MonitorInfraConfUploadBuilder {
                         source_host.clone(),
                         upload_file.clone(),
                         config,
-                        "deploy",
+                        cmd,
                         format!("upload_monitor_cnf_{extension}").as_str(),
                     )
                 })

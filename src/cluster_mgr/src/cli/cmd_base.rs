@@ -3,24 +3,40 @@ use crate::cli::reconcile::{
 };
 use crate::cli::task::backup_utils::split_manifests;
 use crate::cli::task::download_task::DownloadTask;
+use crate::cli::task::exec_custom_cmd::ExecCustomCommand;
 use crate::cli::task::group::Config;
+use crate::cli::task::local_extract_task::LocalExtractTask;
 use crate::cli::task::monitor_ctl_task::MonitorCtlTask;
 use crate::cli::task::task_base::{
-    set_verbose_task_output, TaskExecutionContext, TaskMgr, TaskResultPair,
+    set_verbose_task_output, TaskExecutionContext, TaskId, TaskMgr, TaskResultPair,
 };
+use crate::cli::task::task_controller::task_action_summary;
 use crate::cli::task::unpack_file_task::UnpackFileTask;
-use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
+use crate::cli::task::upload::upload_task_builder::{
+    build_task_instance, get_source_host, upload_tasks, UploadTaskBuilderType,
+};
 use crate::cli::util::{cpu_arch, file_pg_bar, os_id, os_major_version};
-use crate::cli::{upload_dir, SubCommand, UpdateMonitorComponent, HOME_DIR};
+use crate::cli::{
+    download_dir, upload_dir, MonitorCommand, SubCommand, UpdateMonitorComponent, HOME_DIR,
+};
 use crate::cli::{BackupCommand, ProxyCommand};
-use crate::config::config_base::{DeployConfig, VersionRow};
-use crate::config::config_base::{GRAFANA_FILE_KEY, NODE_EXPORTER_FILE_KEY, PROMETHEUS_FILE_KEY};
+use crate::config::config_base::{DeployConfig, UploadFile, VersionRow};
+use crate::config::config_base::{
+    ALERTMANAGER_FILE_KEY, GRAFANA_FILE_KEY, NODE_EXPORTER_FILE_KEY, PROMETHEUSALERT_FILE_KEY,
+    PROMETHEUS_FILE_KEY,
+};
 use crate::config::deployment::{version_digits, Deployment, Product};
+use crate::config::monitor::{
+    Alertmanager, Exporter, Grafana, Monitor, Prometheus, ALERTMANAGER_WEBHOOK_ADAPTER_DEFAULT_URL,
+    ALERTMANAGER_WEBHOOK_ADAPTER_PORT,
+};
 use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::storage_service_config::{
     DataStoreServiceBackend, DataStoreServiceMode, RocksDB, RocksLocal, StorageService,
 };
-use crate::config::{DeploymentPackage, StorageProvider, CDN, CONFIG_PATH_DIR, UPLOAD_PATH_DIR};
+use crate::config::{
+    DeploymentPackage, DownloadUrl, StorageProvider, CDN, CONFIG_PATH_DIR, UPLOAD_PATH_DIR,
+};
 use crate::github_release::{
     fetch_eloqkv_releases, find_eloqkv_asset, find_product_asset, list_versions_from_releases,
 };
@@ -55,6 +71,10 @@ pub static NOT_PRINT_TASK_RESULT: &str = "NOT_PRINT_TASK_RESULT";
 pub static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(30))
+        .http1_only()
+        .pool_max_idle_per_host(0)
+        .pool_idle_timeout(Duration::from_secs(5))
+        .tcp_keepalive(Duration::from_secs(30))
         .build()
         .expect("can't init http client")
 });
@@ -66,6 +86,16 @@ pub static HTTP_INTERNAL: LazyLock<reqwest::Client> = LazyLock::new(|| {
         .build()
         .expect("can't init http client for internal use")
 });
+
+const DEFAULT_PROMETHEUS_URL: &str =
+    "https://github.com/prometheus/prometheus/releases/download/v2.42.0/prometheus-2.42.0.linux-amd64.tar.gz";
+const DEFAULT_ALERTMANAGER_URL: &str =
+    "https://github.com/prometheus/alertmanager/releases/download/v0.32.1/alertmanager-0.32.1.linux-amd64.tar.gz";
+const DEFAULT_GRAFANA_URL: &str =
+    "https://dl.grafana.com/oss/release/grafana-9.3.6.linux-amd64.tar.gz";
+const DEFAULT_PROMETHEUSALERT_URL: &str = ALERTMANAGER_WEBHOOK_ADAPTER_DEFAULT_URL;
+const DEFAULT_NODE_EXPORTER_URL: &str =
+    "https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz";
 
 pub struct CmdExecutor {
     task_mgr: Arc<TaskMgr>,
@@ -165,6 +195,18 @@ impl Drop for ClusterMutationLock {
 }
 
 impl CmdExecutor {
+    fn release_asset_url(
+        product: &str,
+        version: &str,
+        store: &str,
+        os: &str,
+        arch: &str,
+    ) -> String {
+        format!(
+            "https://github.com/eloqdata/eloqkv/releases/download/{version}/{product}-{version}-{store}-{os}-{arch}.tar.gz"
+        )
+    }
+
     pub fn new(home: PathBuf) -> Self {
         Self {
             task_mgr: Arc::new(TaskMgr::new()),
@@ -230,6 +272,24 @@ impl CmdExecutor {
             .collect_vec()
     }
 
+    fn summarize_monitor_status_rows(task_results: &[TaskResultPair]) -> Vec<StatusSummaryRow> {
+        ObservedCluster::from_task_results("monitor".to_string(), task_results)
+            .services
+            .iter()
+            .filter(|service| {
+                matches!(
+                    service.service.as_str(),
+                    "prometheus"
+                        | "alertmanager"
+                        | "grafana"
+                        | "alertmanager_webhook_adapter"
+                        | "node_exporter"
+                )
+            })
+            .map(Self::status_row_from_observed)
+            .collect_vec()
+    }
+
     fn status_row_from_observed(service: &ObservedServiceStatus) -> StatusSummaryRow {
         StatusSummaryRow {
             host: service.host.clone(),
@@ -251,6 +311,26 @@ impl CmdExecutor {
             return;
         }
         println!("{}", tabled::Table::new(rows));
+    }
+
+    fn print_monitor_status_summary(task_results: &[TaskResultPair]) {
+        let rows = Self::summarize_monitor_status_rows(task_results);
+        if rows.is_empty() {
+            println!("No monitor status rows found.");
+            return;
+        }
+        println!("{}", tabled::Table::new(rows));
+    }
+
+    fn print_monitor_log_hints() {
+        println!("Control-node execution log:");
+        println!("\t~/.eloqctl/logs/last-monitor.log");
+        println!("Remote component runtime logs:");
+        println!("\tprometheus -> /tmp/eloq_prometheus.log");
+        println!("\talertmanager -> /tmp/eloq_alertmanager.log");
+        println!("\tgrafana -> /tmp/eloq_grafana_server.log");
+        println!("\talertmanager-webhook-adapter -> /tmp/eloq_alertmanager_webhook_adapter.log");
+        println!("\tnode_exporter -> /tmp/eloq_node_exporter.log");
     }
 
     fn shell_single_quote(value: &str) -> String {
@@ -298,6 +378,16 @@ impl CmdExecutor {
                 }
             } else {
                 Self::print_status_connect_hint(deploy_config, password.as_deref());
+            }
+        } else if let SubCommand::Monitor {
+            command: MonitorCommand::Status { .. },
+            ..
+        } = cmd
+        {
+            Self::print_monitor_status_summary(task_results);
+            Self::print_monitor_log_hints();
+            if !verbose {
+                println!("Tip: use `--verbose` to show per-operation execution details.");
             }
         }
     }
@@ -351,8 +441,14 @@ impl CmdExecutor {
         for node in &redis_nodes {
             let (host, port_str) = node.split_once(':').unwrap_or((node, "6379"));
             let port: u16 = port_str.parse().unwrap_or(6379);
+            let tls_enabled = config.deployment.tls_enabled();
             let (endpoint_host, endpoint_port) = config.service_endpoint(host, port);
-            let probe = RedisProbe::with_password(endpoint_host, endpoint_port, password.clone());
+            let probe = RedisProbe::with_password_and_tls(
+                endpoint_host,
+                endpoint_port,
+                password.clone(),
+                tls_enabled,
+            );
             // Wait up to 120s for each node to respond to PING.
             probe.probe(120).await.map_err(|e| {
                 anyhow!("cannot {operation}: node {node} is not serving Redis after waiting: {e}")
@@ -460,7 +556,6 @@ impl CmdExecutor {
             | SubCommand::Restart { cluster }
             | SubCommand::UpdateConf { cluster, .. }
             | SubCommand::Remove { cluster, .. }
-            | SubCommand::Monitor { cluster, .. }
             | SubCommand::LogService { cluster, .. }
             | SubCommand::Update {
                 cluster: Some(cluster),
@@ -470,6 +565,9 @@ impl CmdExecutor {
             | SubCommand::ScaleLog { cluster, .. }
             | SubCommand::Backup { cluster, .. }
             | SubCommand::Failover { cluster, .. } => Some(cluster.clone()),
+            SubCommand::Monitor { cluster, command } => {
+                Self::monitor_cluster(cluster, command).ok()
+            }
             _ => None,
         }
     }
@@ -490,56 +588,245 @@ impl CmdExecutor {
         self.home.join("download")
     }
 
+    fn monitor_cluster(
+        parent_cluster: &Option<String>,
+        command: &MonitorCommand,
+    ) -> anyhow::Result<String> {
+        let child_cluster = match command {
+            MonitorCommand::Start { cluster, .. }
+            | MonitorCommand::Stop { cluster, .. }
+            | MonitorCommand::Restart { cluster, .. }
+            | MonitorCommand::Status { cluster, .. }
+            | MonitorCommand::Update { cluster, .. } => cluster.clone(),
+        };
+
+        match (parent_cluster.clone(), child_cluster) {
+            (Some(parent), Some(child)) if parent != child => Err(anyhow!(
+                "monitor cluster is ambiguous: parent --cluster is '{}' but subcommand cluster is '{}'",
+                parent, child
+            )),
+            (Some(parent), _) => Ok(parent),
+            (_, Some(child)) => Ok(child),
+            (None, None) => Err(anyhow!(
+                "monitor cluster is required; use `eloqctl monitor --cluster <cluster> ...` or `eloqctl monitor ... <cluster>`"
+            )),
+        }
+    }
+
     fn update_monitor_component_name(component: &UpdateMonitorComponent) -> &'static str {
         match component {
             UpdateMonitorComponent::Grafana => "grafana",
             UpdateMonitorComponent::Prometheus => "prometheus",
+            UpdateMonitorComponent::Alertmanager => "alertmanager",
+            UpdateMonitorComponent::Prometheusalert => "alertmanager-webhook-adapter",
             UpdateMonitorComponent::NodeExporter => "node_exporter",
         }
+    }
+
+    fn monitor_update_component_key(component: &UpdateMonitorComponent) -> &'static str {
+        match component {
+            UpdateMonitorComponent::Grafana => GRAFANA_FILE_KEY,
+            UpdateMonitorComponent::Prometheus => PROMETHEUS_FILE_KEY,
+            UpdateMonitorComponent::Alertmanager => ALERTMANAGER_FILE_KEY,
+            UpdateMonitorComponent::Prometheusalert => PROMETHEUSALERT_FILE_KEY,
+            UpdateMonitorComponent::NodeExporter => NODE_EXPORTER_FILE_KEY,
+        }
+    }
+
+    fn monitor_update_component_home(component: &UpdateMonitorComponent) -> &'static str {
+        match component {
+            UpdateMonitorComponent::Grafana => GRAFANA_FILE_KEY,
+            UpdateMonitorComponent::Prometheus => PROMETHEUS_FILE_KEY,
+            UpdateMonitorComponent::Alertmanager => ALERTMANAGER_FILE_KEY,
+            UpdateMonitorComponent::Prometheusalert => PROMETHEUSALERT_FILE_KEY,
+            UpdateMonitorComponent::NodeExporter => NODE_EXPORTER_FILE_KEY,
+        }
+    }
+
+    fn monitor_update_uses_staged_dir(component: &UpdateMonitorComponent) -> bool {
+        matches!(component, UpdateMonitorComponent::Prometheusalert)
+    }
+
+    fn monitor_update_components(
+        component: &UpdateMonitorComponent,
+    ) -> Vec<UpdateMonitorComponent> {
+        match component {
+            UpdateMonitorComponent::Alertmanager => vec![
+                UpdateMonitorComponent::Alertmanager,
+                UpdateMonitorComponent::Prometheusalert,
+            ],
+            other => vec![other.clone()],
+        }
+    }
+
+    fn monitor_update_component_hosts(
+        &self,
+        config: &DeployConfig,
+        component: &UpdateMonitorComponent,
+    ) -> Vec<String> {
+        let monitor_hosts = config.get_host_as_map();
+        match component {
+            UpdateMonitorComponent::Grafana => monitor_hosts
+                .get(&DeploymentPackage::Grafana)
+                .cloned()
+                .unwrap_or_default(),
+            UpdateMonitorComponent::Prometheus => monitor_hosts
+                .get(&DeploymentPackage::Prometheus)
+                .cloned()
+                .unwrap_or_default(),
+            UpdateMonitorComponent::Alertmanager => monitor_hosts
+                .get(&DeploymentPackage::Alertmanager)
+                .cloned()
+                .unwrap_or_default(),
+            UpdateMonitorComponent::Prometheusalert => monitor_hosts
+                .get(&DeploymentPackage::PrometheusAlert)
+                .cloned()
+                .unwrap_or_default(),
+            UpdateMonitorComponent::NodeExporter => config.get_unique_host_list(),
+        }
+    }
+
+    fn monitor_update_stop_tasks(
+        &self,
+        cmd: SubCommand,
+        config: &DeployConfig,
+        component: &UpdateMonitorComponent,
+    ) -> indexmap::IndexMap<TaskId, crate::cli::task::task_base::TaskInstance> {
+        match component {
+            UpdateMonitorComponent::Grafana => MonitorCtlTask::grafana_ctl_task(cmd, config),
+            UpdateMonitorComponent::Prometheus => MonitorCtlTask::prometheus_ctl_task(cmd, config),
+            UpdateMonitorComponent::Alertmanager => {
+                MonitorCtlTask::alertmanager_ctl_task(cmd, config)
+            }
+            UpdateMonitorComponent::Prometheusalert => {
+                MonitorCtlTask::prometheusalert_ctl_task(cmd, config)
+            }
+            UpdateMonitorComponent::NodeExporter => MonitorCtlTask::exporter_ctl_task(cmd, config),
+        }
+    }
+
+    fn monitor_default_host(deployment: &Deployment) -> String {
+        deployment
+            .monitor
+            .as_ref()
+            .and_then(|monitor| {
+                monitor
+                    .prometheus
+                    .as_ref()
+                    .map(|component| component.host.clone())
+                    .or_else(|| {
+                        monitor
+                            .grafana
+                            .as_ref()
+                            .map(|component| component.host.clone())
+                    })
+                    .or_else(|| {
+                        monitor
+                            .alertmanager
+                            .as_ref()
+                            .map(|component| component.host.clone())
+                    })
+            })
+            .or_else(|| {
+                deployment
+                    .tx_service
+                    .tx_host_ports
+                    .first()
+                    .and_then(|host_port| host_port.split(':').next().map(ToOwned::to_owned))
+            })
+            .unwrap_or_else(|| "127.0.0.1".to_string())
     }
 
     fn configure_monitor_update(
         config: &mut DeployConfig,
         component: &UpdateMonitorComponent,
         monitor_url: Option<String>,
+        feishu_robot_urls: Vec<String>,
     ) -> Result<()> {
-        let monitor = config.deployment.monitor.as_mut().ok_or_else(|| {
-            anyhow!(
-                "cluster '{}' has no monitor configuration",
-                config.deployment.cluster_name
-            )
-        })?;
+        let default_host = Self::monitor_default_host(&config.deployment);
+        let prometheus_preferred_host = config
+            .deployment
+            .monitor
+            .as_ref()
+            .and_then(|monitor| {
+                monitor
+                    .prometheus
+                    .as_ref()
+                    .map(|component| component.host.clone())
+            })
+            .unwrap_or_else(|| default_host.clone());
+        let monitor = config.deployment.monitor.get_or_insert_with(|| Monitor {
+            data_dir: None,
+            prometheus: None,
+            alertmanager: None,
+            grafana: None,
+            node_exporter: None,
+            eloq_metrics: None,
+        });
 
         match component {
             UpdateMonitorComponent::Grafana => {
-                let grafana = monitor.grafana.as_mut().ok_or_else(|| {
-                    anyhow!(
-                        "cluster '{}' has no grafana configuration",
-                        config.deployment.cluster_name
-                    )
-                })?;
+                let grafana = monitor.grafana.get_or_insert_with(|| Grafana {
+                    download_url: DEFAULT_GRAFANA_URL.to_string(),
+                    port: 3301,
+                    host: default_host.clone(),
+                });
                 if let Some(url) = monitor_url {
                     grafana.download_url = url;
                 }
             }
             UpdateMonitorComponent::Prometheus => {
-                let prometheus = monitor.prometheus.as_mut().ok_or_else(|| {
-                    anyhow!(
-                        "cluster '{}' has no prometheus configuration",
-                        config.deployment.cluster_name
-                    )
-                })?;
+                let prometheus = monitor.prometheus.get_or_insert_with(|| Prometheus {
+                    download_url: DEFAULT_PROMETHEUS_URL.to_string(),
+                    port: 9500,
+                    host: default_host.clone(),
+                    retention_time: None,
+                    retention_size: None,
+                    remote_write_urls: None,
+                    alertmanager_targets: None,
+                    alert_thresholds: None,
+                });
                 if let Some(url) = monitor_url {
                     prometheus.download_url = url;
                 }
             }
+            UpdateMonitorComponent::Alertmanager => {
+                let alertmanager = monitor.alertmanager.get_or_insert_with(|| Alertmanager {
+                    download_url: DEFAULT_ALERTMANAGER_URL.to_string(),
+                    port: 9093,
+                    host: prometheus_preferred_host.clone(),
+                    feishu_robot_urls: None,
+                    webhook_adapter_download_url: DEFAULT_PROMETHEUSALERT_URL.to_string(),
+                    webhook_adapter_port: ALERTMANAGER_WEBHOOK_ADAPTER_PORT,
+                });
+                if let Some(url) = monitor_url {
+                    alertmanager.download_url = url;
+                }
+                if !feishu_robot_urls.is_empty() {
+                    alertmanager.feishu_robot_urls = Some(feishu_robot_urls);
+                }
+            }
+            UpdateMonitorComponent::Prometheusalert => {
+                let alertmanager = monitor.alertmanager.get_or_insert_with(|| Alertmanager {
+                    download_url: DEFAULT_ALERTMANAGER_URL.to_string(),
+                    port: 9093,
+                    host: prometheus_preferred_host.clone(),
+                    feishu_robot_urls: None,
+                    webhook_adapter_download_url: DEFAULT_PROMETHEUSALERT_URL.to_string(),
+                    webhook_adapter_port: ALERTMANAGER_WEBHOOK_ADAPTER_PORT,
+                });
+                if let Some(url) = monitor_url {
+                    alertmanager.webhook_adapter_download_url = url;
+                }
+                if !feishu_robot_urls.is_empty() {
+                    alertmanager.feishu_robot_urls = Some(feishu_robot_urls);
+                }
+            }
             UpdateMonitorComponent::NodeExporter => {
-                let exporter = monitor.node_exporter.as_mut().ok_or_else(|| {
-                    anyhow!(
-                        "cluster '{}' has no node_exporter configuration",
-                        config.deployment.cluster_name
-                    )
-                })?;
+                let exporter = monitor.node_exporter.get_or_insert_with(|| Exporter {
+                    url: DEFAULT_NODE_EXPORTER_URL.to_string(),
+                    port: 9200,
+                });
                 if let Some(url) = monitor_url {
                     exporter.url = url;
                 }
@@ -556,11 +843,136 @@ impl CmdExecutor {
     ) -> TaskExecutionContext {
         let mut executable = indexmap::IndexMap::new();
         let mut barrier = vec![];
+        let components = Self::monitor_update_components(component);
 
-        let download = DownloadTask::from_config(config).unwrap_or_default();
+        let download = DownloadTask::instances(DownloadTask::from_urls(
+            components
+                .iter()
+                .map(|component| self.monitor_update_component_url(config, component))
+                .collect(),
+        ));
         if !download.is_empty() {
             barrier.push(download.len());
             executable.extend(download);
+        }
+
+        let staged_entries = components
+            .iter()
+            .filter(|component| Self::monitor_update_uses_staged_dir(component))
+            .map(|component| {
+                (
+                    Self::monitor_update_component_key(component).to_string(),
+                    DownloadUrl::from_url_str(
+                        &self.monitor_update_component_url(config, component),
+                    )
+                    .unwrap(),
+                    Self::monitor_update_component_home(component).to_string(),
+                )
+            })
+            .collect_vec();
+        if !staged_entries.is_empty() {
+            let extract = LocalExtractTask::from_urls(staged_entries);
+            if !extract.is_empty() {
+                barrier.push(extract.len());
+                executable.extend(extract);
+            }
+        }
+
+        let mut upload_before_clean = indexmap::IndexMap::new();
+        for component in &components {
+            if !Self::monitor_update_uses_staged_dir(component) {
+                upload_before_clean.extend(self.monitor_update_package_uploads(config, component));
+            }
+        }
+        if !upload_before_clean.is_empty() {
+            barrier.push(upload_before_clean.len());
+            executable.extend(upload_before_clean);
+        }
+
+        let stop_cmd = SubCommand::Monitor {
+            cluster: Some(match cmd {
+                SubCommand::Update {
+                    cluster: Some(cluster),
+                    ..
+                } => cluster.clone(),
+                SubCommand::Monitor { cluster, .. } => {
+                    cluster.clone().expect("monitor cluster is resolved")
+                }
+                _ => unreachable!(),
+            }),
+            command: MonitorCommand::Stop {
+                cluster: None,
+                components: vec![],
+            },
+        };
+        let start_cmd = SubCommand::Monitor {
+            cluster: Some(match cmd {
+                SubCommand::Update {
+                    cluster: Some(cluster),
+                    ..
+                } => cluster.clone(),
+                SubCommand::Monitor { cluster, .. } => {
+                    cluster.clone().expect("monitor cluster is resolved")
+                }
+                _ => unreachable!(),
+            }),
+            command: MonitorCommand::Start {
+                cluster: None,
+                components: vec![],
+            },
+        };
+
+        let mut stop_tasks = indexmap::IndexMap::new();
+        for component in &components {
+            stop_tasks.extend(self.monitor_update_stop_tasks(stop_cmd.clone(), config, component));
+        }
+        if !stop_tasks.is_empty() {
+            barrier.push(stop_tasks.len());
+            executable.extend(stop_tasks);
+        }
+
+        let mut clean_tasks = indexmap::IndexMap::new();
+        for component in &components {
+            clean_tasks.extend(self.monitor_update_clean_tasks(config, component));
+        }
+        if !clean_tasks.is_empty() {
+            barrier.push(clean_tasks.len());
+            executable.extend(clean_tasks);
+        }
+
+        let mut upload_after_clean = indexmap::IndexMap::new();
+        for component in &components {
+            if Self::monitor_update_uses_staged_dir(component) {
+                upload_after_clean.extend(self.monitor_update_package_uploads(config, component));
+            }
+        }
+        if !upload_after_clean.is_empty() {
+            barrier.push(upload_after_clean.len());
+            executable.extend(upload_after_clean);
+        }
+
+        let mut unpack_tasks = indexmap::IndexMap::new();
+        for component in &components {
+            if !Self::monitor_update_uses_staged_dir(component) {
+                unpack_tasks.extend(
+                    self.monitor_update_component_hosts(config, component)
+                        .into_iter()
+                        .map(|host| {
+                            UnpackFileTask::make_task_pair(
+                                config,
+                                &host,
+                                &self.monitor_update_component_file_name(config, component),
+                                Self::monitor_update_component_home(component),
+                                vec![],
+                            )
+                        })
+                        .collect::<indexmap::IndexMap<_, _>>(),
+                );
+            }
+        }
+        if !unpack_tasks.is_empty() {
+            barrier.push(unpack_tasks.len());
+            executable.extend(unpack_tasks);
         }
 
         let monitor_conf_upload = upload_tasks(
@@ -572,138 +984,14 @@ impl CmdExecutor {
             executable.extend(monitor_conf_upload);
         }
 
-        let monitor_hosts = config.get_host_as_map();
-        let unpack_tasks = match component {
-            UpdateMonitorComponent::Grafana => monitor_hosts
-                .get(&DeploymentPackage::Grafana)
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|host| {
-                    UnpackFileTask::make_task_pair(
-                        config,
-                        &host,
-                        config
-                            .deployment
-                            .monitor
-                            .as_ref()
-                            .unwrap()
-                            .grafana
-                            .as_ref()
-                            .unwrap()
-                            .download_url
-                            .split('/')
-                            .next_back()
-                            .unwrap(),
-                        GRAFANA_FILE_KEY,
-                        vec![],
-                    )
-                })
-                .collect::<indexmap::IndexMap<_, _>>(),
-            UpdateMonitorComponent::Prometheus => monitor_hosts
-                .get(&DeploymentPackage::Prometheus)
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|host| {
-                    UnpackFileTask::make_task_pair(
-                        config,
-                        &host,
-                        config
-                            .deployment
-                            .monitor
-                            .as_ref()
-                            .unwrap()
-                            .prometheus
-                            .as_ref()
-                            .unwrap()
-                            .download_url
-                            .split('/')
-                            .next_back()
-                            .unwrap(),
-                        PROMETHEUS_FILE_KEY,
-                        vec![],
-                    )
-                })
-                .collect::<indexmap::IndexMap<_, _>>(),
-            UpdateMonitorComponent::NodeExporter => config
-                .get_unique_host_list()
-                .into_iter()
-                .map(|host| {
-                    UnpackFileTask::make_task_pair(
-                        config,
-                        &host,
-                        config
-                            .deployment
-                            .monitor
-                            .as_ref()
-                            .unwrap()
-                            .node_exporter
-                            .as_ref()
-                            .unwrap()
-                            .url
-                            .split('/')
-                            .next_back()
-                            .unwrap(),
-                        NODE_EXPORTER_FILE_KEY,
-                        vec![],
-                    )
-                })
-                .collect::<indexmap::IndexMap<_, _>>(),
-        };
-        if !unpack_tasks.is_empty() {
-            barrier.push(unpack_tasks.len());
-            executable.extend(unpack_tasks);
+        let mut start_tasks = indexmap::IndexMap::new();
+        for component in &components {
+            start_tasks.extend(self.monitor_update_stop_tasks(
+                start_cmd.clone(),
+                config,
+                component,
+            ));
         }
-
-        let stop_cmd = SubCommand::Monitor {
-            cluster: match cmd {
-                SubCommand::Update {
-                    cluster: Some(cluster),
-                    ..
-                } => cluster.clone(),
-                _ => unreachable!(),
-            },
-            command: "stop".to_string(),
-        };
-        let start_cmd = SubCommand::Monitor {
-            cluster: match cmd {
-                SubCommand::Update {
-                    cluster: Some(cluster),
-                    ..
-                } => cluster.clone(),
-                _ => unreachable!(),
-            },
-            command: "start".to_string(),
-        };
-
-        let stop_tasks = match component {
-            UpdateMonitorComponent::Grafana => {
-                MonitorCtlTask::grafana_ctl_task(stop_cmd.clone(), config)
-            }
-            UpdateMonitorComponent::Prometheus => {
-                MonitorCtlTask::prometheus_ctl_task(stop_cmd.clone(), config)
-            }
-            UpdateMonitorComponent::NodeExporter => {
-                MonitorCtlTask::exporter_ctl_task(stop_cmd.clone(), config)
-            }
-        };
-        if !stop_tasks.is_empty() {
-            barrier.push(stop_tasks.len());
-            executable.extend(stop_tasks);
-        }
-
-        let start_tasks = match component {
-            UpdateMonitorComponent::Grafana => {
-                MonitorCtlTask::grafana_ctl_task(start_cmd.clone(), config)
-            }
-            UpdateMonitorComponent::Prometheus => {
-                MonitorCtlTask::prometheus_ctl_task(start_cmd.clone(), config)
-            }
-            UpdateMonitorComponent::NodeExporter => {
-                MonitorCtlTask::exporter_ctl_task(start_cmd.clone(), config)
-            }
-        };
         if !start_tasks.is_empty() {
             barrier.push(start_tasks.len());
             executable.extend(start_tasks);
@@ -719,6 +1007,155 @@ impl CmdExecutor {
         }
     }
 
+    fn monitor_update_package_uploads(
+        &self,
+        config: &DeployConfig,
+        component: &UpdateMonitorComponent,
+    ) -> indexmap::IndexMap<
+        crate::cli::task::task_base::TaskId,
+        crate::cli::task::task_base::TaskInstance,
+    > {
+        let file_name = self.monitor_update_component_file_name(config, component);
+        let file_key = Self::monitor_update_component_key(component);
+        let hosts = self.monitor_update_component_hosts(config, component);
+        let source = if Self::monitor_update_uses_staged_dir(component) {
+            LocalExtractTask::staged_dir_for(
+                &DownloadUrl::from_url_str(&self.monitor_update_component_url(config, component))
+                    .unwrap(),
+                Self::monitor_update_component_home(component),
+            )
+            .to_string_lossy()
+            .to_string()
+        } else {
+            download_dir()
+                .join(&file_name)
+                .to_string_lossy()
+                .to_string()
+        };
+        let source_host = get_source_host(None);
+        let config_ref = Config::Cluster(config.clone());
+
+        hosts
+            .into_iter()
+            .map(|host| {
+                let upload = UploadFile {
+                    source: source.clone(),
+                    dest: if Self::monitor_update_uses_staged_dir(component) {
+                        format!(
+                            "{}/{}",
+                            config.install_dir(),
+                            Self::monitor_update_component_home(component)
+                        )
+                    } else {
+                        format!("{}/{}", config.install_dir(), file_name)
+                    },
+                    extension: if Self::monitor_update_uses_staged_dir(component) {
+                        "dir".to_string()
+                    } else {
+                        file_name
+                            .split('.')
+                            .next_back()
+                            .unwrap_or("pkg")
+                            .to_string()
+                    },
+                    host: host.clone(),
+                    copy_dir: Self::monitor_update_uses_staged_dir(component),
+                    delete_remote: Self::monitor_update_uses_staged_dir(component),
+                };
+                build_task_instance(
+                    source_host.clone(),
+                    upload,
+                    &config_ref,
+                    "deploy",
+                    &format!("upload_monitor_pkg_{}_{}", file_key, host),
+                )
+            })
+            .collect()
+    }
+
+    fn monitor_update_clean_tasks(
+        &self,
+        config: &DeployConfig,
+        component: &UpdateMonitorComponent,
+    ) -> indexmap::IndexMap<
+        crate::cli::task::task_base::TaskId,
+        crate::cli::task::task_base::TaskInstance,
+    > {
+        let home = Self::monitor_update_component_home(component).to_string();
+        let hosts = self.monitor_update_component_hosts(config, component);
+        let task_name = format!(
+            "clean_monitor_{}",
+            Self::update_monitor_component_name(component)
+        );
+
+        let clean_cmd = format!(
+            "rm -rf {install_dir}/{home} && mkdir -p {install_dir}/{home}",
+            install_dir = config.install_dir(),
+        );
+        ExecCustomCommand::build_task_by_host(
+            clean_cmd,
+            &Config::Cluster(config.clone()),
+            hosts,
+            Some(task_name),
+        )
+    }
+
+    fn monitor_update_component_url(
+        &self,
+        config: &DeployConfig,
+        component: &UpdateMonitorComponent,
+    ) -> String {
+        match component {
+            UpdateMonitorComponent::Grafana => config
+                .deployment
+                .monitor
+                .as_ref()
+                .and_then(|m| m.grafana.as_ref())
+                .map(|g| g.download_url.clone())
+                .unwrap(),
+            UpdateMonitorComponent::Prometheus => config
+                .deployment
+                .monitor
+                .as_ref()
+                .and_then(|m| m.prometheus.as_ref())
+                .map(|p| p.download_url.clone())
+                .unwrap(),
+            UpdateMonitorComponent::Alertmanager => config
+                .deployment
+                .monitor
+                .as_ref()
+                .and_then(|m| m.alertmanager.as_ref())
+                .map(|a| a.download_url.clone())
+                .unwrap(),
+            UpdateMonitorComponent::Prometheusalert => config
+                .deployment
+                .monitor
+                .as_ref()
+                .and_then(|m| m.alertmanager.as_ref())
+                .map(|a| a.webhook_adapter_download_url.clone())
+                .unwrap(),
+            UpdateMonitorComponent::NodeExporter => config
+                .deployment
+                .monitor
+                .as_ref()
+                .and_then(|m| m.node_exporter.as_ref())
+                .map(|n| n.url.clone())
+                .unwrap(),
+        }
+    }
+
+    fn monitor_update_component_file_name(
+        &self,
+        config: &DeployConfig,
+        component: &UpdateMonitorComponent,
+    ) -> String {
+        self.monitor_update_component_url(config, component)
+            .split('/')
+            .next_back()
+            .unwrap()
+            .to_string()
+    }
+
     async fn run_update_command(
         &'static self,
         cmd: SubCommand,
@@ -730,12 +1167,12 @@ impl CmdExecutor {
             unreachable!();
         };
 
-        let (download_only, monitor_component) = match &cmd {
-            SubCommand::Update {
-                download_only,
-                monitor,
-                ..
-            } => (*download_only, monitor.clone()),
+        let download_only = match &cmd {
+            SubCommand::Update { download_only, .. } => *download_only,
+            SubCommand::Monitor {
+                cluster: _,
+                command: MonitorCommand::Update { .. },
+            } => false,
             _ => unreachable!(),
         };
 
@@ -768,8 +1205,12 @@ impl CmdExecutor {
             return Ok(());
         }
 
-        if let Some(component) = monitor_component {
-            let context = self.monitor_update_context(&cmd, &cfg, &component);
+        if let SubCommand::Monitor {
+            cluster: _,
+            command: MonitorCommand::Update { component, .. },
+        } = &cmd
+        {
+            let context = self.monitor_update_context(&cmd, &cfg, component);
             let outfile = if quiet {
                 let f = fs::OpenOptions::new()
                     .create(true)
@@ -792,7 +1233,7 @@ impl CmdExecutor {
             println!(
                 "cluster {} monitor component {} is updated!",
                 cfg.deployment.cluster_name,
-                Self::update_monitor_component_name(&component)
+                Self::update_monitor_component_name(component)
             );
             return Ok(());
         }
@@ -878,7 +1319,7 @@ impl CmdExecutor {
                             let f = fs::OpenOptions::new()
                                 .create(true)
                                 .truncate(true)
-                                .open(self.home.join("task-result"))?;
+                                .open(self.home.join("operation-result"))?;
                             Some(f)
                         } else {
                             None
@@ -888,7 +1329,7 @@ impl CmdExecutor {
                             task_mgr
                                 .write_task_result(outfile, verbose)
                                 .await
-                                .expect("write task result failed");
+                                .expect("write operation result failed");
                         });
 
                         let rs = self
@@ -942,7 +1383,7 @@ impl CmdExecutor {
                             let f = fs::OpenOptions::new()
                                 .create(true)
                                 .truncate(true)
-                                .open(self.home.join("task-result"))?;
+                                .open(self.home.join("operation-result"))?;
                             Some(f)
                         } else {
                             None
@@ -952,7 +1393,7 @@ impl CmdExecutor {
                             task_mgr
                                 .write_task_result(outfile, verbose)
                                 .await
-                                .expect("write task result failed");
+                                .expect("write operation result failed");
                         });
 
                         let rs = self
@@ -1381,8 +1822,11 @@ impl CmdExecutor {
         if plan.actions.contains(&ReconcileAction::RestartMonitor) {
             Box::pin(self.run_impl(
                 SubCommand::Monitor {
-                    command: "stop".to_string(),
-                    cluster: cluster.clone(),
+                    cluster: Some(cluster.clone()),
+                    command: MonitorCommand::Stop {
+                        cluster: None,
+                        components: vec![],
+                    },
                 },
                 None,
                 quiet,
@@ -1392,8 +1836,11 @@ impl CmdExecutor {
             .await?;
             Box::pin(self.run_impl(
                 SubCommand::Monitor {
-                    command: "start".to_string(),
-                    cluster: cluster.clone(),
+                    cluster: Some(cluster.clone()),
+                    command: MonitorCommand::Start {
+                        cluster: None,
+                        components: vec![],
+                    },
                 },
                 None,
                 quiet,
@@ -1483,10 +1930,6 @@ impl CmdExecutor {
                 wait: _,
                 detail: _,
             }
-            | SubCommand::Monitor {
-                command: _,
-                cluster,
-            }
             | SubCommand::Export { cluster, .. }
             | SubCommand::Remove { cluster, force: _ }
             | SubCommand::Connect { cluster }
@@ -1518,13 +1961,8 @@ impl CmdExecutor {
                 cluster: Some(cluster),
                 version,
                 download_only,
-                monitor,
-                monitor_url,
                 ..
             } => {
-                if download_only && monitor.is_some() {
-                    bail!("--download-only cannot be combined with --monitor");
-                }
                 if download_only && version.is_none() {
                     bail!(
                         "`update --download-only` requires a target version. Use `eloqctl update {cluster} <version> --download-only`"
@@ -1554,9 +1992,43 @@ impl CmdExecutor {
                     }
                     self.resolve_version(&mut config.deployment).await?;
                 }
-                if let Some(component) = monitor.as_ref() {
-                    Self::configure_monitor_update(&mut config, component, monitor_url.clone())?;
-                }
+                Self::validate_metrics_config(&config)?;
+
+                Ok(Config::Cluster(config))
+            }
+            SubCommand::Monitor {
+                cluster,
+                command:
+                    ref command @ MonitorCommand::Update {
+                        ref component,
+                        ref url,
+                        ref feishu_robot_url,
+                        ..
+                    },
+            } => {
+                let cluster = Self::monitor_cluster(&cluster, &command)?;
+                let mut config = self
+                    .state_mgr
+                    .load_deployment_from_state(&cluster)
+                    .await?
+                    .ok_or(anyhow!("cluster {} not found", cluster))?;
+                Self::configure_monitor_update(
+                    &mut config,
+                    component,
+                    url.clone(),
+                    feishu_robot_url.clone(),
+                )?;
+                Self::validate_metrics_config(&config)?;
+
+                Ok(Config::Cluster(config))
+            }
+            SubCommand::Monitor { cluster, command } => {
+                let cluster = Self::monitor_cluster(&cluster, &command)?;
+                let config = self
+                    .state_mgr
+                    .load_deployment_from_state(&cluster)
+                    .await?
+                    .ok_or(anyhow!("cluster {} not found", cluster))?;
                 Self::validate_metrics_config(&config)?;
 
                 Ok(Config::Cluster(config))
@@ -1692,6 +2164,9 @@ impl CmdExecutor {
             SubCommand::Update {
                 cluster: Some(_),
                 ..
+            } | SubCommand::Monitor {
+                cluster: _,
+                command: MonitorCommand::Update { .. },
             }
         ) {
             let config = match option_config {
@@ -1914,18 +2389,22 @@ impl CmdExecutor {
                         )
                         .await?;
                     if !failed_tasks.is_empty() {
-                        let failed_hosts = failed_tasks
-                            .iter()
-                            .map(|t| t.task_host.clone())
-                            .unique()
-                            .collect_vec();
                         eprintln!(
-                            "Remove completed with {} failed task(s) on host(s): {}",
-                            failed_tasks.len(),
-                            failed_hosts.join(", ")
+                            "Remove finished with {} cleanup task(s) still incomplete:",
+                            failed_tasks.len()
+                        );
+                        for task in &failed_tasks {
+                            let action = serde_json::from_str::<TaskId>(&task.task)
+                                .ok()
+                                .map(|id| task_action_summary(&id.cmd, &id.task))
+                                .unwrap_or_else(|| "finish cleanup".to_string());
+                            eprintln!("  - {}: {}", task.task_host, action);
+                        }
+                        eprintln!(
+                            "If those hosts are reachable, retry `eloqctl remove {cluster}`. Otherwise clean them manually."
                         );
                         eprintln!(
-                            "Please clean unreachable hosts manually, e.g.: rm -rf {}",
+                            "Manual cleanup command: rm -rf {}",
                             cfg.deployment.install_dir()
                         );
                     }
@@ -2143,32 +2622,47 @@ impl CmdExecutor {
             .storage_service
             .as_ref()
             .map_or("rocksdb".to_string(), |s| s.pretty_name());
-        let releases = fetch_eloqkv_releases(&HTTP_CLIENT).await?;
 
-        if cnf.version.is_some() && cnf.version_str().eq_ignore_ascii_case("latest") {
-            let latest =
-                list_versions_from_releases(&releases, Some(cnf.product()), Some(store.as_str()))
-                    .into_iter()
-                    .map(|row: VersionRow| row.version)
-                    .max_by(|a, b| version_digits(a).ok().cmp(&version_digits(b).ok()))
-                    .ok_or_else(|| {
-                        anyhow!("no available GitHub release found for store={store}")
-                    })?;
+        let needs_latest_resolution =
+            cnf.version.is_some() && cnf.version_str().eq_ignore_ascii_case("latest");
+        let releases = if needs_latest_resolution {
+            Some(fetch_eloqkv_releases(&HTTP_CLIENT).await?)
+        } else {
+            None
+        };
+
+        if needs_latest_resolution {
+            let latest = list_versions_from_releases(
+                releases.as_ref().unwrap(),
+                Some(cnf.product()),
+                Some(store.as_str()),
+            )
+            .into_iter()
+            .map(|row: VersionRow| row.version)
+            .max_by(|a, b| version_digits(a).ok().cmp(&version_digits(b).ok()))
+            .ok_or_else(|| anyhow!("no available GitHub release found for store={store}"))?;
             info!("latest release version = {latest}");
             cnf.version = Some(latest);
         }
 
         if cnf.tx_service.image.is_none() {
             let vers = cnf.version.as_deref().expect("version is missing");
-            let img = find_eloqkv_asset(&releases, cnf.product(), vers, &store, &os, &arch)?.url;
+            let img = if let Some(releases) = releases.as_ref() {
+                find_eloqkv_asset(releases, cnf.product(), vers, &store, &os, &arch)?.url
+            } else {
+                Self::release_asset_url(cnf.product().name(), vers, &store, &os, &arch)
+            };
             info!("tx service image is set: {img}");
             cnf.tx_service.image = Some(img);
         }
         if let Some(logsrv) = &mut cnf.log_service {
             if logsrv.image.is_none() {
                 let vers = cnf.version.as_deref().expect("version is missing");
-                let img =
-                    find_product_asset(&releases, "log-service", vers, &store, &os, &arch)?.url;
+                let img = if let Some(releases) = releases.as_ref() {
+                    find_product_asset(releases, "log-service", vers, &store, &os, &arch)?.url
+                } else {
+                    Self::release_asset_url("log-service", vers, &store, &os, &arch)
+                };
                 info!("log service image is set: {img}");
                 logsrv.image = Some(img);
             }

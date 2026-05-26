@@ -57,14 +57,16 @@ eloqctl update <cluster> 1.2.2
 Update only one monitor component without touching the EloqKV cluster itself:
 
 ```sh
-eloqctl update <cluster> --monitor grafana
+eloqctl monitor update --cluster <cluster> --component grafana
 ```
 
 Override the monitor tarball URL for a monitor-only update:
 
 ```sh
-eloqctl update <cluster> --monitor grafana --monitor-url https://dl.grafana.com/oss/release/grafana-11.0.0.linux-amd64.tar.gz
+eloqctl monitor update --cluster <cluster> --component grafana --url https://dl.grafana.com/oss/release/grafana-11.0.0.linux-amd64.tar.gz
 ```
+
+If the selected monitor component is configured in topology but not currently deployed or running, `eloqctl monitor update` still downloads, unpacks, uploads config, and starts it.
 
 GitHub-hosted EloqKV tarballs are now validated with the asset `sha256` digest when available. Cached files are reused only when the digest still matches, so a re-published asset under the same tag can be refreshed correctly.
 

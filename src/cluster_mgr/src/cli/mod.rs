@@ -40,7 +40,99 @@ pub struct Command {
 pub enum UpdateMonitorComponent {
     Grafana,
     Prometheus,
+    Alertmanager,
+    #[value(hide = true)]
+    Prometheusalert,
     NodeExporter,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, clap::ValueEnum)]
+pub enum MonitorComponent {
+    Grafana,
+    Prometheus,
+    Alertmanager,
+    AlertmanagerWebhookAdapter,
+    NodeExporter,
+}
+
+#[derive(Subcommand, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum MonitorCommand {
+    #[command(
+        long_about = "Start monitor components.\n\nExamples:\n  eloqctl monitor start --cluster test-e2e\n  eloqctl monitor start --cluster test-e2e --component grafana"
+    )]
+    Start {
+        #[arg(long = "cluster", help = "Existing cluster name")]
+        cluster: Option<String>,
+        #[arg(
+            long = "component",
+            value_enum,
+            value_delimiter = ',',
+            help = "Monitor component(s) to operate on; omit to target all monitor components"
+        )]
+        components: Vec<MonitorComponent>,
+    },
+    #[command(
+        long_about = "Stop monitor components.\n\nExamples:\n  eloqctl monitor stop --cluster test-e2e\n  eloqctl monitor stop --cluster test-e2e --component alertmanager"
+    )]
+    Stop {
+        #[arg(long = "cluster", help = "Existing cluster name")]
+        cluster: Option<String>,
+        #[arg(
+            long = "component",
+            value_enum,
+            value_delimiter = ',',
+            help = "Monitor component(s) to operate on; omit to target all monitor components"
+        )]
+        components: Vec<MonitorComponent>,
+    },
+    #[command(
+        long_about = "Restart monitor components.\n\nExamples:\n  eloqctl monitor restart --cluster test-e2e\n  eloqctl monitor restart --cluster test-e2e --component alertmanager-webhook-adapter"
+    )]
+    Restart {
+        #[arg(long = "cluster", help = "Existing cluster name")]
+        cluster: Option<String>,
+        #[arg(
+            long = "component",
+            value_enum,
+            value_delimiter = ',',
+            help = "Monitor component(s) to operate on; omit to target all monitor components"
+        )]
+        components: Vec<MonitorComponent>,
+    },
+    #[command(
+        long_about = "Check monitor component status.\n\nExamples:\n  eloqctl monitor status --cluster test-e2e\n  eloqctl monitor status --cluster test-e2e --component grafana"
+    )]
+    Status {
+        #[arg(long = "cluster", help = "Existing cluster name")]
+        cluster: Option<String>,
+        #[arg(
+            long = "component",
+            value_enum,
+            value_delimiter = ',',
+            help = "Monitor component(s) to inspect; omit to inspect all monitor components"
+        )]
+        components: Vec<MonitorComponent>,
+    },
+    #[command(
+        long_about = "Update one monitor component without touching EloqKV.\n\nExamples:\n  eloqctl monitor update --cluster test-e2e --component grafana --url <tarball>\n  eloqctl monitor update --cluster test-e2e --component alertmanager --feishu-robot-url <hook-url>"
+    )]
+    Update {
+        #[arg(long = "cluster", help = "Existing cluster name")]
+        cluster: Option<String>,
+        #[arg(long, value_enum, help = "Monitor component to update")]
+        component: UpdateMonitorComponent,
+        #[arg(
+            long,
+            help = "Override the tarball URL for the selected monitor component"
+        )]
+        url: Option<String>,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Configure one or more Feishu robot webhook URLs for Alertmanager notifications"
+        )]
+        feishu_robot_url: Vec<String>,
+    },
 }
 
 #[derive(Subcommand, Clone, Debug, Hash, PartialEq, Eq, AsRefStr)]
@@ -84,7 +176,12 @@ pub enum SubCommand {
     #[command(long_about = "Start cluster(TxService/LogService/Storage)")]
     Start {
         cluster: String,
-        #[arg(long, value_delimiter = ',', value_name = "nodes")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            value_name = "nodes",
+            value_parser = parse_host_port
+        )]
         nodes: Vec<String>,
     },
     #[command(long_about = "Stop cluster components")]
@@ -105,7 +202,12 @@ pub enum SubCommand {
         all: bool,
         #[arg(long, value_name = "cluster password")]
         password: Option<String>,
-        #[arg(long, value_delimiter = ',', value_name = "nodes")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            value_name = "nodes",
+            value_parser = parse_host_port
+        )]
         nodes: Vec<String>,
     },
 
@@ -130,17 +232,12 @@ pub enum SubCommand {
     #[command(long_about = "Update an existing cluster to a target version.\n\
                       By default this performs a rolling upgrade that stops, replaces, and restarts services.\n\
                       Use `--download-only` to resolve the requested version and download the required EloqKV tarballs\n\
-                      into the local cache without changing remote hosts or cluster state.\n\
-                      Use `--monitor` to update only one monitor component without touching the EloqKV cluster.")]
+                      into the local cache without changing remote hosts or cluster state.")]
     #[strum(serialize = "update")]
     Update {
-        #[arg(
-            help = "Existing cluster name; required for rolling updates, download-only, and monitor-only updates"
-        )]
+        #[arg(help = "Existing cluster name; required for rolling updates and download-only")]
         cluster: Option<String>,
-        #[arg(
-            help = "Target EloqKV version or `latest`; required unless using --monitor without a version change"
-        )]
+        #[arg(help = "Target EloqKV version or `latest`")]
         version: Option<String>,
         #[arg(
             long,
@@ -148,17 +245,6 @@ pub enum SubCommand {
             help = "Download the target release tarballs into the local cache only; do not update remote hosts. Use as: `eloqctl update <cluster> <version> --download-only`"
         )]
         download_only: bool,
-        #[arg(
-            long,
-            value_enum,
-            help = "Update only the selected monitor component instead of the EloqKV cluster"
-        )]
-        monitor: Option<UpdateMonitorComponent>,
-        #[arg(
-            long,
-            help = "Override the tarball URL for the selected monitor component; valid only with --monitor"
-        )]
-        monitor_url: Option<String>,
         #[arg(
             long,
             value_name = "password for graceful shutdown and redis operations"
@@ -247,9 +333,14 @@ pub enum SubCommand {
     #[command(long_about = "Run the SQLite schema script to create any missing tables")]
     Upgrade,
 
-    #[command(long_about = "monitor control component")]
+    #[command(long_about = "Manage monitor components without touching EloqKV")]
     #[strum(serialize = "monitor")]
-    Monitor { command: String, cluster: String },
+    Monitor {
+        #[arg(long, global = true, help = "Existing cluster name")]
+        cluster: Option<String>,
+        #[command(subcommand)]
+        command: MonitorCommand,
+    },
 
     #[command(long_about = "LogService control component")]
     #[strum(serialize = "log-srv")]
@@ -372,6 +463,25 @@ fn parse_duration(s: &str) -> Result<Duration, String> {
     s.parse::<HumanDuration>()
         .map(|d| Duration::from_std(*d).unwrap())
         .map_err(|e| e.to_string())
+}
+
+fn parse_host_port(s: &str) -> Result<String, String> {
+    let Some((host, port)) = s.split_once(':') else {
+        return Err(format!("invalid node '{s}': expected 'host:port'"));
+    };
+
+    if host.is_empty() {
+        return Err(format!("invalid node '{s}': host must not be empty"));
+    }
+
+    if port.is_empty() {
+        return Err(format!("invalid node '{s}': port must not be empty"));
+    }
+
+    port.parse::<u16>()
+        .map_err(|_| format!("invalid node '{s}': port must be a valid number"))?;
+
+    Ok(s.to_string())
 }
 
 fn parse_datetime(s: &str) -> Result<DateTime<Utc>, String> {

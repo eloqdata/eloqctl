@@ -646,7 +646,6 @@ func main() {
 		pref(logPrefix), strings.Join(addrs, ","), workers, inflight, duration, keyCount, commandSet, readFromReplicas)
 
 	totalSlots := workers * inflight
-
 	// Cluster client for discovery
 	clusterOpts := &redis.ClusterOptions{
 		Addrs:    addrs,
@@ -873,7 +872,6 @@ func main() {
 	}
 	logger.Printf("PASS")
 }
-
 func pref(s string) string {
 	if s == "" {
 		return ""

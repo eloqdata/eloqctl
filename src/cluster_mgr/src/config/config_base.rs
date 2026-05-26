@@ -22,7 +22,9 @@ pub const LOG_SERVICE_HOME: &str = "LogServer";
 pub const ELOQ_FILE_KEY: &str = "eloq_tx";
 pub const ELOQ_LOG_FILE_KEY: &str = "eloq_log";
 pub const PROMETHEUS_FILE_KEY: &str = "prometheus";
+pub const ALERTMANAGER_FILE_KEY: &str = "alertmanager";
 pub const GRAFANA_FILE_KEY: &str = "grafana";
+pub const PROMETHEUSALERT_FILE_KEY: &str = "alertmanager-webhook-adapter";
 pub const NODE_EXPORTER_FILE_KEY: &str = "node_exporter";
 pub const DEPLOYMENT_CHECK_SUCCESS_TASK: &str = "deploy_check_success_task";
 pub const SCALED_CLUSTER_CONFIG: &str = "cluster_config";
@@ -280,8 +282,14 @@ impl DeployConfig {
                     DeploymentPackage::Prometheus => {
                         extract_monitor_link!(monitor_link, PROMETHEUS_FILE_KEY, unpack_files);
                     }
+                    DeploymentPackage::Alertmanager => {
+                        extract_monitor_link!(monitor_link, ALERTMANAGER_FILE_KEY, unpack_files);
+                    }
                     DeploymentPackage::Grafana => {
                         extract_monitor_link!(monitor_link, GRAFANA_FILE_KEY, unpack_files);
+                    }
+                    DeploymentPackage::PrometheusAlert => {
+                        extract_monitor_link!(monitor_link, PROMETHEUSALERT_FILE_KEY, unpack_files);
                     }
                     DeploymentPackage::Proxy => unreachable!(),
                 }
@@ -520,8 +528,16 @@ impl DeployConfig {
                 self.get_host_list(DeploymentPackage::Prometheus),
             ),
             (
+                DeploymentPackage::Alertmanager,
+                self.get_host_list(DeploymentPackage::Alertmanager),
+            ),
+            (
                 DeploymentPackage::Grafana,
                 self.get_host_list(DeploymentPackage::Grafana),
+            ),
+            (
+                DeploymentPackage::PrometheusAlert,
+                self.get_host_list(DeploymentPackage::PrometheusAlert),
             ),
         ])
     }
@@ -534,8 +550,10 @@ impl DeployConfig {
             EloqVoter,
             EloqLog,
             Storage,
+            Alertmanager,
             Grafana,
-            Prometheus
+            Prometheus,
+            PrometheusAlert
         );
         all_hosts.iter().unique().cloned().collect_vec()
     }

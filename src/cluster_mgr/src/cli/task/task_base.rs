@@ -1,5 +1,5 @@
 use crate::cli::task::group::{init_task_group, Config};
-use crate::cli::task::task_controller::TaskController;
+use crate::cli::task::task_controller::{summarize_error, task_action_summary, TaskController};
 use crate::cli::{SubCommand, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::connection::Connection;
 use crate::config::load_remote_env;
@@ -156,6 +156,13 @@ pub fn merge_execution(
         );
         tasks.executable.iter().for_each(|(id, _)| {
             debug!("add task {}", id.format_string());
+            if executable.contains_key(id) {
+                tracing::warn!(
+                    "duplicate task id detected while merging step {}: {}",
+                    tasks.task_group,
+                    id.format_string()
+                );
+            }
         });
 
         if !tasks.executable.is_empty() {
@@ -286,6 +293,26 @@ pub struct TaskId {
 impl TaskId {
     pub fn format_string(&self) -> String {
         format!("host={},cmd={},task={}", self.host, self.cmd, self.task)
+    }
+
+    pub fn parse_format_string(task_id: &str) -> Option<Self> {
+        let mut host = None;
+        let mut cmd = None;
+        let mut task = None;
+        for part in task_id.split(',') {
+            let (key, value) = part.split_once('=')?;
+            match key {
+                "host" => host = Some(value.to_string()),
+                "cmd" => cmd = Some(value.to_string()),
+                "task" => task = Some(value.to_string()),
+                _ => {}
+            }
+        }
+        Some(Self {
+            host: host?,
+            cmd: cmd?,
+            task: task?,
+        })
     }
 
     pub fn as_json_string(&self) -> String {
@@ -427,8 +454,19 @@ impl TaskMgr {
                 }
                 TaskResultEnum::Success(None) => info!("task {task_id} finished"),
                 TaskResultEnum::Error(err_msg) => {
-                    let s =
-                        format!("=> {task_id}\nFailure; {err_msg}\n---------------------------\n");
+                    let parsed = TaskId::parse_format_string(&task_id);
+                    let action = parsed
+                        .as_ref()
+                        .map(|id| task_action_summary(&id.cmd, &id.task))
+                        .unwrap_or_else(|| "run task".to_string());
+                    let host = parsed
+                        .as_ref()
+                        .map(|id| id.host.clone())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let s = format!(
+                        "=> {task_id}\nAction: {action}\nHost: {host}\nFailure: {}\n---------------------------\n",
+                        summarize_error(&err_msg)
+                    );
                     match writer {
                         Some(ref mut w) => w.write_all(s.as_bytes())?,
                         None => eprintln!("{s}"),

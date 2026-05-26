@@ -136,6 +136,7 @@ fn friendly_step_name(name: &str) -> &str {
         "StopTxNodes" => "Move traffic away from the current master",
         "StartTx" => "Start the original master node",
         "WaitCurrentMaster" => "Wait for a serving master",
+        "WaitTxReplicaReady" => "Wait for the original master to rejoin as replica",
         "FailoverBackAndStopStandby" => "Move traffic back and restart standby",
         "StartStandby" => "Start standby nodes",
         "StopVoters" => "Stop voter nodes",

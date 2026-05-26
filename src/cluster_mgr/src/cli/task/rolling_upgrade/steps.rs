@@ -11,6 +11,7 @@ use crate::cli::task::local_extract_task::LocalExtractTask;
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::upload::upload_task_builder::{upload_tasks, UploadTaskBuilderType};
+use crate::cli::task::wait_replica_ready_task::WaitReplicaReadyTask;
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
 use crate::config::storage_service_config::DataStoreServiceBackend;
@@ -578,6 +579,83 @@ impl FailoverBackAndStopStandby {
     }
 }
 
+pub struct WaitTxReplicaReady {
+    ctx: UpgradeContext,
+}
+
+impl WaitTxReplicaReady {
+    pub fn new(ctx: UpgradeContext) -> Self {
+        Self { ctx }
+    }
+}
+
+#[async_trait]
+impl Step for WaitTxReplicaReady {
+    fn name(&self) -> &str {
+        "WaitTxReplicaReady"
+    }
+
+    async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
+        if !self.ctx.has_standby() {
+            return Ok(TaskExecutionContext::dummy());
+        }
+
+        let tx_nodes = self.ctx.tx_host_ports();
+        let standby_nodes = self.ctx.standby_host_ports();
+        if tx_nodes.len() != standby_nodes.len() {
+            bail!(
+                "tx/standby node count mismatch: tx={}, standby={}",
+                tx_nodes.len(),
+                standby_nodes.len()
+            );
+        }
+        let mut executable = IndexMap::new();
+
+        for (source_addr, target_addr) in standby_nodes.iter().zip(tx_nodes.iter()) {
+            let Some((source_host, source_port_str)) = source_addr.split_once(':') else {
+                bail!("invalid host:port in standby list: '{source_addr}'");
+            };
+            let Ok(source_port) = source_port_str.parse::<u16>() else {
+                bail!("invalid port in standby list: '{source_addr}'");
+            };
+            let Some((target_host, target_port_str)) = target_addr.split_once(':') else {
+                bail!("invalid host:port in tx list: '{target_addr}'");
+            };
+            let Ok(target_port) = target_port_str.parse::<u16>() else {
+                bail!("invalid port in tx list: '{target_addr}'");
+            };
+            let task_id = TaskId {
+                cmd: "topology".to_string(),
+                task: format!("wait-tx-replica-ready-{target_port}"),
+                host: target_host.to_string(),
+            };
+            executable.insert(
+                task_id.clone(),
+                TaskInstance {
+                    task_input: HashMap::default(),
+                    task: Box::new(
+                        WaitReplicaReadyTask::new(
+                            task_id,
+                            self.ctx.redis_cluster_startup_nodes(),
+                            source_host.to_string(),
+                            source_port,
+                            target_host.to_string(),
+                            target_port,
+                            self.ctx.redis_password.clone(),
+                        )
+                        .with_service_endpoints(
+                            self.ctx.deploy.connection.service_endpoints.clone(),
+                        ),
+                    ),
+                    task_host: TaskHost::Local,
+                },
+            );
+        }
+
+        Ok(single_barrier_ctx("wait-tx-replica-ready", executable))
+    }
+}
+
 #[async_trait]
 impl Step for FailoverBackAndStopStandby {
     fn name(&self) -> &str {
@@ -769,6 +847,7 @@ pub fn build_upgrade_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
         Box::new(StartLogAndWait::new(ctx.clone())),
         Box::new(StartTx::new(ctx.clone())),
         Box::new(WaitCurrentMaster::new(ctx.clone())),
+        Box::new(WaitTxReplicaReady::new(ctx.clone())),
         Box::new(FailoverBackAndStopStandby::new(ctx.clone())),
         Box::new(UnpackStandby::new(ctx.clone())),
         Box::new(StartStandby::new(ctx.clone())),
@@ -784,6 +863,7 @@ pub fn build_config_restart_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
         Box::new(StopTxNodes::new(ctx.clone())),
         Box::new(StartTx::new(ctx.clone())),
         Box::new(WaitCurrentMaster::new(ctx.clone())),
+        Box::new(WaitTxReplicaReady::new(ctx.clone())),
         Box::new(FailoverBackAndStopStandby::new(ctx.clone())),
         Box::new(StartStandby::new(ctx.clone())),
         Box::new(StopVoters::new(ctx.clone())),

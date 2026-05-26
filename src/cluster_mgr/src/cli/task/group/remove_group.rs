@@ -64,7 +64,7 @@ impl TaskGroup for RemoveTaskGroup {
                     .map(|(host, dirs)| {
                         let content = dirs
                             .into_iter()
-                            .map(|d| format!("rm -r {}", d))
+                            .map(|d| format!("rm -rf {}", d))
                             .join(" && ");
 
                         let task_host = TaskHost::remote(&cluster_config.connection, &host);
@@ -96,7 +96,7 @@ impl TaskGroup for RemoveTaskGroup {
             let clean_tasks = ExecCustomCommand::from_config(
                 &cmd_arg,
                 "clean",
-                format!("rm -r {}", cluster_config.install_dir()),
+                format!("rm -rf {}", cluster_config.install_dir()),
                 config,
             );
             barrier.push(clean_tasks.len());

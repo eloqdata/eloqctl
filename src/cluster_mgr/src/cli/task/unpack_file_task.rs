@@ -11,9 +11,11 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use tracing::info;
 
-pub(crate) const REMOTE_UNPACKED_NAMES: [&str; 6] = [
+pub(crate) const REMOTE_UNPACKED_NAMES: [&str; 8] = [
     "prometheus",
+    "alertmanager",
     "grafana",
+    "PrometheusAlert",
     "node_exporter",
     "eloq-logserver",
     "eloqkv-proxy",
@@ -32,6 +34,9 @@ pub struct UnpackFileTask {
 fn extract_unpacked_name(raw_file_name: &str) -> String {
     if raw_file_name.starts_with("eloqdb") {
         return "eloqdb".to_string();
+    }
+    if raw_file_name.contains("PrometheusAlert") || raw_file_name == "linux.zip" {
+        return "alertmanager-webhook-adapter".to_string();
     }
     for unpacked in REMOTE_UNPACKED_NAMES {
         if !raw_file_name.contains(unpacked) {

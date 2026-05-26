@@ -122,6 +122,51 @@ impl CheckTask {
         Ok(None)
     }
 
+    async fn check_alertmanager(&self, host: TaskHost) -> Result<Option<ExecutionValue>> {
+        let ssh_k = self.config.connection.ssh_auth_key().unwrap();
+        let sess = ssh::SSHSession::from_task_host(host, ssh_k).await?;
+        let port = self
+            .config
+            .deployment
+            .monitor
+            .as_ref()
+            .unwrap()
+            .alertmanager
+            .as_ref()
+            .unwrap()
+            .port;
+        for p in sess.used_tcp_ports().await? {
+            if port == p {
+                bail!("alertmanager socket {}:{p} is already used", self.host);
+            }
+        }
+        Ok(None)
+    }
+
+    async fn check_prometheusalert(&self, host: TaskHost) -> Result<Option<ExecutionValue>> {
+        let ssh_k = self.config.connection.ssh_auth_key().unwrap();
+        let sess = ssh::SSHSession::from_task_host(host, ssh_k).await?;
+        let port = self
+            .config
+            .deployment
+            .monitor
+            .as_ref()
+            .unwrap()
+            .alertmanager
+            .as_ref()
+            .unwrap()
+            .webhook_adapter_port;
+        for p in sess.used_tcp_ports().await? {
+            if port == p {
+                bail!(
+                    "alertmanager-webhook-adapter socket {}:{p} is already used",
+                    self.host
+                );
+            }
+        }
+        Ok(None)
+    }
+
     async fn check_proxy(&self, _: TaskHost) -> Result<Option<ExecutionValue>> {
         Ok(None)
     }
@@ -151,7 +196,9 @@ impl TaskExecutor for CheckTask {
                 Ok(None)
             }
             DeploymentPackage::Prometheus => self.check_prometheus(host).await,
+            DeploymentPackage::Alertmanager => self.check_alertmanager(host).await,
             DeploymentPackage::Grafana => self.check_grafana(host).await,
+            DeploymentPackage::PrometheusAlert => self.check_prometheusalert(host).await,
             DeploymentPackage::EloqLog => self.check_log_sv(host).await,
             DeploymentPackage::Proxy => self.check_proxy(host).await,
         }

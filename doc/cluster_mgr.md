@@ -49,12 +49,13 @@ eloqctl remove eloqkv-cluster --force
 | `connect <cluster>` | Print an EloqKV client command for the cluster. |
 | `plan <topology.yaml>` | Preview supported changes without mutating local state or remote hosts. |
 | `apply <topology.yaml>` | Execute the same plan shown by `plan`, gated by live critical-service health and verified afterward. |
-| `update <cluster> <version>` | Rolling version update for an existing cluster. Version lookup and tarball selection come from GitHub Releases for `eloqdata/eloqkv`. `--download-only` resolves and caches the required tarballs without touching remote hosts. `--monitor` updates only one monitor component. |
+| `update <cluster> <version>` | Rolling version update for an existing cluster. Version lookup and tarball selection come from GitHub Releases for `eloqdata/eloqkv`. `--download-only` resolves and caches the required tarballs without touching remote hosts. |
 | `update-conf <cluster>` | Apply selected config fields and optionally restart tx nodes. |
 | `scale <cluster>` | Add or remove EloqKV tx/standby nodes. Duplicate add/remove requests are no-ops. |
 | `scalelog <cluster>` | Add or remove log service nodes. Duplicate add/remove requests are no-ops. |
 | `failover <cluster>` | Move leadership from an old leader to a requested new leader. |
-| `monitor start|stop <cluster>` | Manage Prometheus, Grafana, and node exporter when monitor config is present. |
+| `monitor start|stop|status <cluster>` | Manage Prometheus, Grafana, and node exporter when monitor config is present. |
+| `monitor update <cluster> --component <name> [--url <tarball>]` | Update exactly one monitor component without touching EloqKV. If the selected component is not running yet, the command installs/unpacks it and then starts it. |
 | `log-service start|stop <cluster>` | Manage standalone log service nodes. |
 | `backup <cluster> ...` | Create, list, remove, restore, and dump backups. |
 | `export <cluster> [--output file]` | Write the saved launch-compatible topology YAML. |

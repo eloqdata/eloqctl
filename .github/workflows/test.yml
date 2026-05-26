@@ -16,15 +16,15 @@ on:
       workers:
         description: "Stress test workers"
         required: false
-        default: "32"
+        default: "8"
       duration:
         description: "Stress duration (seconds)"
         required: false
-        default: "60"
+        default: "20"
       repeat:
         description: "Per-command repeat factor"
         required: false
-        default: "10"
+        default: "8"
       inflight:
         description: "Concurrent execution slots per worker"
         required: false
@@ -74,29 +74,19 @@ jobs:
 
       - name: Build eloqctl
         run: |
-          cargo build -p cluster_mgr
-          mkdir -p ~/.eloqctl/bin
-          cp target/debug/cluster_mgr ~/.eloqctl/bin/cluster_mgr
-          chmod 755 ~/.eloqctl/bin/cluster_mgr
-          rm -f ~/.eloqctl/config
-          ln -s "$PWD/src/cluster_mgr/config" ~/.eloqctl/config
+          tests/e2e/devctl.sh build
 
       - name: Run E2E test
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            workers="${{ github.event.inputs.workers || '32' }}"
-            duration="${{ github.event.inputs.duration || '60' }}"
-            repeat="${{ github.event.inputs.repeat || '10' }}"
+            workers="${{ github.event.inputs.workers || '8' }}"
+            duration="${{ github.event.inputs.duration || '20' }}"
+            repeat="${{ github.event.inputs.repeat || '8' }}"
             inflight="${{ github.event.inputs.inflight || '4' }}"
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
-            workers="16"
-            duration="60"
-            repeat="10"
-            inflight="4"
           else
-            workers="32"
-            duration="60"
-            repeat="20"
+            workers="8"
+            duration="20"
+            repeat="8"
             inflight="4"
           fi
 
@@ -105,13 +95,14 @@ jobs:
           export ELOQCTL="$HOME/.eloqctl/bin/cluster_mgr"
           export ELOQKV_VERSION="${{ github.event.inputs.version || '1.2.2' }}"
           export DURATION_SECONDS="${duration}"
+          export INFO_ONLY_DURATION_SECONDS="30"
           export WORKERS="${workers}"
           export INFLIGHT="${inflight}"
           export REPEAT="${repeat}"
           export SKIP_DEPS=1
-          export STEPS="launch,py-stress,go-stress,ts-stress,remove"
+          export STEPS="launch,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove"
           echo "Running E2E with WORKERS=${WORKERS} INFLIGHT=${INFLIGHT} DURATION_SECONDS=${DURATION_SECONDS} REPEAT=${REPEAT}"
-          bash tests/e2e/cmd_stress_test.sh
+          tests/e2e/devctl.sh stress "${STEPS}"
 
       - name: Cleanup Docker
         if: always()

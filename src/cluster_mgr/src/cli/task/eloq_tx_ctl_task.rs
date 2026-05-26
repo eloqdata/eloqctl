@@ -129,6 +129,7 @@ pub struct RedisProbe {
     host: String,
     port: u16,
     password: Option<String>,
+    tls_enabled: bool,
 }
 
 impl RedisProbe {
@@ -137,6 +138,7 @@ impl RedisProbe {
             host,
             port,
             password: None,
+            tls_enabled: false,
         }
     }
 
@@ -145,17 +147,38 @@ impl RedisProbe {
             host,
             port,
             password,
+            tls_enabled: false,
+        }
+    }
+
+    pub fn with_password_and_tls(
+        host: String,
+        port: u16,
+        password: Option<String>,
+        tls_enabled: bool,
+    ) -> Self {
+        Self {
+            host,
+            port,
+            password,
+            tls_enabled,
         }
     }
 
     pub async fn probe(&self, mut wait_secs: i32) -> anyhow::Result<ExecutionValue> {
         info!("Probe whether Redis is ready to serve requests");
+        let scheme = if self.tls_enabled { "rediss" } else { "redis" };
         let url = if let Some(ref pass) = self.password {
-            format!("redis://:{pass}@{}:{}/", self.host, self.port)
+            format!("{scheme}://:{pass}@{}:{}/", self.host, self.port)
         } else {
-            format!("redis://{}:{}/", self.host, self.port)
+            format!("{scheme}://{}:{}/", self.host, self.port)
         };
-        let client = redis::Client::open(url.clone())?;
+        let client_url = if self.tls_enabled {
+            format!("{url}#insecure")
+        } else {
+            url.clone()
+        };
+        let client = redis::Client::open(client_url)?;
         loop {
             match client.get_connection() {
                 Ok(mut con) => {
@@ -512,6 +535,12 @@ impl EloqTxCtlTask {
             receiver,
         }
     }
+
+    fn redis_probe_endpoint(&self, host: &str, port: u16) -> (String, u16, bool) {
+        let tls_enabled = self.config.deployment.tls_enabled();
+        let (endpoint_host, endpoint_port) = self.config.service_endpoint(host, port);
+        (endpoint_host, endpoint_port, tls_enabled)
+    }
 }
 
 fn extract_server_type_and_port(input: &str) -> (&str, &str) {
@@ -550,6 +579,7 @@ impl TaskExecutor for EloqTxCtlTask {
         if let Some(receiver) = &self.receiver {
             let timeout = Duration::from_secs(5);
             let start_time = tokio::time::Instant::now();
+            let allow_missing_topology = matches!(self.ctl_cmd.as_ref(), "stop" | "force_stop");
 
             loop {
                 if receiver.has_changed().unwrap_or(false) {
@@ -572,6 +602,13 @@ impl TaskExecutor for EloqTxCtlTask {
                 }
 
                 if start_time.elapsed() >= timeout {
+                    if allow_missing_topology {
+                        info!(
+                            "Timeout waiting for cluster topology for {}. Falling back to direct process control.",
+                            self.task_id.format_string()
+                        );
+                        break;
+                    }
                     let redis_cmd_result = HashMap::from([
                         (
                             CMD.to_string(),
@@ -619,6 +656,7 @@ impl TaskExecutor for EloqTxCtlTask {
         let (host_value, user) = ssh_session.ssh_conn_info();
         let check_status_cmd =
             eloq_cmd_with_port!(TxCtlCmd::Status, tx_bin, user, port).cmd_value();
+        let status_error_cmd = check_status_cmd.clone();
 
         let check_status = eloq_cmd_with_port!(TxCtlCmd::Status, tx_bin, user.to_string(), port);
         let cmd_val = check_status.cmd_value();
@@ -629,29 +667,51 @@ impl TaskExecutor for EloqTxCtlTask {
             "status" => {
                 let wait_secs =
                     TaskArgValue::into_inner_value::<i32>(task_arg.get(WAIT_SECS).unwrap().clone());
-                if wait_secs >= 0 && server_type == "txservice" {
+                if wait_secs >= 0 && matches!(server_type, "txservice" | "standby") {
                     let rp = self.config.redis_password(None);
-                    if self.config.deployment.cluster_mode.unwrap_or(false) {
-                        let mut startup_nodes =
-                            self.config.get_host_port_list(DeploymentPackage::EloqTx);
-                        startup_nodes.extend(
-                            self.config
-                                .get_host_port_list(DeploymentPackage::EloqStandby),
-                        );
-                        let startup_nodes = self.config.service_host_ports(startup_nodes);
-                        RedisProbe::probe_cluster(startup_nodes, rp, wait_secs).await
+                    let cs_port: u16 = port.parse().unwrap();
+                    let (endpoint_host, endpoint_port, tls_enabled) =
+                        self.redis_probe_endpoint(&self.task_id.host, cs_port);
+                    let probe_host = if endpoint_host == self.task_id.host {
+                        host_value
                     } else {
-                        let cs_port: u16 = port.parse().unwrap();
-                        let (endpoint_host, endpoint_port) =
-                            self.config.service_endpoint(&self.task_id.host, cs_port);
-                        let probe_host = if endpoint_host == self.task_id.host {
-                            host_value
-                        } else {
-                            endpoint_host
-                        };
-                        RedisProbe::with_password(probe_host, endpoint_port, rp)
-                            .probe(wait_secs)
-                            .await
+                        endpoint_host
+                    };
+                    let probe_result = RedisProbe::with_password_and_tls(
+                        probe_host,
+                        endpoint_port,
+                        rp,
+                        tls_enabled,
+                    )
+                    .probe(wait_secs)
+                    .await?;
+                    let status_code = probe_result
+                        .get(CMD_STATUS)
+                        .map(|v| TaskArgValue::into_inner_value::<i32>(v.clone()))
+                        .unwrap_or(0);
+                    if status_code == 0 {
+                        Ok(probe_result)
+                    } else {
+                        let detail = probe_result
+                            .get(CMD_OUTPUT)
+                            .map(|v| TaskArgValue::into_inner_value::<String>(v.clone()))
+                            .unwrap_or_else(|| "probe failed".to_string());
+                        Ok(HashMap::from([
+                            (
+                                CMD.to_string(),
+                                TaskArgValue::Str(format!(
+                                    "Dial Redis={}://{}:{}",
+                                    if tls_enabled { "rediss" } else { "redis" },
+                                    self.task_id.host,
+                                    endpoint_port
+                                )),
+                            ),
+                            (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
+                            (
+                                CMD_OUTPUT.to_string(),
+                                TaskArgValue::Str(format!("eloqkv service is down: {detail}")),
+                            ),
+                        ]))
                     }
                 } else {
                     check_process_status
@@ -729,9 +789,21 @@ impl TaskExecutor for EloqTxCtlTask {
                 let start_cmd = self.ctl_cmd.cmd_value();
                 info!("start_cmd: {}", start_cmd);
                 info!("check_status_cmd: {}", check_status_cmd);
-                tx_ctl!(self, check_process_status, {==, PID_NOT_FOUND}, async || -> anyhow::Result<ExecutionValue> {
-                    wait_command_complete!(start_cmd, check_status_cmd, ssh_session.clone(), is_some)
-                })
+                let start_cmd_for_wait = start_cmd.clone();
+                let mut process_started = tx_ctl!(self, check_process_status, {==, PID_NOT_FOUND}, async || -> anyhow::Result<ExecutionValue> {
+                     wait_command_complete!(start_cmd_for_wait, check_status_cmd, ssh_session.clone(), is_some)
+                })?;
+                if let Some(output) = process_started.get(CMD_OUTPUT) {
+                    let start_output = TaskArgValue::into_inner_value::<String>(output.clone());
+                    process_started.insert(CMD.to_string(), TaskArgValue::Str(start_cmd));
+                    process_started.insert(
+                        CMD_OUTPUT.to_string(),
+                        TaskArgValue::Str(format!(
+                            "start process check={start_output}, cluster readiness is verified by later status/topology steps"
+                        )),
+                    );
+                }
+                Ok(process_started)
             }
             _ => {
                 unreachable!("Unrecognized command: {}", ctl_cmd_ref);
@@ -739,7 +811,21 @@ impl TaskExecutor for EloqTxCtlTask {
         };
 
         ssh_session.close().await?;
-        let mut ctl_rtn_value = eloq_ctl_rs?;
+        let mut ctl_rtn_value = match eloq_ctl_rs {
+            Ok(value) => value,
+            Err(err) if ctl_cmd_ref == "status" => HashMap::from([
+                (CMD.to_string(), TaskArgValue::Str(status_error_cmd)),
+                (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
+                (
+                    CMD_OUTPUT.to_string(),
+                    TaskArgValue::Str(format!("eloqkv service is down: {err}")),
+                ),
+            ]),
+            Err(err) => return Err(err),
+        };
+        if ctl_cmd_ref == "status" {
+            ctl_rtn_value.insert(CMD_STATUS.to_string(), TaskArgValue::Number(0));
+        }
         if ctl_cmd_ref == "status" && ctl_rtn_value.contains_key(PROCESS_PID) {
             let pid = TaskArgValue::into_inner_value::<String>(
                 ctl_rtn_value.get(PROCESS_PID).unwrap().clone(),

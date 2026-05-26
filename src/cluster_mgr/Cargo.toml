@@ -39,6 +39,7 @@ serde_yaml = "0.9"
 serde_with = "1.6.1"
 sha2 = "0.10"
 tar = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 sqlx = { version = "0.7.3", features = [
     "runtime-tokio-native-tls",
     "sqlite",
@@ -81,7 +82,7 @@ users = "0.11.0"
 regex = "1.10.2"
 toml = "0.8.10"
 tokio-postgres = "0.7.10"
-redis = { version = "0.32.7", features = ["cluster", "cluster-async", "aio", "tokio-comp"] }
+redis = { version = "0.32.7", features = ["cluster", "cluster-async", "aio", "tokio-native-tls-comp"] }
 uuid = { version = "1", features = ["v4"] }
 prettytable = "0.10.0"
 aws-sdk-s3 = "1.0"

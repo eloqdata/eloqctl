@@ -9,21 +9,27 @@ use crate::cli::{download_dir, CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::DeployConfig;
 use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::DownloadUrl;
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{anyhow, Result};
 use futures::stream::StreamExt;
 use indexmap::IndexMap;
 use indicatif::{MultiProgress, ProgressBar};
 use itertools::Itertools;
-use reqwest::header::{ACCEPT, USER_AGENT};
+use reqwest::header::{ACCEPT, CONNECTION, RANGE, USER_AGENT};
+use reqwest::StatusCode;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs;
+use std::fs::OpenOptions;
 use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
+use std::time::Duration;
 use tracing::{error, info};
+
+const MAX_DOWNLOAD_ATTEMPTS: usize = 4;
+const DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone)]
 pub struct DownloadTask {
@@ -240,6 +246,7 @@ impl TaskExecutor for DownloadTask {
         // Try HEAD first to check remote content-length for cache validation
         let remote_len = HTTP_CLIENT
             .head(&self.url)
+            .header(CONNECTION, "close")
             .send()
             .await
             .ok()
@@ -275,62 +282,168 @@ impl TaskExecutor for DownloadTask {
                 );
                 return Ok(None);
             }
-        }
 
-        let response = HTTP_CLIENT
-            .get(&self.url)
-            .send()
-            .await
-            .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
-        let status = response.status();
-        if !status.is_success() {
-            error!("Download falied http status_code = {:?}", status.as_str());
-            return Err(anyhow!(DownloadErr(self.url.clone(), status.to_string())));
-        }
-        let file_len = response.content_length().unwrap();
-
-        // Double-check cache after successful GET (in case of concurrent download)
-        if save_path.exists() {
-            let digest_matches = match &expected_digest {
-                Some(expected) => Self::sha256_file(&save_path)
-                    .map(|actual| actual == *expected)
-                    .unwrap_or(false),
-                None => false,
-            };
-            if digest_matches
-                || (expected_digest.is_none()
-                    && fs::metadata(&save_path)
-                        .map(|m| m.len() == file_len)
-                        .unwrap_or(false))
+            if expected_digest.is_none()
+                && remote_len.is_none()
+                && fs::metadata(&save_path)
+                    .map(|m| m.len() > 0)
+                    .unwrap_or(false)
             {
-                info!("local file cache {:?} found.", save_path);
+                info!(
+                    "local file cache {:?} found (remote HEAD unavailable), reusing existing file.",
+                    save_path
+                );
                 return Ok(None);
             }
         }
-        // TODO(zhanghao): Use HTTP range header to resume download
-        let part_path = append_ext(save_path.clone(), "partial");
-        let mut part_file = std::fs::File::create(part_path.as_path())
-            .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
 
-        // start downloading
-        self.pg_bar.set_length(file_len);
-        self.pg_bar
-            .set_message(format!("{} Downloading...", self.name));
-        let mut stream_reader = response.bytes_stream();
-        while let Some(stream_chunk) = stream_reader.next().await {
-            if let Err(err) = stream_chunk {
-                error!("DownloadRemote task error file={},msg={}", url, err);
-                return Err(anyhow!(DownloadErr(url.clone(), err.to_string())));
+        let part_path = append_ext(save_path.clone(), "partial");
+        let mut final_file_len = remote_len.unwrap_or(0);
+        for attempt in 1..=MAX_DOWNLOAD_ATTEMPTS {
+            let mut resume_from = fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);
+
+            if let Some(expected_len) = remote_len {
+                if resume_from > expected_len {
+                    fs::remove_file(&part_path).ok();
+                    resume_from = 0;
+                } else if resume_from == expected_len && expected_len > 0 {
+                    if let Some(expected) = &expected_digest {
+                        let actual = Self::sha256_file(&part_path)
+                            .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+                        if &actual == expected {
+                            fs::rename(&part_path, save_path.as_path())
+                                .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+                            info!("partial download {:?} already complete.", save_path);
+                            return Ok(None);
+                        }
+                        fs::remove_file(&part_path).ok();
+                        resume_from = 0;
+                    } else {
+                        fs::rename(&part_path, save_path.as_path())
+                            .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+                        info!("partial download {:?} already complete.", save_path);
+                        return Ok(None);
+                    }
+                }
             }
-            let chunk = stream_chunk.unwrap();
-            if let Err(write_err) = part_file.write_all(&chunk) {
-                error!("DownloadTask {} write local file error {} ", url, write_err);
-                return Err(anyhow!(DownloadErr(url.clone(), write_err.to_string())));
+
+            let mut request = HTTP_CLIENT.get(&self.url).header(CONNECTION, "close");
+            if resume_from > 0 {
+                request = request.header(RANGE, format!("bytes={resume_from}-"));
             }
-            self.pg_bar.inc(chunk.len() as u64);
+            let response = match request.send().await {
+                Ok(response) => response,
+                Err(err) => {
+                    let err_msg = err.to_string();
+                    if attempt < MAX_DOWNLOAD_ATTEMPTS {
+                        info!(
+                            "download attempt {attempt}/{MAX_DOWNLOAD_ATTEMPTS} failed to start for {}: {}",
+                            self.name, err_msg
+                        );
+                        tokio::time::sleep(DOWNLOAD_RETRY_DELAY).await;
+                        continue;
+                    }
+                    return Err(anyhow!(DownloadErr(url.clone(), err_msg)));
+                }
+            };
+            let status = response.status();
+            if !(status.is_success() || status == StatusCode::PARTIAL_CONTENT) {
+                error!("Download falied http status_code = {:?}", status.as_str());
+                return Err(anyhow!(DownloadErr(self.url.clone(), status.to_string())));
+            }
+
+            let (mut part_file, file_len, resumed) =
+                if resume_from > 0 && status == StatusCode::PARTIAL_CONTENT {
+                    let total_len = remote_len
+                        .unwrap_or_else(|| resume_from + response.content_length().unwrap_or(0));
+                    let file = OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(part_path.as_path())
+                        .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+                    (file, total_len, true)
+                } else {
+                    if resume_from > 0 {
+                        fs::remove_file(&part_path).ok();
+                    }
+                    let file = std::fs::File::create(part_path.as_path())
+                        .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+                    (
+                        file,
+                        response.content_length().unwrap_or(remote_len.unwrap_or(0)),
+                        false,
+                    )
+                };
+            final_file_len = file_len;
+
+            // Double-check cache after successful GET (in case of concurrent download)
+            if save_path.exists() && file_len > 0 {
+                let digest_matches = match &expected_digest {
+                    Some(expected) => Self::sha256_file(&save_path)
+                        .map(|actual| actual == *expected)
+                        .unwrap_or(false),
+                    None => false,
+                };
+                if digest_matches
+                    || (expected_digest.is_none()
+                        && fs::metadata(&save_path)
+                            .map(|m| m.len() == file_len)
+                            .unwrap_or(false))
+                {
+                    info!("local file cache {:?} found.", save_path);
+                    return Ok(None);
+                }
+            }
+
+            self.pg_bar.set_length(file_len);
+            if resumed {
+                self.pg_bar.set_position(resume_from);
+            } else {
+                self.pg_bar.set_position(0);
+            }
+            self.pg_bar
+                .set_message(format!("{} Downloading...", self.name));
+
+            let mut stream_reader = response.bytes_stream();
+            let mut stream_failed = None;
+            while let Some(stream_chunk) = stream_reader.next().await {
+                if let Err(err) = stream_chunk {
+                    error!("DownloadRemote task error file={},msg={}", url, err);
+                    stream_failed = Some(err.to_string());
+                    break;
+                }
+                let chunk = stream_chunk.unwrap();
+                if let Err(write_err) = part_file.write_all(&chunk) {
+                    error!("DownloadTask {} write local file error {} ", url, write_err);
+                    return Err(anyhow!(DownloadErr(url.clone(), write_err.to_string())));
+                }
+                self.pg_bar.inc(chunk.len() as u64);
+            }
+            drop(part_file);
+
+            let current_len = fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);
+            let err_msg = if let Some(err) = stream_failed {
+                err
+            } else if file_len > 0 && current_len < file_len {
+                format!(
+                    "incomplete download after attempt {attempt}: expected {file_len} bytes, got {current_len}"
+                )
+            } else {
+                self.pg_bar
+                    .finish_with_message(format!("{} Downloaded!", self.name));
+                break;
+            };
+
+            if attempt < MAX_DOWNLOAD_ATTEMPTS {
+                info!(
+                    "download attempt {attempt}/{MAX_DOWNLOAD_ATTEMPTS} incomplete for {} (have {current_len}/{file_len} bytes), retrying",
+                    self.name
+                );
+                tokio::time::sleep(DOWNLOAD_RETRY_DELAY).await;
+            } else {
+                return Err(anyhow!(DownloadErr(url.clone(), err_msg)));
+            }
         }
-        self.pg_bar
-            .finish_with_message(format!("{} Downloaded!", self.name));
 
         if let Some(expected) = &expected_digest {
             let actual = Self::sha256_file(&part_path)
@@ -340,6 +453,18 @@ impl TaskExecutor for DownloadTask {
                 return Err(anyhow!(DownloadErr(
                     self.url.clone(),
                     format!("sha256 mismatch: expected {expected}, got {actual}")
+                )));
+            }
+        }
+
+        if final_file_len > 0 {
+            let actual_len = fs::metadata(&part_path)
+                .map(|m| m.len())
+                .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+            if actual_len != final_file_len {
+                return Err(anyhow!(DownloadErr(
+                    self.url.clone(),
+                    format!("download size mismatch: expected {final_file_len}, got {actual_len}")
                 )));
             }
         }

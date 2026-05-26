@@ -6,8 +6,8 @@ use crate::cli::task::upload::upload_task_builder::{
 };
 use crate::cli::{create_upload_cluster_dir, upload_dir};
 use crate::config::config_base::{
-    DeployConfig, UploadFile, ELOQ_FILE_KEY, ELOQ_LOG_FILE_KEY, GRAFANA_FILE_KEY,
-    NODE_EXPORTER_FILE_KEY, PROMETHEUS_FILE_KEY,
+    DeployConfig, UploadFile, ALERTMANAGER_FILE_KEY, ELOQ_FILE_KEY, ELOQ_LOG_FILE_KEY,
+    GRAFANA_FILE_KEY, NODE_EXPORTER_FILE_KEY, PROMETHEUSALERT_FILE_KEY, PROMETHEUS_FILE_KEY,
 };
 use crate::config::deployment::Deployment;
 use crate::config::storage_service_config::RocksDB;
@@ -53,7 +53,11 @@ impl EloqUploadBuilder {
                     .concat(),
                     ELOQ_LOG_FILE_KEY => log_hosts.clone(),
                     PROMETHEUS_FILE_KEY => config.get_host_list(DeploymentPackage::Prometheus),
+                    ALERTMANAGER_FILE_KEY => config.get_host_list(DeploymentPackage::Alertmanager),
                     GRAFANA_FILE_KEY => config.get_host_list(DeploymentPackage::Grafana),
+                    PROMETHEUSALERT_FILE_KEY => {
+                        config.get_host_list(DeploymentPackage::PrometheusAlert)
+                    }
                     _ => unreachable!(),
                 };
                 (dest_hosts, download_url, file_key.clone())
@@ -86,7 +90,9 @@ impl EloqUploadBuilder {
             ELOQ_FILE_KEY => config.deployment.product().home().to_string(),
             ELOQ_LOG_FILE_KEY => "LogServer".to_string(),
             PROMETHEUS_FILE_KEY => "prometheus".to_string(),
+            ALERTMANAGER_FILE_KEY => "alertmanager".to_string(),
             GRAFANA_FILE_KEY => "grafana".to_string(),
+            PROMETHEUSALERT_FILE_KEY => PROMETHEUSALERT_FILE_KEY.to_string(),
             NODE_EXPORTER_FILE_KEY => "node_exporter".to_string(),
             _ => unreachable!(),
         }

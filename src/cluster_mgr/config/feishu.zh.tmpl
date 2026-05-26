@@ -1,0 +1,63 @@
+{{ define "severity.tag" -}}
+{{- if eq . "critical" -}}<text_tag color='red'>严重</text_tag>
+{{- else if eq . "warning" -}}<text_tag color='orange'>警告</text_tag>
+{{- else if eq . "info" -}}<text_tag color='blue'>信息</text_tag>
+{{- else -}}<text_tag color='neutral'>未知</text_tag>
+{{- end -}}
+{{- end }}
+
+{{ define "status.tag" -}}
+{{- if eq . "firing" -}}<text_tag color='red'>告警中</text_tag>
+{{- else -}}<text_tag color='green'>已恢复</text_tag>
+{{- end -}}
+{{- end }}
+
+{{ define "prom.title" -}}
+{{ if eq .Status "firing" }}[告警中]{{ else }}[已恢复]{{ end }} {{ if .CommonLabels.severity }}{{ .CommonLabels.severity }}{{ else }}unknown{{ end }} · {{ if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else }}EloqKV 监控告警{{ end }} · {{ len .Alerts }}
+{{- end }}
+
+{{ define "prom.text" -}}
+{{ if .Signature }}{{ .Signature }}{{ else }}EloqKV{{ end }} 告警通知
+状态: {{ if eq .Status "firing" }}告警中{{ else }}已恢复{{ end }}
+级别: {{ if .CommonLabels.severity }}{{ .CommonLabels.severity }}{{ else }}未知{{ end }}
+规则: {{ if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else }}EloqKV 监控告警{{ end }}
+告警数量: {{ len .Alerts }}
+通知时间: {{ .MessageAt.Format "2006-01-02 15:04:05 MST" }}
+{{ if .CommonAnnotations.summary }}摘要: {{ .CommonAnnotations.summary }}
+{{ else if .CommonAnnotations.description }}摘要: {{ .CommonAnnotations.description }}
+{{ end }}
+{{ range .Alerts -}}
+
+实例: {{ if .Labels.instance }}{{ .Labels.instance }}{{ else }}未知{{ end }}
+状态: {{ if eq .Status "firing" }}告警中{{ else }}已恢复{{ end }}
+开始时间: {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+{{ if .Annotations.summary }}摘要: {{ .Annotations.summary }}
+{{ end }}{{ if .Annotations.description }}描述: {{ .Annotations.description }}
+{{ end -}}
+{{ end }}
+{{ if .ExternalURL }}Alertmanager: {{ .ExternalURL }}{{ end }}
+{{- end }}
+
+{{ define "prom.markdown" -}}
+<text_tag color='carmine'>{{ if .Signature }}{{ .Signature }}{{ else }}EloqKV{{ end }}</text_tag> **告警通知**  
+{{ template "status.tag" .Status }} {{ if .CommonLabels.severity }}{{ template "severity.tag" .CommonLabels.severity }}{{ else }}<text_tag color='neutral'>未知级别</text_tag>{{ end }} **{{ if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else }}EloqKV 监控告警{{ end }}**
+
+{{ with index .Alerts 0 -}}
+**首个实例**：<font color='red'>{{ if .Labels.instance }}{{ .Labels.instance }}{{ else }}未知{{ end }}</font>  
+{{- end }}
+**影响实例**：{{ len .Alerts }}  
+**通知时间**：{{ .MessageAt.Format "2006-01-02 15:04:05 MST" }}
+
+**摘要**：{{ if .CommonAnnotations.summary }}<font color='red'>{{ .CommonAnnotations.summary }}</font>{{ else if .CommonAnnotations.description }}<font color='red'>{{ .CommonAnnotations.description }}</font>{{ else }}请查看下方实例详情。{{ end }}
+
+**实例详情**
+{{ range .Alerts -}}
+- <font color='red'>{{ if .Labels.instance }}{{ .Labels.instance }}{{ else }}未知{{ end }}</font> · {{ template "status.tag" .Status }} · {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+{{ if .Annotations.summary }}  摘要：{{ .Annotations.summary }}
+{{ end }}{{ if .Annotations.description }}  描述：{{ .Annotations.description }}
+{{ end -}}
+{{ end }}
+{{ if .ExternalURL }}
+[查看 Alertmanager]({{ .ExternalURL }})
+{{ end -}}
+{{- end }}
