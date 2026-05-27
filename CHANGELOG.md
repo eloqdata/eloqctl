@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.8](https://github.com/monographdb/eloq_waiter/compare/v1.6.7...v1.6.8) (2026-05-27)
+
+
+### Bug Fixes
+
+* auto-upgrade local state during install ([#407](https://github.com/monographdb/eloq_waiter/issues/407)) ([8a1a574](https://github.com/monographdb/eloq_waiter/commit/8a1a574096f4bcba0c15817cb48cc049317bdb49))
+* rename checkpoint interval field ([#409](https://github.com/monographdb/eloq_waiter/issues/409)) ([d08933f](https://github.com/monographdb/eloq_waiter/commit/d08933ff2fca171e7252aefbfd0287071178b3b3))
+
 ## [1.6.7](https://github.com/monographdb/eloq_waiter/compare/v1.6.6...v1.6.7) (2026-05-23)
 
 
