@@ -7,7 +7,7 @@
 #   - TS      → stress-ts       (ioredis)
 #
 # Env overrides:
-#   STEPS=launch,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove
+#   STEPS=launch,cluster-update,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove
 #   DURATION_SECONDS=300   WORKERS=8   INFLIGHT=4   KEY_COUNT=256   REPEAT=10
 #   CMD_TIMEOUT=5         INFO_CMD_TIMEOUT=10   PROGRESS_INTERVAL=5
 #   TLS_ENABLED=1         SKIP_DEPS=1
@@ -20,7 +20,7 @@ source "${REPO_ROOT}/tests/docker_env.sh"
 CLUSTER="test-e2e"
 TOPO="${SCRIPT_DIR}/topology.generated.yaml"
 CONTROL_TOPO="${CONTROL_REPO_ROOT}/tests/e2e/topology.generated.yaml"
-STEPS="${STEPS:-launch,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove}"
+STEPS="${STEPS:-launch,cluster-update,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove}"
 
 DURATION="${DURATION_SECONDS:-300}"
 WORKERS="${WORKERS:-16}"
@@ -32,6 +32,8 @@ INFO_CMD_TIMEOUT="${INFO_CMD_TIMEOUT:-10}"
 PROGRESS_INTERVAL="${PROGRESS_INTERVAL:-5}"
 TLS_ENABLED="${TLS_ENABLED:-1}"
 SKIP_DEPS="${SKIP_DEPS:-1}"
+LAUNCH_TIMEOUT_SECONDS="${LAUNCH_TIMEOUT_SECONDS:-900}"
+STATUS_WAIT_TIMEOUT_SECONDS="${STATUS_WAIT_TIMEOUT_SECONDS:-240}"
 INFO_ONLY_WORKERS="${INFO_ONLY_WORKERS:-64}"
 INFO_ONLY_INFLIGHT="${INFO_ONLY_INFLIGHT:-16}"
 INFO_ONLY_REPEAT="${INFO_ONLY_REPEAT:-50}"
@@ -41,6 +43,7 @@ TS_INFO_ONLY_INFLIGHT="${TS_INFO_ONLY_INFLIGHT:-8}"
 TS_INFO_ONLY_REPEAT="${TS_INFO_ONLY_REPEAT:-50}"
 TS_INFO_ONLY_DURATION="${TS_INFO_ONLY_DURATION_SECONDS:-30}"
 GRAFANA_UPDATE_URL="${GRAFANA_UPDATE_URL:-https://dl.grafana.com/grafana/release/13.0.1+security-01/grafana_13.0.1+security-01_25720641773_linux_amd64.tar.gz}"
+ELOQKV_UPDATE_VERSION="${ELOQKV_UPDATE_VERSION:-${ELOQKV_VERSION:-1.2.2}}"
 GRAFANA_HTTP_URL="${GRAFANA_HTTP_URL:-http://172.28.10.14:3301}"
 ALERTMANAGER_HTTP_URL="${ALERTMANAGER_HTTP_URL:-http://172.28.10.14:9093}"
 ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL="${ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL:-http://172.28.10.14:8080}"
@@ -71,20 +74,34 @@ control_ssh_exec_string() {
         "bash -lc $(printf '%q' "${remote_cmd}")"
 }
 
+control_ssh_exec_string_with_timeout() {
+    local timeout_seconds="$1"
+    shift
+    local remote_cmd
+    printf -v remote_cmd '%q ' \
+        timeout --kill-after=10s "${timeout_seconds}s" \
+        env HOME=/home/eloq ELOQCTL_HOME="${CONTROL_ELOQCTL_HOME}" "${CONTROL_ELOQCTL}" "$@"
+    printf 'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o PasswordAuthentication=no -o BatchMode=yes -o ConnectTimeout=3 -i %q eloq@127.0.0.1 -p 2224 %q' \
+        "${ELOQCTL_DOCKER_SSH_KEY}" \
+        "bash -lc $(printf '%q' "${remote_cmd}")"
+}
+
 run_control_eloqctl_with_progress() {
     local timeout_seconds="$1"
     local log_file="$2"
     shift 2
     local subcommand="$1"
     local control_log_file="${CONTROL_ELOQCTL_HOME}/logs/last-${subcommand}.log"
-    run_with_progress "${timeout_seconds}" "${log_file}" --eloq-log "${control_log_file}" \
-        bash -lc "$(control_ssh_exec_string "$@")" \
+    local observer_timeout=$((timeout_seconds + 60))
+    run_with_progress "${observer_timeout}" "${log_file}" --eloq-log "${control_log_file}" \
+        bash -lc "$(control_ssh_exec_string_with_timeout "${timeout_seconds}" "$@")" \
         || { dump_failure_diagnostics "${log_file}"; return 1; }
 }
 
 wait_cluster_ready() {
-    run_with_progress 240 "${SCRIPT_DIR}/cmd-stress-status.log" --eloq-log "${CONTROL_ELOQCTL_HOME}/logs/last-status.log" \
-        bash -lc "$(control_ssh_exec_string status "${CLUSTER}" --wait 180)" >/dev/null 2>&1 \
+    local observer_timeout=$((STATUS_WAIT_TIMEOUT_SECONDS + 30))
+    run_with_progress "${observer_timeout}" "${SCRIPT_DIR}/cmd-stress-status.log" --eloq-log "${CONTROL_ELOQCTL_HOME}/logs/last-status.log" \
+        bash -lc "$(control_ssh_exec_string_with_timeout "${STATUS_WAIT_TIMEOUT_SECONDS}" status "${CLUSTER}" --wait 180)" >/dev/null 2>&1 \
         || { echo "FAIL: cluster not healthy"; return 1; }
 }
 
@@ -231,15 +248,18 @@ do_launch() {
     start_docker_env
     (cd "${REPO_ROOT}" && bash tests/install_control_eloqctl.sh)
     render_topology_for_control "${SCRIPT_DIR}/topology.yaml" "${TOPO}"
+    prefetch_control_download_cache "${SCRIPT_DIR}/topology.yaml" "${GRAFANA_UPDATE_URL}"
+    sync_control_download_cache
     control_exec test -f "${CONTROL_TOPO}" \
         || { echo "FAIL: control topology not found at ${CONTROL_TOPO}"; return 1; }
     control_eloqctl_cmd stop "${CLUSTER}" --all --force >/dev/null 2>&1 || true
     control_eloqctl_cmd remove "${CLUSTER}" --force >/dev/null 2>&1 || true
-    run_with_progress 420 "${SCRIPT_DIR}/launch-cmd-stress.log" --eloq-log "${CONTROL_ELOQCTL_HOME}/logs/last-launch.log" \
-        bash -lc "$(control_ssh_exec_string launch "${launch_args[@]}" "${CONTROL_TOPO}")" \
+    local observer_timeout=$((LAUNCH_TIMEOUT_SECONDS + 60))
+    run_with_progress "${observer_timeout}" "${SCRIPT_DIR}/launch-cmd-stress.log" --eloq-log "${CONTROL_ELOQCTL_HOME}/logs/last-launch.log" \
+        bash -lc "$(control_ssh_exec_string_with_timeout "${LAUNCH_TIMEOUT_SECONDS}" launch "${launch_args[@]}" "${CONTROL_TOPO}")" \
         || { dump_failure_diagnostics "${SCRIPT_DIR}/launch-cmd-stress.log"; return 1; }
-    run_with_progress 240 "${SCRIPT_DIR}/launch-cmd-stress.log" --eloq-log "${CONTROL_ELOQCTL_HOME}/logs/last-status.log" \
-        bash -lc "$(control_ssh_exec_string status "${CLUSTER}" --wait 180)" >/dev/null 2>&1 \
+    run_with_progress "${STATUS_WAIT_TIMEOUT_SECONDS}" "${SCRIPT_DIR}/launch-cmd-stress.log" --eloq-log "${CONTROL_ELOQCTL_HOME}/logs/last-status.log" \
+        bash -lc "$(control_ssh_exec_string_with_timeout "${STATUS_WAIT_TIMEOUT_SECONDS}" status "${CLUSTER}" --wait 180)" >/dev/null 2>&1 \
         || { echo "FAIL: cluster not healthy after launch"; return 1; }
     assert_cluster_registered || return 1
     refresh_monitor_status || { echo "FAIL: monitor status failed after launch"; return 1; }
@@ -276,6 +296,27 @@ do_monitor_update() {
     wait_cluster_ready || return 1
     assert_export_contains "${GRAFANA_UPDATE_URL}" || return 1
     echo "  grafana update verified"
+}
+
+do_cluster_update() {
+    echo "=== EloqKV rolling update check ==="
+    assert_cluster_registered || return 1
+    run_control_eloqctl_with_progress 900 "${SCRIPT_DIR}/cmd-stress-cluster-update.log" \
+        update "${CLUSTER}" "${ELOQKV_UPDATE_VERSION}" --password "${PASSWD}" \
+        || return 1
+    wait_cluster_ready || return 1
+    refresh_monitor_status || return 1
+    if cluster_has_monitor_service "grafana"; then
+        wait_monitor_ready || return 1
+    fi
+    if cluster_has_monitor_service "alertmanager"; then
+        wait_alertmanager_ready || return 1
+    fi
+    if cluster_has_monitor_service "alertmanager_webhook_adapter"; then
+        wait_alertmanager_webhook_adapter_ready || return 1
+    fi
+    discover_master || return 1
+    echo "  rolling update verified"
 }
 
 do_eloqctl_mutate() {
@@ -453,6 +494,7 @@ do_remove() {
 }
 
 step launch do_launch
+step cluster-update do_cluster_update
 step monitor-update do_monitor_update
 step eloqctl-mutate do_eloqctl_mutate
 step py-stress do_py_stress

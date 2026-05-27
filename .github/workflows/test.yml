@@ -100,7 +100,7 @@ jobs:
           export INFLIGHT="${inflight}"
           export REPEAT="${repeat}"
           export SKIP_DEPS=1
-          export STEPS="launch,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove"
+          export STEPS="launch,cluster-update,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove"
           echo "Running E2E with WORKERS=${WORKERS} INFLIGHT=${INFLIGHT} DURATION_SECONDS=${DURATION_SECONDS} REPEAT=${REPEAT}"
           tests/e2e/devctl.sh stress "${STEPS}"
 

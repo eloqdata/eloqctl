@@ -33,6 +33,11 @@ MINIO_ENDPOINT="${MINIO_ENDPOINT:-http://127.0.0.1:19000}"
 MINIO_ROOT_USER="${MINIO_ROOT_USER:-minioadmin}"
 MINIO_ROOT_PASSWORD="${MINIO_ROOT_PASSWORD:-minioadmin}"
 MINIO_BUCKET="${MINIO_BUCKET:-storeeloqservice}"
+HOST_DOWNLOAD_CACHE_ROOT="${HOST_DOWNLOAD_CACHE_ROOT:-${REPO_ROOT}/.tmp-e2e-download-cache}"
+LOCAL_PREFETCH_CONTROL_CACHE="${LOCAL_PREFETCH_CONTROL_CACHE:-1}"
+if [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+    LOCAL_PREFETCH_CONTROL_CACHE="0"
+fi
 
 COMPOSE_BASE="${DOCKER_E2E_DIR}/docker-compose.yaml"
 COMPOSE_OVERRIDE=""
@@ -142,6 +147,94 @@ render_topology_for_control() {
         -e "s|\${ELOQKV_VERSION}|${ELOQKV_VERSION}|g" \
         -e "s|\${ELOQCTL_FEISHU_ROBOT_URL}|${ELOQCTL_FEISHU_ROBOT_URL}|g" \
         "${source_topology}" > "${rendered_topology}"
+}
+
+e2e_eloqkv_url() {
+    local version="${1:-${ELOQKV_VERSION}}"
+    printf '%s\n' \
+        "https://github.com/eloqdata/eloqkv/releases/download/${version}/eloqkv-${version}-rocks_s3-ubuntu24-amd64.tar.gz"
+}
+
+_download_cache_target_for_url() {
+    local url="$1"
+    local filename="${url##*/}"
+    if [[ "${url}" == https://github.com/eloqdata/eloqkv/releases/download/* ]]; then
+        local store
+        store="$(printf '%s\n' "${filename}" | sed -E 's/^eloqkv-[^-]+-([^-]+)-.*$/\1/')"
+        printf '%s\n' "${HOST_DOWNLOAD_CACHE_ROOT}/eloqkv/${store}/${filename}"
+        return
+    fi
+    printf '%s\n' "${HOST_DOWNLOAD_CACHE_ROOT}/${filename}"
+}
+
+prefetch_url_to_host_cache() {
+    local url="$1"
+    local target
+    target="$(_download_cache_target_for_url "${url}")"
+    local part="${target}.partial"
+    mkdir -p "$(dirname "${target}")"
+
+    local expected_len=""
+    expected_len="$(curl -fsSLI -o /dev/null -w '%{content_length_download}' "${url}" 2>/dev/null || true)"
+    if [ -f "${target}" ] && [ -n "${expected_len}" ] && [ "${expected_len}" != "-1" ]; then
+        local actual_len
+        actual_len="$(wc -c < "${target}" | tr -d '[:space:]')"
+        if [ "${actual_len}" = "${expected_len}" ]; then
+            return 0
+        fi
+        mv "${target}" "${part}"
+    elif [ -f "${target}" ] && [ ! -f "${part}" ]; then
+        mv "${target}" "${part}"
+    fi
+
+    curl -fL --retry 8 --retry-delay 3 --retry-all-errors --continue-at - \
+        -o "${part}" "${url}"
+    mv "${part}" "${target}"
+}
+
+prefetch_control_download_cache() {
+    local topology_path="$1"
+    shift || true
+    if [ "${LOCAL_PREFETCH_CONTROL_CACHE}" != "1" ]; then
+        echo "[docker] Skip host prefetch for control-node download cache"
+        return 0
+    fi
+
+    local urls=()
+    urls+=("$(e2e_eloqkv_url)")
+    while IFS= read -r url; do
+        [ -n "${url}" ] && urls+=("${url}")
+    done < <(sed -n 's/.*: "\(https\?:[^"]*\)".*/\1/p' "${topology_path}")
+    while [ "$#" -gt 0 ]; do
+        [ -n "${1}" ] && urls+=("${1}")
+        shift
+    done
+
+    echo "[docker] Prefetch release packages on host"
+    mkdir -p "${HOST_DOWNLOAD_CACHE_ROOT}"
+
+    local url
+    for url in "${urls[@]}"; do
+        prefetch_url_to_host_cache "${url}"
+    done
+}
+
+sync_control_download_cache() {
+    if [ "${LOCAL_PREFETCH_CONTROL_CACHE}" != "1" ]; then
+        return 0
+    fi
+    if [ ! -d "${HOST_DOWNLOAD_CACHE_ROOT}" ]; then
+        return 0
+    fi
+
+    echo "[docker] Sync host download cache into control node"
+    tar -C "${HOST_DOWNLOAD_CACHE_ROOT}" -cf - . | \
+        compose exec -T "${CONTROL_NODE_SERVICE}" bash -lc "
+            set -euo pipefail
+            install -d -m 755 -o eloq -g eloq '${CONTROL_ELOQCTL_HOME}/download'
+            tar -C '${CONTROL_ELOQCTL_HOME}/download' -xf -
+            chown -R eloq:eloq '${CONTROL_ELOQCTL_HOME}/download'
+        "
 }
 
 control_exec() {

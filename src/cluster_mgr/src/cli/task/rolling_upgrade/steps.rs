@@ -656,6 +656,85 @@ impl Step for WaitTxReplicaReady {
     }
 }
 
+pub struct WaitStandbyReplicaReady {
+    ctx: UpgradeContext,
+}
+
+impl WaitStandbyReplicaReady {
+    pub fn new(ctx: UpgradeContext) -> Self {
+        Self { ctx }
+    }
+}
+
+#[async_trait]
+impl Step for WaitStandbyReplicaReady {
+    fn name(&self) -> &str {
+        "WaitStandbyReplicaReady"
+    }
+
+    async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
+        if !self.ctx.has_standby() {
+            return Ok(TaskExecutionContext::dummy());
+        }
+
+        let tx_nodes = self.ctx.tx_host_ports();
+        let standby_nodes = self.ctx.standby_host_ports();
+        if tx_nodes.len() != standby_nodes.len() {
+            bail!(
+                "tx/standby node count mismatch: tx={}, standby={}",
+                tx_nodes.len(),
+                standby_nodes.len()
+            );
+        }
+
+        let mut executable = IndexMap::new();
+
+        for (source_addr, target_addr) in tx_nodes.iter().zip(standby_nodes.iter()) {
+            let Some((source_host, source_port_str)) = source_addr.split_once(':') else {
+                bail!("invalid host:port in tx list: '{source_addr}'");
+            };
+            let Ok(source_port) = source_port_str.parse::<u16>() else {
+                bail!("invalid port in tx list: '{source_addr}'");
+            };
+            let Some((target_host, target_port_str)) = target_addr.split_once(':') else {
+                bail!("invalid host:port in standby list: '{target_addr}'");
+            };
+            let Ok(target_port) = target_port_str.parse::<u16>() else {
+                bail!("invalid port in standby list: '{target_addr}'");
+            };
+
+            let task_id = TaskId {
+                cmd: "topology".to_string(),
+                task: format!("wait-standby-replica-ready-{target_port}"),
+                host: target_host.to_string(),
+            };
+            executable.insert(
+                task_id.clone(),
+                TaskInstance {
+                    task_input: HashMap::default(),
+                    task: Box::new(
+                        WaitReplicaReadyTask::new(
+                            task_id,
+                            self.ctx.redis_cluster_startup_nodes(),
+                            source_host.to_string(),
+                            source_port,
+                            target_host.to_string(),
+                            target_port,
+                            self.ctx.redis_password.clone(),
+                        )
+                        .with_service_endpoints(
+                            self.ctx.deploy.connection.service_endpoints.clone(),
+                        ),
+                    ),
+                    task_host: TaskHost::Local,
+                },
+            );
+        }
+
+        Ok(single_barrier_ctx("wait-standby-replica-ready", executable))
+    }
+}
+
 #[async_trait]
 impl Step for FailoverBackAndStopStandby {
     fn name(&self) -> &str {
@@ -851,6 +930,7 @@ pub fn build_upgrade_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
         Box::new(FailoverBackAndStopStandby::new(ctx.clone())),
         Box::new(UnpackStandby::new(ctx.clone())),
         Box::new(StartStandby::new(ctx.clone())),
+        Box::new(WaitStandbyReplicaReady::new(ctx.clone())),
         Box::new(StopVoters::new(ctx.clone())),
         Box::new(StartVoters::new(ctx.clone())),
         Box::new(VerifyVersion::new(ctx)),
@@ -866,6 +946,7 @@ pub fn build_config_restart_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
         Box::new(WaitTxReplicaReady::new(ctx.clone())),
         Box::new(FailoverBackAndStopStandby::new(ctx.clone())),
         Box::new(StartStandby::new(ctx.clone())),
+        Box::new(WaitStandbyReplicaReady::new(ctx.clone())),
         Box::new(StopVoters::new(ctx.clone())),
         Box::new(StartVoters::new(ctx.clone())),
     ]

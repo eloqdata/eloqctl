@@ -139,6 +139,7 @@ fn friendly_step_name(name: &str) -> &str {
         "WaitTxReplicaReady" => "Wait for the original master to rejoin as replica",
         "FailoverBackAndStopStandby" => "Move traffic back and restart standby",
         "StartStandby" => "Start standby nodes",
+        "WaitStandbyReplicaReady" => "Wait for standby nodes to rejoin as replicas",
         "StopVoters" => "Stop voter nodes",
         "StartVoters" => "Start voter nodes",
         "DownloadAndUpload" => "Prepare upgrade package",

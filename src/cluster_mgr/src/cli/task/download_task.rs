@@ -28,8 +28,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tracing::{error, info};
 
-const MAX_DOWNLOAD_ATTEMPTS: usize = 4;
-const DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(2);
+const MAX_DOWNLOAD_ATTEMPTS: usize = 8;
+const DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone)]
 pub struct DownloadTask {
@@ -298,6 +298,20 @@ impl TaskExecutor for DownloadTask {
         }
 
         let part_path = append_ext(save_path.clone(), "partial");
+        if !part_path.exists() && save_path.exists() {
+            let existing_len = fs::metadata(&save_path).map(|m| m.len()).unwrap_or(0);
+            let should_promote_to_partial = remote_len
+                .map(|expected_len| existing_len > 0 && existing_len < expected_len)
+                .unwrap_or(false);
+            if should_promote_to_partial {
+                info!(
+                    "existing file cache {:?} is incomplete ({} bytes), resuming via partial file.",
+                    save_path, existing_len
+                );
+                fs::rename(&save_path, &part_path)
+                    .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+            }
+        }
         let mut final_file_len = remote_len.unwrap_or(0);
         for attempt in 1..=MAX_DOWNLOAD_ATTEMPTS {
             let mut resume_from = fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);

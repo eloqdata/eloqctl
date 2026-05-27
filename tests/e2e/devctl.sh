@@ -22,9 +22,11 @@ Commands:
   install-control           Copy the current eloqctl build into the control node
   control-shell             SSH into the control node
   render-topology           Render topology.yaml inside the control node
+  prefetch-control-cache    Prefetch release packages on host and sync into control node
   launch                    Launch the default E2E cluster from the control node
   status                    Show cluster and monitor status
   grafana-update [url]      Upgrade Grafana with monitor update
+  cluster-update [version]  Run rolling eloqctl update on the default cluster
   export-topology           Export cluster topology from the control node
   stress [steps]            Run cmd_stress_test.sh via devctl; default steps are unchanged
   full                      build -> env-up -> install-control -> render-topology -> launch
@@ -56,9 +58,16 @@ render_control_topology() {
     "
 }
 
+prefetch_control_cache() {
+    prefetch_control_download_cache "${REPO_ROOT}/tests/e2e/topology.yaml" \
+        "https://dl.grafana.com/grafana/release/13.0.1+security-01/grafana_13.0.1+security-01_25720641773_linux_amd64.tar.gz"
+    sync_control_download_cache
+}
+
 launch_cluster() {
     local cluster
     cluster="$(cluster_name)"
+    prefetch_control_cache
     control_exec bash -lc "
         eloqctl stop '${cluster}' --all --force >/dev/null 2>&1 || true
         eloqctl remove '${cluster}' --force >/dev/null 2>&1 || true
@@ -81,6 +90,15 @@ grafana_update() {
     url="${1:-https://dl.grafana.com/grafana/release/13.0.1+security-01/grafana_13.0.1+security-01_25720641773_linux_amd64.tar.gz}"
     control_exec bash -lc "
         eloqctl monitor update --cluster '${cluster}' --component grafana --url '${url}'
+    "
+}
+
+cluster_update() {
+    local cluster version
+    cluster="$(cluster_name)"
+    version="${1:-${ELOQKV_VERSION:-1.2.2}}"
+    control_exec bash -lc "
+        eloqctl update '${cluster}' '${version}' --password testpass
     "
 }
 
@@ -128,6 +146,9 @@ case "${cmd}" in
     render-topology)
         render_control_topology
         ;;
+    prefetch-control-cache)
+        prefetch_control_cache
+        ;;
     launch)
         launch_cluster
         ;;
@@ -136,6 +157,9 @@ case "${cmd}" in
         ;;
     grafana-update)
         grafana_update "${1:-}"
+        ;;
+    cluster-update)
+        cluster_update "${1:-}"
         ;;
     export-topology)
         export_topology
