@@ -173,12 +173,12 @@ impl TopologyUpdateTask {
                             error!("Invalid boolean value for enable_io_uring: {}", value);
                         }
                     }
-                    "checkpoint_interval" => {
+                    "checkpoint_interval" | "checkpointer_interval" => {
                         if let Ok(interval) = value.parse::<u32>() {
                             config.checkpoint_interval = Some(interval);
-                            info!("Updated checkpoint_interval to {}", interval);
+                            info!("Updated checkpointer_interval to {}", interval);
                         } else {
-                            error!("Invalid integer value for checkpoint_interval: {}", value);
+                            error!("Invalid integer value for checkpointer_interval: {}", value);
                         }
                     }
                     "enable_cache_replacement" => {
@@ -253,7 +253,7 @@ impl TopologyUpdateTask {
                             || value == "1"
                             || value.to_lowercase() == "yes";
                     }
-                    "checkpoint_interval" => {
+                    "checkpoint_interval" | "checkpointer_interval" => {
                         if let Ok(interval) = value.parse::<u32>() {
                             config.checkpoint_interval = Some(interval);
                         }
@@ -620,7 +620,7 @@ impl TopologyUpdateTask {
         updated_fields.insert("enable_data_store".to_string(), false);
         updated_fields.insert("enable_wal".to_string(), false);
         updated_fields.insert("enable_io_uring".to_string(), false);
-        updated_fields.insert("checkpoint_interval".to_string(), false);
+        updated_fields.insert("checkpointer_interval".to_string(), false);
         updated_fields.insert("enable_cache_replacement".to_string(), false);
 
         // Track additional settings
@@ -666,10 +666,10 @@ impl TopologyUpdateTask {
                         updated_lines.push(format!("enable_io_uring={}", config.enable_io_uring));
                         updated_fields.insert("enable_io_uring".to_string(), true);
                     }
-                    "checkpoint_interval" => {
+                    "checkpoint_interval" | "checkpointer_interval" => {
                         if let Some(interval) = config.checkpoint_interval {
-                            updated_lines.push(format!("checkpoint_interval={}", interval));
-                            updated_fields.insert("checkpoint_interval".to_string(), true);
+                            updated_lines.push(format!("checkpointer_interval={}", interval));
+                            updated_fields.insert("checkpointer_interval".to_string(), true);
                         } else {
                             // Keep original line if no value provided
                             updated_lines.push(line.to_string());
@@ -732,10 +732,13 @@ impl TopologyUpdateTask {
             );
         }
 
-        // Add checkpoint_interval if present and not already updated
+        // Add checkpointer_interval if present and not already updated
         if let Some(interval) = config.checkpoint_interval {
-            if !updated_fields["checkpoint_interval"] {
-                updated_lines.insert(insert_position, format!("checkpoint_interval={}", interval));
+            if !updated_fields["checkpointer_interval"] {
+                updated_lines.insert(
+                    insert_position,
+                    format!("checkpointer_interval={}", interval),
+                );
             }
         }
 
@@ -776,9 +779,9 @@ impl TopologyUpdateTask {
         result.push_str(&format!("enable_wal={}\n", config.enable_wal));
         result.push_str(&format!("enable_io_uring={}\n", config.enable_io_uring));
 
-        // Add checkpoint_interval and enable_cache_replacement if present
+        // Add checkpointer_interval and enable_cache_replacement if present
         if let Some(interval) = config.checkpoint_interval {
-            result.push_str(&format!("checkpoint_interval={}\n", interval));
+            result.push_str(&format!("checkpointer_interval={}\n", interval));
         }
 
         if let Some(enable) = config.enable_cache_replacement {

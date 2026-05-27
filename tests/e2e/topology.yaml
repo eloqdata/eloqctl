@@ -12,7 +12,7 @@ deployment:
   enable_io_uring: false
   enable_tls: true
   cluster_mode: true
-  checkpoint_interval: 120
+  checkpointer_interval: 120
   hardware:
     172.28.10.11:
       cpu: 7

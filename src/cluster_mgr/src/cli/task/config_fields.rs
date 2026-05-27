@@ -440,7 +440,7 @@ pub static AVAILABLE_FIELDS: Lazy<HashMap<&'static str, FieldMetadata>> = Lazy::
     );
 
     fields.insert(
-        "checkpoint_interval",
+        "checkpointer_interval",
         FieldMetadata {
             description: "Interval time (seconds) of checkpoint",
             scope: FieldScope::NodeSpecific,

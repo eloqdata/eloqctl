@@ -52,6 +52,7 @@ pub struct ConfigJson {
     pub enable_wal: bool,
     #[serde(default)]
     pub enable_io_uring: bool,
+    #[serde(rename = "checkpointer_interval", alias = "checkpoint_interval")]
     pub checkpoint_interval: Option<u32>,
     pub enable_cache_replacement: Option<bool>,
     #[serde(default)]

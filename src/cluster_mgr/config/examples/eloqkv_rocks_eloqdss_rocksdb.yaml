@@ -10,7 +10,7 @@ deployment:
   install_dir: "/home/${USER}"
   enable_wal: true
   enable_io_uring: false
-  checkpoint_interval: 120
+  checkpointer_interval: 120
   tx_service:
     tx_host_ports: [127.0.0.1:6389]
     # client_port: 6389

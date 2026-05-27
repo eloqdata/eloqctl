@@ -1568,9 +1568,9 @@ impl CmdExecutor {
         if let Some(interval) = desired.deployment.checkpoint_interval {
             if current.deployment.checkpoint_interval != Some(interval) {
                 merged.deployment.checkpoint_interval = Some(interval);
-                tx_field_updates.push(format!("checkpoint_interval:{interval}"));
+                tx_field_updates.push(format!("checkpointer_interval:{interval}"));
                 changes.push(format!(
-                    "deployment.checkpoint_interval: {:?} -> {:?}",
+                    "deployment.checkpointer_interval: {:?} -> {:?}",
                     current.deployment.checkpoint_interval,
                     Some(interval)
                 ));
@@ -1700,7 +1700,7 @@ impl CmdExecutor {
         }
 
         let supported_paths = [
-            "deployment.checkpoint_interval",
+            "deployment.checkpointer_interval",
             "deployment.cluster_mode",
             "deployment.monitor.prometheus.retention_time",
             "deployment.monitor.prometheus.retention_size",
@@ -3067,7 +3067,7 @@ mod tests {
         retention_time: Option<&str>,
     ) -> DeployConfig {
         let checkpoint_line = checkpoint_interval
-            .map(|value| format!("  checkpoint_interval: {value}\n"))
+            .map(|value| format!("  checkpointer_interval: {value}\n"))
             .unwrap_or_default();
         let retention_line = retention_time
             .map(|value| format!("      retention_time: \"{value}\"\n"))
@@ -3129,7 +3129,7 @@ deployment:
 
         assert_eq!(
             plan.tx_field_updates,
-            vec!["checkpoint_interval:120".to_string()]
+            vec!["checkpointer_interval:120".to_string()]
         );
         assert!(plan.actions.contains(&ReconcileAction::SaveClusterIndex));
         assert!(plan
@@ -3140,7 +3140,7 @@ deployment:
         assert!(plan
             .changes
             .iter()
-            .any(|change| change.contains("deployment.checkpoint_interval")));
+            .any(|change| change.contains("deployment.checkpointer_interval")));
         assert!(plan
             .changes
             .iter()

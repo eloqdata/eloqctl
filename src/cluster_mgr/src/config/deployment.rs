@@ -203,6 +203,7 @@ pub struct Deployment {
     pub hardware: Option<HashMap<String, Hardware>>,
     pub enable_wal: Option<bool>,
     pub enable_io_uring: Option<bool>,
+    #[serde(rename = "checkpointer_interval", alias = "checkpoint_interval")]
     pub checkpoint_interval: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_tls: Option<bool>,
@@ -1294,14 +1295,14 @@ impl Deployment {
             println!("**WARNING:** Manually modifying `enable_io_uring` in template `EloqKv.ini` is not recommended.");
         }
 
-        if self.is_empty(&ini, SECTION_LOCAL, "checkpoint_interval") {
+        if self.is_empty(&ini, SECTION_LOCAL, "checkpointer_interval") {
             ini.set(
                 SECTION_LOCAL,
-                "checkpoint_interval",
+                "checkpointer_interval",
                 Some(self.checkpoint_interval.unwrap_or(60).to_string()),
             );
         } else {
-            println!("**WARNING:** Manually modifying `checkpoint_interval` in template `EloqKv.ini` is not recommended.");
+            println!("**WARNING:** Manually modifying `checkpointer_interval` in template `EloqKv.ini` is not recommended.");
         }
 
         if let Some(mode) = self.cluster_mode {
@@ -2470,7 +2471,7 @@ deployment:
   install_dir: "/tmp"
   enable_wal: true
   enable_io_uring: false
-  checkpoint_interval: 120
+  checkpointer_interval: 120
   tx_service:
     tx_host_ports: [127.0.0.1:6389]
   storage_service:
