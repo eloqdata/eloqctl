@@ -454,7 +454,9 @@ impl CmdExecutor {
             let operation = operation.to_string();
             async move {
                 probe.probe(10).await.map_err(|e| {
-                    anyhow!("cannot {operation}: node {node} is not serving Redis after waiting: {e}")
+                    anyhow!(
+                        "cannot {operation}: node {node} is not serving Redis after waiting: {e}"
+                    )
                 })
             }
         });

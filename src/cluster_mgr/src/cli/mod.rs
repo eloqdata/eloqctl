@@ -169,15 +169,13 @@ Behavior:\n\
         joint_wal: bool,
     },
 
-    #[command(
-        long_about = "Validate a topology YAML file before deployment.\n\n\
+    #[command(long_about = "Validate a topology YAML file before deployment.\n\n\
 Examples:\n\
   eloqctl check topology.yaml\n\n\
 Behavior:\n\
   - Checks that all required fields are present in the topology file.\n\
   - Validates host reachability and SSH connectivity.\n\
-  - Reports any issues that would prevent a successful launch or deploy."
-    )]
+  - Reports any issues that would prevent a successful launch or deploy.")]
     #[strum(serialize = "check")]
     Check { topology_file: String },
     #[command(
@@ -198,8 +196,7 @@ Examples:\n\
         #[command(subcommand)]
         command: ProxyCommand,
     },
-    #[command(
-        long_about = "Launch a cluster from a topology YAML file.\n\n\
+    #[command(long_about = "Launch a cluster from a topology YAML file.\n\n\
 Examples:\n\
   eloqctl launch topology.yaml\n\
   eloqctl launch topology.yaml --skip-deps\n\n\
@@ -207,8 +204,7 @@ Behavior:\n\
   - Reads the topology file, resolves versions, and deploys all services.\n\
   - Equivalent to running `deploy` followed by service startup.\n\
   - --skip-deps skips installing system package dependencies on remote hosts.\n\
-  - The cluster configuration is saved to local state for future management."
-    )]
+  - The cluster configuration is saved to local state for future management.")]
     #[strum(serialize = "launch")]
     Launch {
         topology_file: String,
@@ -216,8 +212,7 @@ Behavior:\n\
         skip_deps: bool,
     },
     #[strum(serialize = "start")]
-    #[command(
-        long_about = "Start EloqKV services for an existing cluster.\n\n\
+    #[command(long_about = "Start EloqKV services for an existing cluster.\n\n\
 Examples:\n\
   eloqctl start eloqkv-cluster\n\
   eloqctl start eloqkv-cluster --nodes 10.0.0.12:6379\n\n\
@@ -225,8 +220,7 @@ Behavior:\n\
   - Without --nodes, starts tx, standby, voter, log, and managed storage services from the saved topology.\n\
   - With --nodes, starts only the specified existing EloqKV node(s) by host:port.\n\
   - Use this for nodes that are already present in the saved topology.\n\
-  - To add a brand-new standby or tx node to the cluster, use `eloqctl scale --add-nodes ...` instead."
-    )]
+  - To add a brand-new standby or tx node to the cluster, use `eloqctl scale --add-nodes ...` instead.")]
     Start {
         cluster: String,
         #[arg(
@@ -238,8 +232,7 @@ Behavior:\n\
         )]
         nodes: Vec<String>,
     },
-    #[command(
-        long_about = "Stop cluster components.\n\n\
+    #[command(long_about = "Stop cluster components.\n\n\
 Examples:\n\
   eloqctl stop eloqkv-cluster --all --force\n\
   eloqctl stop eloqkv-cluster --nodes 10.0.0.12:6379 --force\n\
@@ -249,8 +242,7 @@ Behavior:\n\
   - With --nodes, stops only the specified existing EloqKV node(s).\n\
   - Without --nodes, controls component groups such as tx, log, store, and monitor.\n\
   - --all expands to tx + log + store + monitor.\n\
-  - Use --force when graceful shutdown is impossible or the cluster is already unhealthy."
-    )]
+  - Use --force when graceful shutdown is impossible or the cluster is already unhealthy.")]
     #[strum(serialize = "stop")]
     Stop {
         cluster: String,
@@ -262,9 +254,19 @@ Behavior:\n\
         store: bool,
         #[arg(long, default_value_t = false, help = "Stop monitor components")]
         monitor: bool,
-        #[arg(short, long, default_value_t = false, help = "Force-stop matching processes")]
+        #[arg(
+            short,
+            long,
+            default_value_t = false,
+            help = "Force-stop matching processes"
+        )]
         force: bool,
-        #[arg(short, long, default_value_t = false, help = "Stop tx + log + store + monitor")]
+        #[arg(
+            short,
+            long,
+            default_value_t = false,
+            help = "Stop tx + log + store + monitor"
+        )]
         all: bool,
         #[arg(long, value_name = "cluster password")]
         password: Option<String>,
@@ -278,21 +280,18 @@ Behavior:\n\
         nodes: Vec<String>,
     },
 
-    #[command(
-        long_about = "Restart all services of the specified cluster.\n\n\
+    #[command(long_about = "Restart all services of the specified cluster.\n\n\
 Examples:\n\
   eloqctl restart eloqkv-cluster\n\n\
 Behavior:\n\
   - Performs a rolling restart of all tx, standby, voter, log, and storage services.\n\
   - The cluster configuration is reloaded from saved state.\n\
   - Monitor components (Prometheus, Grafana, etc.) are NOT restarted;\n\
-    use `eloqctl monitor restart --cluster <name>` for those."
-    )]
+    use `eloqctl monitor restart --cluster <name>` for those.")]
     #[strum(serialize = "restart")]
     Restart { cluster: String },
 
-    #[command(
-        long_about = "Check the health and runtime status of a cluster.\n\n\
+    #[command(long_about = "Check the health and runtime status of a cluster.\n\n\
 Examples:\n\
   eloqctl status eloqkv-cluster\n\
   eloqctl status eloqkv-cluster --wait 60\n\
@@ -303,8 +302,7 @@ Behavior:\n\
   - --wait <seconds>: block until the cluster reports healthy or the timeout expires.\n\
   - --detail: show the full cluster topology including node roles and replication info.\n\
   - --user / --password: authenticate with the EloqKV cluster (required if requirepass is set).\n\
-  - Prints a ready-to-use redis-cli connect command for convenience."
-    )]
+  - Prints a ready-to-use redis-cli connect command for convenience.")]
     #[strum(serialize = "status")]
     Status {
         cluster: String,
@@ -392,8 +390,7 @@ Behavior:\n\
     #[strum(serialize = "plan")]
     Plan { topology_file: String },
 
-    #[command(
-        long_about = "Tear down a cluster and remove it from local state.\n\n\
+    #[command(long_about = "Tear down a cluster and remove it from local state.\n\n\
 Examples:\n\
   eloqctl remove eloqkv-cluster\n\
   eloqctl remove eloqkv-cluster --force\n\n\
@@ -401,8 +398,7 @@ Behavior:\n\
   - Stops all services on all hosts, cleans up install directories, and deletes cluster state.\n\
   - Without --force: prompts for confirmation before removing.\n\
   - With --force: skips confirmation and deletes local state even if remote hosts are unreachable.\n\
-  - If remote hosts are down, manual cleanup may still be needed; the command prints help for that."
-    )]
+  - If remote hosts are down, manual cleanup may still be needed; the command prints help for that.")]
     #[strum(serialize = "remove")]
     Remove {
         cluster: String,
@@ -421,15 +417,13 @@ Behavior:\n\
         output: Option<String>,
     },
 
-    #[command(
-        long_about = "Print a redis-cli connect command for the cluster.\n\n\
+    #[command(long_about = "Print a redis-cli connect command for the cluster.\n\n\
 Examples:\n\
   eloqctl connect eloqkv-cluster\n\n\
 Behavior:\n\
   - Outputs a ready-to-use `redis-cli -h <host> -p <port>` command.\n\
   - If a password is configured, the -a flag is included.\n\
-  - The connection targets the first tx host:port in the cluster topology."
-    )]
+  - The connection targets the first tx host:port in the cluster topology.")]
     #[strum(serialize = "connect")]
     Connect { cluster: String },
 
@@ -444,16 +438,14 @@ Behavior:\n\
     #[strum(serialize = "list")]
     List,
 
-    #[command(
-        long_about = "List available EloqKV release versions from GitHub.\n\n\
+    #[command(long_about = "List available EloqKV release versions from GitHub.\n\n\
 Examples:\n\
   eloqctl versions\n\
   eloqctl versions --product EloqKV --store rocksdb\n\n\
 Behavior:\n\
   - Fetches release tags from the GitHub releases page.\n\
   - --product: filter by product name (default: all).\n\
-  - --store: filter by storage backend (e.g. rocksdb, rocks_s3)."
-    )]
+  - --store: filter by storage backend (e.g. rocksdb, rocks_s3).")]
     #[strum(serialize = "versions")]
     Versions {
         #[arg(long)]
@@ -466,8 +458,7 @@ Behavior:\n\
     #[command(long_about = "Run the SQLite schema script to create any missing tables")]
     Upgrade,
 
-    #[command(
-        long_about = "Manage monitor components without touching EloqKV.\n\n\
+    #[command(long_about = "Manage monitor components without touching EloqKV.\n\n\
 Examples:\n\
   eloqctl monitor start --cluster eloqkv-cluster\n\
   eloqctl monitor start --cluster eloqkv-cluster --component grafana\n\
@@ -475,8 +466,7 @@ Examples:\n\
   eloqctl monitor status --cluster eloqkv-cluster --component node-exporter\n\n\
 Behavior:\n\
   - Omit --component to target all configured monitor components.\n\
-  - Use --component to operate on exactly one or more monitor components such as grafana, prometheus, alertmanager, or node-exporter."
-    )]
+  - Use --component to operate on exactly one or more monitor components such as grafana, prometheus, alertmanager, or node-exporter.")]
     #[strum(serialize = "monitor")]
     Monitor {
         #[arg(long, global = true, help = "Existing cluster name")]
@@ -485,13 +475,11 @@ Behavior:\n\
         command: MonitorCommand,
     },
 
-    #[command(
-        long_about = "Control standalone log service nodes.\n\n\
+    #[command(long_about = "Control standalone log service nodes.\n\n\
 Examples:\n\
   eloqctl log-srv start eloqkv-cluster\n\
   eloqctl log-srv stop eloqkv-cluster\n\n\
-This command controls the log service only. It does not start or stop tx/standby/voter services."
-    )]
+This command controls the log service only. It does not start or stop tx/standby/voter services.")]
     #[strum(serialize = "log-srv")]
     LogService { command: String, cluster: String },
 
@@ -552,8 +540,7 @@ Behavior:\n\
     Install { cluster: String },
 
     #[strum(serialize = "scale")]
-    #[command(
-        long_about = "Scale a cluster by adding or removing EloqKV nodes.\n\n\
+    #[command(long_about = "Scale a cluster by adding or removing EloqKV nodes.\n\n\
 Examples:\n\
   eloqctl scale eloqkv-cluster --add-nodes 10.0.0.12:6379 --ng-id 1 --is-candidate false\n\
   eloqctl scale eloqkv-cluster --add-nodes 10.0.0.13:6379 --ng-id 1 --is-candidate true\n\
@@ -562,22 +549,35 @@ Behavior:\n\
   - --is-candidate false adds a non-candidate node, which is the standby form.\n\
   - --is-candidate true adds a candidate/tx node.\n\
   - Use `eloqctl start --nodes ...` only for nodes that already exist in the saved topology.\n\
-  - Use `eloqctl scale --add-nodes ...` to introduce a brand-new node into the cluster."
-    )]
+  - Use `eloqctl scale --add-nodes ...` to introduce a brand-new node into the cluster.")]
     Scale {
         /// The name of the cluster to scale
         cluster: String,
         /// Nodes to add in host format (comma-separated list)
-        #[arg(long, value_delimiter = ',', value_name = "nodes", help = "Add these new node(s) in host:port form")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            value_name = "nodes",
+            help = "Add these new node(s) in host:port form"
+        )]
         add_nodes: Vec<String>,
         /// Nodes to remove in host format (comma-separated list)
-        #[arg(long, value_delimiter = ',', value_name = "nodes", help = "Remove these existing node(s) in host:port form")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            value_name = "nodes",
+            help = "Remove these existing node(s) in host:port form"
+        )]
         remove_nodes: Vec<String>,
         /// Node group ID for adding nodes (required when add_nodes is specified)
         #[arg(long, help = "Node group ID for new nodes; required with --add-nodes")]
         ng_id: Option<u32>,
         /// Candidate status for added nodes: true for candidate, false for non-candidate
-        #[arg(long, value_delimiter = ',', help = "Candidate flag(s) for new node(s): true=candidate/tx, false=standby")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Candidate flag(s) for new node(s): true=candidate/tx, false=standby"
+        )]
         is_candidate: Option<Vec<bool>>,
         /// Optional password for Redis operations
         #[arg(long, value_name = "cluster password")]
@@ -608,8 +608,7 @@ Examples:\n\
         log_ng_id: Option<u32>,
     },
 
-    #[command(
-        long_about = "Manage cluster snapshots and backups.\n\n\
+    #[command(long_about = "Manage cluster snapshots and backups.\n\n\
 Examples:\n\
   eloqctl backup eloqkv-cluster start --path /data/backups\n\
   eloqctl backup eloqkv-cluster start --path /data/backups --password mypass\n\
@@ -633,8 +632,7 @@ Behavior:\n\
   - Omitting --path on start triggers cloud (S3) storage mode; the backup is stored\n\
     in the configured S3 bucket instead of a local directory.\n\
   - Provide --dest-host and --dest-user to specify where local backup files are stored;\n\
-    defaults to the current host and user if omitted."
-    )]
+    defaults to the current host and user if omitted.")]
     #[strum(serialize = "backup")]
     Backup {
         cluster: String,
@@ -758,8 +756,7 @@ fn parse_datetime(s: &str) -> Result<DateTime<Utc>, String> {
 #[derive(Subcommand, Clone, Debug, Hash, PartialEq, Eq, AsRefStr)]
 #[command(next_line_help = true)]
 pub enum BackupCommand {
-    #[command(
-        long_about = "Start a new cluster-wide snapshot backup.\n\n\
+    #[command(long_about = "Start a new cluster-wide snapshot backup.\n\n\
 Examples:\n\
   eloqctl backup mycluster start --path /data/backups\n\
   eloqctl backup mycluster start --path /data/backups --password mypass\n\
@@ -770,8 +767,7 @@ Behavior:\n\
   - Without --path: backup is stored in the configured cloud (S3) bucket.\n\
   - --dest-host and --dest-user default to the current host and user if omitted (local mode only).\n\
   - The cluster must be healthy; all tx/standby services must be running.\n\
-  - Snapshot metadata is recorded in the local t_snapshot_info table."
-    )]
+  - Snapshot metadata is recorded in the local t_snapshot_info table.")]
     #[strum(serialize = "start")]
     Start {
         #[arg(
@@ -786,23 +782,20 @@ Behavior:\n\
         #[arg(long, value_name = "destination username")]
         dest_user: Option<String>,
     },
-    #[command(
-        long_about = "List all recorded snapshots for the cluster.\n\n\
+    #[command(long_about = "List all recorded snapshots for the cluster.\n\n\
 Reads from the local t_snapshot_info metadata table and displays:\n\
   - cluster_name\n\
   - snapshot timestamp (snapshot_ts)\n\
   - snapshot path (local path, manifest list, or backup_ts for cloud storage)\n\
   - destination host and user\n\
   - storage type (local or cloud/S3)\n\n\
-Only snapshots with status=0 (completed successfully) are shown."
-    )]
+Only snapshots with status=0 (completed successfully) are shown.")]
     #[strum(serialize = "list")]
     List {
         // #[arg(long)]
         // before_datetime: String,
     },
-    #[command(
-        long_about = "Delete snapshots older than a given threshold.\n\n\
+    #[command(long_about = "Delete snapshots older than a given threshold.\n\n\
 Examples:\n\
   eloqctl backup mycluster remove --until '7 days'\n\
   eloqctl backup mycluster remove --until '2h'\n\
@@ -814,8 +807,7 @@ Behavior:\n\
   - Snapshots with status=2 (in progress) are skipped to avoid corrupting running backups.\n\
   - When the snapshot path is local, the corresponding directory is deleted from the host.\n\
   - When the snapshot path is S3, the S3 objects are deleted.\n\
-  - --force: delete the metadata row even when S3/file deletion fails."
-    )]
+  - --force: delete the metadata row even when S3/file deletion fails.")]
     #[strum(serialize = "remove")]
     Remove {
         #[arg(
@@ -871,8 +863,7 @@ Behavior:\n\
         #[arg(long)]
         thread_count: Option<String>,
     },
-    #[command(
-        long_about = "Offline dump of RocksDB data into RDB format.\n\n\
+    #[command(long_about = "Offline dump of RocksDB data into RDB format.\n\n\
 Examples:\n\
   eloqctl backup mycluster dump-rdb --rocksdb-path /data/eloqkv/db --output-file-dir /tmp/rdb\n\
   eloqctl backup mycluster dump-rdb --rocksdb-path /data/eloqkv/db --output-file-dir /tmp/rdb --thread-count 4\n\n\
@@ -880,8 +871,7 @@ Behavior:\n\
   - Reads the RocksDB data directory directly and produces an RDB-format snapshot.\n\
   - The cluster must be stopped before running this command; otherwise data corruption may occur.\n\
   - --thread-count controls the number of parallel read threads (default: auto).\n\
-  - Output files are written to --output-file-dir."
-    )]
+  - Output files are written to --output-file-dir.")]
     #[strum(serialize = "dump-rdb")]
     DumpRDB {
         #[arg(long)]
@@ -891,8 +881,7 @@ Behavior:\n\
         #[arg(long)]
         thread_count: Option<String>,
     },
-    #[command(
-        long_about = "Restore the cluster state from a previous snapshot.\n\n\
+    #[command(long_about = "Restore the cluster state from a previous snapshot.\n\n\
 Examples:\n\
   eloqctl backup mycluster restore --snapshot-ts '2025-11-05T03:45:45Z'\n\
   eloqctl backup mycluster restore --snapshot-ts '2025-11-05 03:45:45'\n\n\
@@ -902,8 +891,7 @@ Behavior:\n\
   - The cluster must be stopped before running this command. Stop it first with `eloqctl stop <cluster> --all --force`.\n\
   - Currently only supports cloud storage (S3) snapshots; local storage restore is not yet available.\n\
   - This is a destructive operation; existing data will be replaced by the restored snapshot.\n\
-  - Use `eloqctl backup <cluster> list` to see available snapshots before restoring."
-    )]
+  - Use `eloqctl backup <cluster> list` to see available snapshots before restoring.")]
     #[strum(serialize = "restore")]
     Restore {
         #[arg(
@@ -924,28 +912,24 @@ Behavior:\n\
 #[derive(Subcommand, Clone, Debug, Hash, PartialEq, Eq, AsRefStr)]
 #[command(next_line_help = true)]
 pub enum ProxyCommand {
-    #[command(
-        long_about = "Start a proxy service with the given configuration.\n\n\
+    #[command(long_about = "Start a proxy service with the given configuration.\n\n\
 Examples:\n\
   eloqctl proxy start --config proxy.yaml\n\n\
 Behavior:\n\
   - Loads the proxy configuration from the YAML file and starts the proxy process.\n\
   - The proxy routes client connections to the appropriate EloqKV cluster.\n\
-  - Configuration is saved to local state for future management."
-    )]
+  - Configuration is saved to local state for future management.")]
     #[strum(serialize = "start")]
     Start {
         #[arg(long)]
         config: String,
     },
-    #[command(
-        long_about = "Stop a running proxy service.\n\n\
+    #[command(long_about = "Stop a running proxy service.\n\n\
 Examples:\n\
   eloqctl proxy stop --proxy-name my-proxy\n\n\
 Behavior:\n\
   - Stops the proxy process identified by --proxy-name.\n\
-  - The proxy configuration remains in local state and can be restarted later."
-    )]
+  - The proxy configuration remains in local state and can be restarted later.")]
     #[strum(serialize = "stop")]
     Stop {
         #[arg(long)]
@@ -963,11 +947,9 @@ Examples:\n\
         #[arg(long)]
         proxy_name: Option<String>,
     },
-    #[command(
-        long_about = "Add a cluster behind an existing proxy.\n\n\
+    #[command(long_about = "Add a cluster behind an existing proxy.\n\n\
 Examples:\n\
-  eloqctl proxy add --proxy-name my-proxy --cluster-name my-cluster"
-    )]
+  eloqctl proxy add --proxy-name my-proxy --cluster-name my-cluster")]
     #[strum(serialize = "add")]
     Add {
         #[arg(long)]
@@ -975,11 +957,9 @@ Examples:\n\
         #[arg(long)]
         cluster_name: String,
     },
-    #[command(
-        long_about = "Remove a cluster from behind an existing proxy.\n\n\
+    #[command(long_about = "Remove a cluster from behind an existing proxy.\n\n\
 Examples:\n\
-  eloqctl proxy remove --proxy-name my-proxy --cluster-name my-cluster"
-    )]
+  eloqctl proxy remove --proxy-name my-proxy --cluster-name my-cluster")]
     #[strum(serialize = "remove")]
     Remove {
         #[arg(long)]

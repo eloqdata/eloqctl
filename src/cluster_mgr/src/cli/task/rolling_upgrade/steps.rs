@@ -374,17 +374,18 @@ impl Step for UploadToStandby {
     }
 
     async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
-        let all_uploads = crate::cli::task::upload::eloq_upload_builder::EloqUpload::eloq_image_upload(
-            &self.ctx.deploy.deployment,
-        );
-        
+        let all_uploads =
+            crate::cli::task::upload::eloq_upload_builder::EloqUpload::eloq_image_upload(
+                &self.ctx.deploy.deployment,
+            );
+
         let standby_hosts: std::collections::HashSet<String> = self
             .ctx
             .standby_host_ports()
             .iter()
             .filter_map(|hp| hp.split(':').next().map(|h| h.to_string()))
             .collect();
-        
+
         let log_hosts: std::collections::HashSet<String> = self
             .ctx
             .deploy
@@ -398,23 +399,23 @@ impl Step for UploadToStandby {
                     .collect()
             })
             .unwrap_or_default();
-        
+
         let filtered: Vec<_> = all_uploads
             .into_iter()
             .filter(|u| standby_hosts.contains(&u.host) || log_hosts.contains(&u.host))
             .collect();
-        
+
         if filtered.is_empty() {
             return Ok(TaskExecutionContext::dummy());
         }
-        
+
         let upload_tasks = crate::cli::task::upload::eloq_upload_builder::EloqUpload::build_tasks(
             &self.ctx.config,
             "update",
             "upload_to_standby",
             filtered,
         );
-        
+
         Ok(single_barrier_ctx("upload-to-standby", upload_tasks))
     }
 }
@@ -436,40 +437,41 @@ impl Step for UploadToMaster {
     }
 
     async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
-        let all_uploads = crate::cli::task::upload::eloq_upload_builder::EloqUpload::eloq_image_upload(
-            &self.ctx.deploy.deployment,
-        );
-        
+        let all_uploads =
+            crate::cli::task::upload::eloq_upload_builder::EloqUpload::eloq_image_upload(
+                &self.ctx.deploy.deployment,
+            );
+
         let tx_hosts: std::collections::HashSet<String> = self
             .ctx
             .tx_host_ports()
             .iter()
             .filter_map(|hp| hp.split(':').next().map(|h| h.to_string()))
             .collect();
-        
+
         let voter_hosts: std::collections::HashSet<String> = self
             .ctx
             .voter_host_ports()
             .iter()
             .filter_map(|hp| hp.split(':').next().map(|h| h.to_string()))
             .collect();
-        
+
         let filtered: Vec<_> = all_uploads
             .into_iter()
             .filter(|u| tx_hosts.contains(&u.host) || voter_hosts.contains(&u.host))
             .collect();
-        
+
         if filtered.is_empty() {
             return Ok(TaskExecutionContext::dummy());
         }
-        
+
         let upload_tasks = crate::cli::task::upload::eloq_upload_builder::EloqUpload::build_tasks(
             &self.ctx.config,
             "update",
             "upload_to_master",
             filtered,
         );
-        
+
         Ok(single_barrier_ctx("upload-to-master", upload_tasks))
     }
 }

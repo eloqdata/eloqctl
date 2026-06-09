@@ -118,8 +118,14 @@ pub(crate) fn critical_runtime_ports(config: &DeployConfig, base_port: u16) -> V
     ports
 }
 
-pub(crate) fn ports_match_state(used_ports: &[u16], target_ports: &[u16], should_exist: bool) -> bool {
-    target_ports.iter().all(|port| used_ports.contains(port) == should_exist)
+pub(crate) fn ports_match_state(
+    used_ports: &[u16],
+    target_ports: &[u16],
+    should_exist: bool,
+) -> bool {
+    target_ports
+        .iter()
+        .all(|port| used_ports.contains(port) == should_exist)
 }
 
 pub(crate) async fn wait_tcp_ports_state(

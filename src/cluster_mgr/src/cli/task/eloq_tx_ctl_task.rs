@@ -862,7 +862,9 @@ impl TaskExecutor for EloqTxCtlTask {
                 let mut process_started = tx_ctl!(self, check_process_status, {==, PID_NOT_FOUND}, async || -> anyhow::Result<ExecutionValue> {
                      wait_command_complete!(start_cmd_for_wait, check_status_cmd, ssh_session.clone(), is_some)
                 })?;
-                let base_port: u16 = port.parse().map_err(|e| anyhow!("invalid service port {port}: {e}"))?;
+                let base_port: u16 = port
+                    .parse()
+                    .map_err(|e| anyhow!("invalid service port {port}: {e}"))?;
                 let runtime_ports = critical_runtime_ports(&self.config, base_port);
                 if !wait_tcp_ports_state(
                     &ssh_session,
