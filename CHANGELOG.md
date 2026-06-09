@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/monographdb/eloq_waiter/compare/v1.8.0...v1.8.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* bound eloqctl wait paths ([#415](https://github.com/monographdb/eloq_waiter/issues/415)) ([97441cc](https://github.com/monographdb/eloq_waiter/commit/97441cc66bbc6b764e5d27d46e9f7ffbbc22c2df))
+
 ## [1.8.0](https://github.com/monographdb/eloq_waiter/compare/v1.7.0...v1.8.0) (2026-06-09)
 
 
