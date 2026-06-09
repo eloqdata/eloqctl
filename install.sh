@@ -38,7 +38,8 @@ fi
 BIN_DIR="${ELOQCTL_HOME}/bin"
 BIN_PATH="${BIN_DIR}/cluster_mgr"
 STATE_DB_PATH="${ELOQCTL_HOME}/db/cluster_mgr_state.db"
-TMP_TARBALL="${TMPDIR:-/tmp}/eloqctl.tar.gz"
+TMP_TARBALL="$(mktemp "${TMPDIR:-/tmp}/eloqctl.XXXXXX.tar.gz")"
+trap 'rm -f "${TMP_TARBALL}"' EXIT
 mkdir -p "${BIN_DIR}"
 
 HAD_EXISTING_INSTALL=false

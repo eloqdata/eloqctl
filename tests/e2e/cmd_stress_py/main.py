@@ -379,7 +379,7 @@ def selected_command_tests() -> List[Tuple[str, Callable[[Redis, int], Any]]]:
         return [("INFO", _CMD_FNS["INFO"])]
     return COMMAND_TESTS
 
-def stress_worker(client: Redis, stop_event: threading.Event, phase_event: threading.Event,
+def stress_worker(client: Any, stop_event: threading.Event, phase_event: threading.Event,
                   stats_lock: threading.Lock, cmd_stats: Dict[str, Dict[str, Any]],
                   worker_id: int) -> None:
     phase_event.wait()
@@ -476,10 +476,16 @@ def main() -> None:
         signal.signal(sig, handle_termination)
 
     # ── Build clients: standalone + cluster ──
-    standalone_client = build_client(master_node) if args.client_mode != "cluster-only" else None
-    cluster_client = build_cluster_client() if args.client_mode != "standalone-only" else None
+    standalone_client = (
+        ResilientClient(lambda: build_client(master_node), "standalone")
+        if args.client_mode != "cluster-only" else None
+    )
+    cluster_client = (
+        ResilientClient(build_cluster_client, "cluster")
+        if args.client_mode != "standalone-only" else None
+    )
 
-    workers: List[Tuple[Redis, threading.Thread]] = []
+    workers: List[Tuple[Any, threading.Thread]] = []
     standalone_stats = {
         name: {"ok": 0, "fail": 0, "error_types": Counter(), "samples": []}
         for name in command_order

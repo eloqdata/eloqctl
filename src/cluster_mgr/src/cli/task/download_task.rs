@@ -26,13 +26,15 @@ use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
+use tokio::task::spawn_blocking;
 use tokio::time::timeout;
 use tracing::{error, info};
 
 const MAX_DOWNLOAD_ATTEMPTS: usize = 8;
 const DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(3);
-const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const DOWNLOAD_PROGRESS_TIMEOUT: Duration = Duration::from_secs(30);
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+const DOWNLOAD_PROGRESS_TIMEOUT: Duration = Duration::from_secs(120);
+const WRITE_FLUSH_THRESHOLD: usize = 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct DownloadTask {
@@ -218,6 +220,33 @@ impl DownloadTask {
             hasher.update(&buf[..read]);
         }
         Ok(format!("sha256:{:x}", hasher.finalize()))
+    }
+
+    async fn flush_to_disk(
+        mut file: std::fs::File,
+        data: Vec<u8>,
+        url: &str,
+    ) -> Result<std::fs::File> {
+        let url_owned = url.to_owned();
+        let write_result = spawn_blocking(move || match file.write_all(&data) {
+            Ok(()) => Ok(file),
+            Err(e) => Err(format!("{}", e)),
+        })
+        .await;
+        match write_result {
+            Ok(Ok(f)) => Ok(f),
+            Ok(Err(msg)) => {
+                error!("DownloadTask {} write local file error {}", url_owned, msg);
+                Err(anyhow!(DownloadErr(url_owned, msg)))
+            }
+            Err(join_err) => {
+                error!(
+                    "DownloadTask {} spawn_blocking error {}",
+                    url_owned, join_err
+                );
+                Err(anyhow!(DownloadErr(url_owned, join_err.to_string())))
+            }
+        }
     }
 }
 
@@ -425,6 +454,7 @@ impl TaskExecutor for DownloadTask {
 
             let mut stream_reader = response.bytes_stream();
             let mut stream_failed = None;
+            let mut write_buf: Vec<u8> = Vec::with_capacity(WRITE_FLUSH_THRESHOLD);
             loop {
                 let next_chunk =
                     match timeout(DOWNLOAD_PROGRESS_TIMEOUT, stream_reader.next()).await {
@@ -446,12 +476,21 @@ impl TaskExecutor for DownloadTask {
                     break;
                 }
                 let chunk = stream_chunk.unwrap();
-                if let Err(write_err) = part_file.write_all(&chunk) {
-                    error!("DownloadTask {} write local file error {} ", url, write_err);
-                    return Err(anyhow!(DownloadErr(url.clone(), write_err.to_string())));
-                }
+                write_buf.extend_from_slice(&chunk);
                 self.pg_bar.inc(chunk.len() as u64);
+                if write_buf.len() >= WRITE_FLUSH_THRESHOLD {
+                    let data = std::mem::replace(
+                        &mut write_buf,
+                        Vec::with_capacity(WRITE_FLUSH_THRESHOLD),
+                    );
+                    part_file = Self::flush_to_disk(part_file, data, url).await?;
+                }
             }
+
+            if !write_buf.is_empty() {
+                part_file = Self::flush_to_disk(part_file, write_buf, url).await?;
+            }
+
             drop(part_file);
 
             let current_len = fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);

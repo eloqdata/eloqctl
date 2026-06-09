@@ -5,7 +5,10 @@ repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
 echo "[pre-commit] running rust format check"
-cargo fmt --all -- --check
+if ! cargo fmt --all -- --check; then
+    echo "[pre-commit] format check failed — run 'cargo fmt --all' to fix"
+    exit 1
+fi
 
-echo "[pre-commit] running fast compile check"
-cargo cm-check
+echo "[pre-commit] running clippy"
+cargo clippy --all-targets --all-features -- -D warnings
