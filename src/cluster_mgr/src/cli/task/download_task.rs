@@ -26,10 +26,13 @@ use std::io::Read;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
+use tokio::time::timeout;
 use tracing::{error, info};
 
 const MAX_DOWNLOAD_ATTEMPTS: usize = 8;
 const DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(3);
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const DOWNLOAD_PROGRESS_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub struct DownloadTask {
@@ -175,6 +178,7 @@ impl DownloadTask {
         let api_url = format!("https://api.github.com/repos/eloqdata/eloqkv/releases/tags/{tag}");
         let response = HTTP_CLIENT
             .get(api_url)
+            .timeout(HTTP_REQUEST_TIMEOUT)
             .header(USER_AGENT, "eloqctl")
             .header(ACCEPT, "application/vnd.github+json")
             .send()
@@ -247,6 +251,7 @@ impl TaskExecutor for DownloadTask {
         let remote_len = HTTP_CLIENT
             .head(&self.url)
             .header(CONNECTION, "close")
+            .timeout(HTTP_REQUEST_TIMEOUT)
             .send()
             .await
             .ok()
@@ -345,7 +350,7 @@ impl TaskExecutor for DownloadTask {
             if resume_from > 0 {
                 request = request.header(RANGE, format!("bytes={resume_from}-"));
             }
-            let response = match request.send().await {
+            let response = match request.timeout(HTTP_REQUEST_TIMEOUT).send().await {
                 Ok(response) => response,
                 Err(err) => {
                     let err_msg = err.to_string();
@@ -420,7 +425,21 @@ impl TaskExecutor for DownloadTask {
 
             let mut stream_reader = response.bytes_stream();
             let mut stream_failed = None;
-            while let Some(stream_chunk) = stream_reader.next().await {
+            loop {
+                let next_chunk =
+                    match timeout(DOWNLOAD_PROGRESS_TIMEOUT, stream_reader.next()).await {
+                        Ok(chunk) => chunk,
+                        Err(_) => {
+                            stream_failed = Some(format!(
+                                "download stalled for more than {:?}",
+                                DOWNLOAD_PROGRESS_TIMEOUT
+                            ));
+                            break;
+                        }
+                    };
+                let Some(stream_chunk) = next_chunk else {
+                    break;
+                };
                 if let Err(err) = stream_chunk {
                     error!("DownloadRemote task error file={},msg={}", url, err);
                     stream_failed = Some(err.to_string());

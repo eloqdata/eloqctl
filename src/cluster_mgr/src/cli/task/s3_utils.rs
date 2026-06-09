@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
 use aws_config::BehaviorVersion;
+use aws_sdk_s3::config::timeout::TimeoutConfig;
 use aws_sdk_s3::config::{Credentials, Region};
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
 use aws_sdk_s3::Client as S3Client;
+use std::time::Duration;
 use tracing::info;
 
 pub struct S3ClientBuilder;
@@ -21,7 +23,15 @@ impl S3ClientBuilder {
         let mut config_builder = aws_sdk_s3::Config::builder()
             .behavior_version(BehaviorVersion::latest())
             .credentials_provider(credentials)
-            .region(Region::new(region.to_string()));
+            .region(Region::new(region.to_string()))
+            .timeout_config(
+                TimeoutConfig::builder()
+                    .connect_timeout(Duration::from_secs(5))
+                    .read_timeout(Duration::from_secs(30))
+                    .operation_attempt_timeout(Duration::from_secs(30))
+                    .operation_timeout(Duration::from_secs(120))
+                    .build(),
+            );
 
         if let Some(endpoint_url) = endpoint {
             config_builder = config_builder.endpoint_url(endpoint_url.to_string());

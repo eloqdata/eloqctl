@@ -10,7 +10,8 @@ use crate::cli::task::grpc::cc_request::{
     NotifyShutdownCkptResponse,
 };
 use cc_request::{cc_rpc_service_client::CcRpcServiceClient, CkptStatus, ShutdownStatus};
-use tonic::transport::Channel;
+use std::time::Duration;
+use tonic::transport::{Channel, Endpoint};
 use tracing::{debug, error, info};
 
 pub struct GrpcClient {
@@ -19,7 +20,13 @@ pub struct GrpcClient {
 
 impl GrpcClient {
     pub async fn new(client_address: &str) -> Result<Self, tonic::transport::Error> {
-        let client = CcRpcServiceClient::connect(client_address.to_string()).await?;
+        let channel = Endpoint::new(client_address.to_string())?
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(15))
+            .tcp_keepalive(Some(Duration::from_secs(30)))
+            .connect()
+            .await?;
+        let client = CcRpcServiceClient::new(channel);
         Ok(Self { client })
     }
 

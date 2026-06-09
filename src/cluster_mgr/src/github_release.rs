@@ -3,10 +3,12 @@ use crate::config::deployment::{version_digits, Product};
 use anyhow::{anyhow, bail, Result};
 use serde::Deserialize;
 use std::collections::BTreeSet;
+use std::time::Duration;
 
 const GITHUB_RELEASES_API: &str =
     "https://api.github.com/repos/eloqdata/eloqkv/releases?per_page=100";
 const ELOQKV_REPO: &str = "eloqdata/eloqkv";
+const GITHUB_API_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitHubRelease {
@@ -43,6 +45,7 @@ pub struct ReleaseAssetMatch {
 pub async fn fetch_eloqkv_releases(client: &reqwest::Client) -> Result<Vec<GitHubRelease>> {
     let response = client
         .get(GITHUB_RELEASES_API)
+        .timeout(GITHUB_API_TIMEOUT)
         .header(reqwest::header::USER_AGENT, "eloqctl")
         .header(reqwest::header::ACCEPT, "application/vnd.github+json")
         .send()

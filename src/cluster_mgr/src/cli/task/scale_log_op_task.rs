@@ -228,6 +228,25 @@ impl TaskExecutor for ScaleLogOpTask {
                                 "RemovePeer operation not successful, retrying (attempt {})",
                                 retry_count
                             );
+                            if retry_count >= MAX_RETRIES {
+                                let error_msg = format!(
+                                    "RemovePeer operation failed after {} attempts - response success: {}",
+                                    retry_count, response.success
+                                );
+                                error!("{}", error_msg);
+                                task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+                                task_result.insert(
+                                    CMD_OUTPUT.to_string(),
+                                    TaskArgValue::Str(error_msg.clone()),
+                                );
+                                task_return_value!(
+                                    task_result,
+                                    |status_code: i32| -> CmdErr {
+                                        CmdErr::ScaleOpErr(error_msg, status_code.to_string())
+                                    },
+                                    "ScaleLogOpTask"
+                                )
+                            }
                             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                         }
                         Err(e) => {

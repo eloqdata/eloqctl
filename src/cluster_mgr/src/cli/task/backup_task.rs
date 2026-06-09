@@ -22,6 +22,9 @@ use tokio::time::sleep;
 use tracing::error;
 use tracing::info;
 
+const BACKUP_STATUS_POLL_INTERVAL: Duration = Duration::from_secs(2);
+const BACKUP_STATUS_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
 #[derive(Clone, Debug)]
 pub struct BackupConfig {
     pub path: String,
@@ -453,6 +456,7 @@ impl TaskExecutor for BackupTask {
                     let task = async move {
                         let url = task_url.clone();
                         let backup_name = task_backup_name.clone();
+                        let started_at = std::time::Instant::now();
                         let mut grpc_client = match GrpcClient::new(&url).await {
                             Ok(client) => client,
                             Err(e) => {
@@ -462,6 +466,14 @@ impl TaskExecutor for BackupTask {
                         };
 
                         loop {
+                            if started_at.elapsed() >= BACKUP_STATUS_TIMEOUT {
+                                break Err(anyhow::anyhow!(
+                                    "Timed out waiting {:?} for backup '{}' on {}",
+                                    BACKUP_STATUS_TIMEOUT,
+                                    backup_name,
+                                    url
+                                ));
+                            }
                             match grpc_client
                                 .query_snapshot_status(backup_name.to_string())
                                 .await
@@ -472,8 +484,7 @@ impl TaskExecutor for BackupTask {
                                         break Ok(Some(response));
                                     } else if response.result.to_lowercase() == "running" {
                                         info!("Snapshot in progress for {}: {:#?}", url, response);
-                                        // Wait before checking again
-                                        sleep(Duration::from_secs(2)).await;
+                                        sleep(BACKUP_STATUS_POLL_INTERVAL).await;
                                     } else {
                                         unreachable!()
                                     }

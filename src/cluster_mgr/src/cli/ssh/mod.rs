@@ -16,6 +16,8 @@ use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tracing::{error, info, warn};
 
+const SSH_COMMAND_TIMEOUT_SECS: u64 = 30 * 60;
+
 #[derive(Clone)]
 pub struct SSHClient {}
 
@@ -290,25 +292,47 @@ impl SSHSession {
         let session = self.session.lock().await;
         let mut channel = session.channel_open_session().await?;
         channel.exec(true, command).await?;
-        let mut output = Vec::new();
-        let mut status_code = 0_i32;
-        while let Some(chanel_msg) = channel.wait().await {
-            match chanel_msg {
-                ChannelMsg::Data { ref data } => {
-                    if let SSHCommandOption::CollectOutput = cmd_option {
-                        output.write_all(data).await?;
+        let command_result = timeout(Duration::from_secs(SSH_COMMAND_TIMEOUT_SECS), async {
+            let mut output = Vec::new();
+            let mut status_code = 0_i32;
+            while let Some(chanel_msg) = channel.wait().await {
+                match chanel_msg {
+                    ChannelMsg::Data { ref data } => {
+                        if let SSHCommandOption::CollectOutput = cmd_option {
+                            output.write_all(data).await?;
+                        }
                     }
+                    ChannelMsg::ExitStatus { exit_status } => {
+                        status_code = exit_status as i32;
+                    }
+                    ChannelMsg::Failure => {
+                        error!("ssh channel receive failure msg.");
+                    }
+                    _ => {}
                 }
-                ChannelMsg::ExitStatus { exit_status } => {
-                    status_code = exit_status as i32;
-                }
-                ChannelMsg::Failure => {
-                    error!("ssh channel receive failure msg.");
-                }
-                _ => {}
             }
+            let output_str = String::from_utf8_lossy(&output).into_owned();
+            anyhow::Ok((status_code, output_str))
+        })
+        .await;
+
+        let (status_code, output_str) = match command_result {
+            Ok(result) => result?,
+            Err(_) => {
+                let _ = channel.close().await;
+                bail!(
+                    "SSH command timed out after {} seconds: {}",
+                    SSH_COMMAND_TIMEOUT_SECS,
+                    command
+                );
+            }
+        };
+        if let Err(err) = channel.close().await {
+            warn!(
+                "failed to close ssh channel for command {:?}: {}",
+                command, err
+            );
         }
-        let output_str = String::from_utf8_lossy(&output).into_owned();
         let cmd_res = HashMap::from([
             (CMD.to_string(), TaskArgValue::Str(command.to_string())),
             (CMD_STATUS.to_string(), TaskArgValue::Number(status_code)),
@@ -318,7 +342,6 @@ impl SSHSession {
             let conn_info = (self.host.clone(), self.port);
             warn!("SSHSession Failed execute command. ssh_info={conn_info:?}, {cmd_res:#?}] ");
         }
-        channel.close().await?;
         Ok(cmd_res)
     }
 

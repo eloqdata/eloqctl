@@ -82,6 +82,7 @@ pub static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 pub static HTTP_INTERNAL: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(10))
         .no_proxy()
         .build()
         .expect("can't init http client for internal use")
@@ -2840,12 +2841,18 @@ impl CmdExecutor {
     }
 
     async fn update(&self) -> Result<()> {
+        const UPDATE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+        const UPDATE_PROGRESS_TIMEOUT: Duration = Duration::from_secs(30);
         let os = self.os_vers();
         let arch = cpu_arch();
         let filename = format!("eloqctl-main-{os}-{arch}.tar.gz");
         let url = format!("{CDN}/eloqctl/{arch}/main/{filename}");
         info!("Fetching latest package {url}");
-        let resp = HTTP_CLIENT.get(&url).send().await?;
+        let resp = HTTP_CLIENT
+            .get(&url)
+            .timeout(UPDATE_REQUEST_TIMEOUT)
+            .send()
+            .await?;
         if !resp.status().is_success() {
             bail!("Fetch package failed: {}", resp.status());
         }
@@ -2868,7 +2875,20 @@ impl CmdExecutor {
         pg_bar.set_message("downloading");
         let mut file = pg_bar.wrap_write(std::fs::File::create(&cached)?);
         let mut stream = resp.bytes_stream();
-        while let Some(stream_chunk) = stream.next().await {
+        loop {
+            let next_chunk = tokio::time::timeout(UPDATE_PROGRESS_TIMEOUT, stream.next()).await;
+            let Some(stream_chunk) = (match next_chunk {
+                Ok(chunk) => chunk,
+                Err(_) => {
+                    bail!(
+                        "download stalled for more than {:?} while fetching {}",
+                        UPDATE_PROGRESS_TIMEOUT,
+                        url
+                    );
+                }
+            }) else {
+                break;
+            };
             let chunk = stream_chunk.map_err(|e| anyhow!("download failed: {e}"))?;
             file.write_all(&chunk)
                 .map_err(|e| anyhow!("write file failed: {e}"))?;

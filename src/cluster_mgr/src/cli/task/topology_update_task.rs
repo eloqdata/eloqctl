@@ -19,7 +19,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tokio::sync::watch;
+use tokio::time::{timeout, Duration};
 use tracing::{error, info};
+
+const TOPOLOGY_CHANNEL_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 // Update topology in t_topology_tx using live data from RedisOpTask, then update ini files in upload dir
 #[derive(Debug, Clone)]
@@ -1205,12 +1208,25 @@ impl TaskExecutor for TopologyUpdateTask {
         let mut status_rx = self.receiver.clone();
 
         // Wait for RedisOpTask to send the updated cluster nodes
-        if let Err(e) = status_rx.changed().await {
-            let msg = format!("Failed to receive cluster nodes from channel: {}", e);
-            error!("{}", msg);
-            task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
-            task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(msg));
-            return Ok(Some(task_result));
+        match timeout(TOPOLOGY_CHANNEL_WAIT_TIMEOUT, status_rx.changed()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                let msg = format!("Failed to receive cluster nodes from channel: {}", e);
+                error!("{}", msg);
+                task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+                task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(msg));
+                return Ok(Some(task_result));
+            }
+            Err(_) => {
+                let msg = format!(
+                    "Timed out after {:?} waiting for updated cluster nodes",
+                    TOPOLOGY_CHANNEL_WAIT_TIMEOUT
+                );
+                error!("{}", msg);
+                task_result.insert(CMD_STATUS.to_string(), TaskArgValue::Number(1));
+                task_result.insert(CMD_OUTPUT.to_string(), TaskArgValue::Str(msg));
+                return Ok(Some(task_result));
+            }
         }
         let cluster_nodes = self.receiver.borrow().clone();
 
