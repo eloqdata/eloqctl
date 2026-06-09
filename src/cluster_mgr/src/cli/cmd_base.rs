@@ -70,11 +70,11 @@ pub static NOT_PRINT_TASK_RESULT: &str = "NOT_PRINT_TASK_RESULT";
 
 pub static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(60))
         .http1_only()
-        .pool_max_idle_per_host(0)
-        .pool_idle_timeout(Duration::from_secs(5))
-        .tcp_keepalive(Duration::from_secs(30))
+        .tcp_keepalive(Duration::from_secs(60))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .pool_max_idle_per_host(4)
         .build()
         .expect("can't init http client")
 });
@@ -2841,8 +2841,9 @@ impl CmdExecutor {
     }
 
     async fn update(&self) -> Result<()> {
-        const UPDATE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-        const UPDATE_PROGRESS_TIMEOUT: Duration = Duration::from_secs(30);
+        const UPDATE_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+        const UPDATE_PROGRESS_TIMEOUT: Duration = Duration::from_secs(120);
+        const SELF_UPDATE_FLUSH_THRESHOLD: usize = 1024 * 1024;
         let os = self.os_vers();
         let arch = cpu_arch();
         let filename = format!("eloqctl-main-{os}-{arch}.tar.gz");
@@ -2869,12 +2870,12 @@ impl CmdExecutor {
                 return Ok(());
             }
         }
-        // start downloading new package
         let pg_bar = file_pg_bar();
         pg_bar.set_length(len);
         pg_bar.set_message("downloading");
-        let mut file = pg_bar.wrap_write(std::fs::File::create(&cached)?);
+        let mut file = std::fs::File::create(&cached)?;
         let mut stream = resp.bytes_stream();
+        let mut write_buf: Vec<u8> = Vec::with_capacity(SELF_UPDATE_FLUSH_THRESHOLD);
         loop {
             let next_chunk = tokio::time::timeout(UPDATE_PROGRESS_TIMEOUT, stream.next()).await;
             let Some(stream_chunk) = (match next_chunk {
@@ -2890,8 +2891,26 @@ impl CmdExecutor {
                 break;
             };
             let chunk = stream_chunk.map_err(|e| anyhow!("download failed: {e}"))?;
-            file.write_all(&chunk)
-                .map_err(|e| anyhow!("write file failed: {e}"))?;
+            write_buf.extend_from_slice(&chunk);
+            pg_bar.inc(chunk.len() as u64);
+            if write_buf.len() >= SELF_UPDATE_FLUSH_THRESHOLD {
+                let data = std::mem::replace(
+                    &mut write_buf,
+                    Vec::with_capacity(SELF_UPDATE_FLUSH_THRESHOLD),
+                );
+                file = tokio::task::spawn_blocking(move || {
+                    file.write_all(&data).map(|()| file).map_err(|e| anyhow!(e))
+                })
+                .await
+                .map_err(|e| anyhow!(e))??;
+            }
+        }
+        if !write_buf.is_empty() {
+            tokio::task::spawn_blocking(move || file.write_all(&write_buf).map_err(|e| anyhow!(e)))
+                .await
+                .map_err(|e| anyhow!(e))??;
+        } else {
+            drop(file);
         }
         pg_bar.finish_with_message("downloaded");
         let tar_cmd = format!(
