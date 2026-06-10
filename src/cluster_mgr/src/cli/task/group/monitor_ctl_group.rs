@@ -44,7 +44,6 @@ impl TaskGroup for MonitorCtlTaskGroup {
         }
         let monitor_ctl_cmd = match &cmd_arg {
             SubCommand::Monitor { command, .. } => command,
-            _ => unreachable!(),
         };
         let mut executable = IndexMap::new();
         let mut barrier = vec![];

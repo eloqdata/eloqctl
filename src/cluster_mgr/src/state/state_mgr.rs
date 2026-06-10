@@ -1,10 +1,8 @@
 use crate::cli::HOME_DIR;
 use crate::config::config_base::DeployConfig;
-use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::CONFIG_PATH_DIR;
 use crate::state::cluster_index_operation::{ClusterIndexEntity, ClusterIndexOperation};
 use crate::state::deployment_operation::DeploymentOperation;
-use crate::state::proxy_operation::{ProxyEntity, ProxyOperation};
 use crate::state::snapshot_info_operation::{SnapshotEntity, SnapshotOperation};
 use crate::state::state_base::{QueryCondition, StateOperation, StateOperationAny};
 use crate::state::task_status_operation::{TaskStatusEntity, TaskStatusOperation};
@@ -26,7 +24,6 @@ use tracing::{error, info};
 
 pub const DEPLOYMENT_STATE: &str = "Deployment";
 pub const CLUSTER_INDEX_STATE: &str = "ClusterIndex";
-pub const PROXY_STATE: &str = "Proxy";
 pub const TASK_STATUS_STATE: &str = "TaskStatus";
 pub const SNAPSHOT_STATUS_STATE: &str = "SnapshotStatus";
 pub const TOPOLOGY_TX_STATE: &str = "TopologyTx";
@@ -251,43 +248,6 @@ impl StateMgr {
         }
     }
 
-    pub async fn load_proxy_from_state(
-        &self,
-        proxy_name: Option<String>,
-    ) -> Result<Option<ProxyConfig>> {
-        let proxy_state = self.get_state_operation::<ProxyOperation>(PROXY_STATE);
-        let proxy_entity_vec = proxy_state
-            .load(|| -> Option<QueryCondition> {
-                proxy_name.as_ref().map(|name| QueryCondition {
-                    cond_text: "proxy_name = $1".to_string(),
-                    bind_values: vec![StateValue::Varchar(name.clone())],
-                })
-            })
-            .await?;
-
-        if let Some(proxy_entity) = proxy_entity_vec.first() {
-            let config_content = &proxy_entity.proxy_config;
-            let config = ProxyConfig::load_from_string(config_content.to_string())?;
-            Ok(Some(config))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub async fn list_proxy(&self, proxy_name: &Option<String>) -> Result<Vec<ProxyEntity>> {
-        let proxy_info_operation = self.get_state_operation::<ProxyOperation>(PROXY_STATE);
-
-        let proxy_status_entity = proxy_info_operation
-            .load(|| -> Option<QueryCondition> {
-                proxy_name.as_ref().map(|name| QueryCondition {
-                    cond_text: "proxy_name = $1".to_string(),
-                    bind_values: vec![StateValue::Varchar(name.clone())],
-                })
-            })
-            .await?;
-        Ok(proxy_status_entity)
-    }
-
     pub async fn delete_cluster(&self, cluster: &str) -> Result<u64> {
         let cond = QueryCondition {
             cond_text: "cluster_name = $1".to_string(),
@@ -486,9 +446,6 @@ impl StateMgr {
             let snapshot_status_opt_ref =
                 Box::leak(SnapshotOperation::boxed(db_conn_pool.clone())) as &dyn StateOperationAny;
 
-            let proxy_opt_ref =
-                Box::leak(ProxyOperation::boxed(db_conn_pool.clone())) as &dyn StateOperationAny;
-
             let topo_tx_opt_ref = Box::leak(TopologyTxOperation::boxed(db_conn_pool.clone()))
                 as &dyn StateOperationAny;
             let topo_log_opt_ref = Box::leak(TopologyLogOperation::boxed(db_conn_pool.clone()))
@@ -505,7 +462,6 @@ impl StateMgr {
                     SNAPSHOT_STATUS_STATE.to_string(),
                     Arc::new(snapshot_status_opt_ref),
                 ),
-                (PROXY_STATE.to_string(), Arc::new(proxy_opt_ref)),
                 (TOPOLOGY_TX_STATE.to_string(), Arc::new(topo_tx_opt_ref)),
                 (TOPOLOGY_LOG_STATE.to_string(), Arc::new(topo_log_opt_ref)),
             ]);
@@ -675,7 +631,6 @@ mod tests {
                 "t_deployment",
                 "t_task_status",
                 "t_snapshot_info",
-                "t_proxy",
                 "t_topology_tx",
                 "t_topology_log",
             ]

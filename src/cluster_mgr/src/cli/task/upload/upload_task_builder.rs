@@ -3,9 +3,9 @@ use crate::cli::task::group::Config;
 use crate::cli::task::task_base::{TaskArgValue, TaskHost, TaskId, TaskInstance};
 use crate::cli::task::task_utils::{ClusterNodesWithConfig, ScaleOperationType};
 use crate::cli::task::upload::data_dir_upload_builder::DataDirUploadBuilder;
-use crate::cli::task::upload::eloq_upload_builder::{EloqUpload, EloqUploadBuilder};
-use crate::cli::task::upload::monitor_upload_builder::*;
-use crate::cli::task::upload::proxy_upload_builder::ProxyUploadBuilder;
+use crate::cli::task::upload::eloq_upload_builder::EloqUpload;
+use crate::cli::task::upload::eloq_upload_builder::EloqUploadBuilder;
+use crate::cli::task::upload::monitor_upload_builder::MonitorInfraConfUploadBuilder;
 use crate::cli::task::upload::tx_conf_upload_builder::TxConfUpload;
 use crate::cli::task::upload::upload_task::UploadTask;
 use crate::config::config_base::UploadFile;
@@ -109,7 +109,6 @@ pub enum UploadTaskBuilderType {
     MonitorConf,
     TxConf,
     EloqImage,
-    Proxy,
     ScaleTxConf,
 }
 
@@ -142,11 +141,9 @@ pub fn upload_tasks(
                 EloqUpload::eloq_image_upload(&cluster_config.deployment),
             )
         }
-        UploadTaskBuilderType::Proxy => ProxyUploadBuilder {}.build(conf),
     }
 }
 
-/// Upload tasks with node list that is being added or removed
 pub fn upload_tasks_with_nodes(
     builder_type: UploadTaskBuilderType,
     conf: &Config,

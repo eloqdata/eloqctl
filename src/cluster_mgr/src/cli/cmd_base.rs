@@ -16,10 +16,10 @@ use crate::cli::task::upload::upload_task_builder::{
     build_task_instance, get_source_host, upload_tasks, UploadTaskBuilderType,
 };
 use crate::cli::util::{cpu_arch, file_pg_bar, os_id, os_major_version};
+use crate::cli::BackupCommand;
 use crate::cli::{
     download_dir, upload_dir, MonitorCommand, SubCommand, UpdateMonitorComponent, HOME_DIR,
 };
-use crate::cli::{BackupCommand, ProxyCommand};
 use crate::config::config_base::{DeployConfig, UploadFile, VersionRow};
 use crate::config::config_base::{
     ALERTMANAGER_FILE_KEY, GRAFANA_FILE_KEY, NODE_EXPORTER_FILE_KEY, PROMETHEUSALERT_FILE_KEY,
@@ -30,7 +30,6 @@ use crate::config::monitor::{
     Alertmanager, Exporter, Grafana, Monitor, Prometheus, ALERTMANAGER_WEBHOOK_ADAPTER_DEFAULT_URL,
     ALERTMANAGER_WEBHOOK_ADAPTER_PORT,
 };
-use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::storage_service_config::{
     DataStoreServiceBackend, DataStoreServiceMode, RocksDB, RocksLocal, StorageService,
 };
@@ -40,10 +39,7 @@ use crate::config::{
 use crate::github_release::{
     fetch_eloqkv_releases, find_eloqkv_asset, find_product_asset, list_versions_from_releases,
 };
-use crate::state::proxy_operation::{ProxyEntity, ProxyOperation};
-use crate::state::state_base::{QueryCondition, StateOperation};
-use crate::state::state_mgr::{StateMgr, PROXY_STATE, STATE_MGR};
-use crate::StateValue;
+use crate::state::state_mgr::{StateMgr, STATE_MGR};
 use anyhow::{anyhow, bail, Result};
 use futures::StreamExt;
 use itertools::Itertools;
@@ -1173,8 +1169,8 @@ impl CmdExecutor {
         quiet: bool,
         verbose: bool,
     ) -> Result<()> {
-        let Config::Cluster(cfg) = config.clone() else {
-            unreachable!();
+        let cfg = match config.clone() {
+            Config::Cluster(cfg) => cfg,
         };
 
         let download_only = match &cmd {
@@ -1384,40 +1380,6 @@ impl CmdExecutor {
                     }
                 }
             }
-            Config::Proxy(proxy_config) => {
-                proxy_config.connection.auth.check_keypair()?;
-                match cmd.clone() {
-                    SubCommand::Proxy { .. } => {
-                        let task_mgr = self.task_mgr.clone();
-                        let outfile = if quiet {
-                            let f = fs::OpenOptions::new()
-                                .create(true)
-                                .truncate(true)
-                                .open(self.home.join("operation-result"))?;
-                            Some(f)
-                        } else {
-                            None
-                        };
-
-                        let recv_rs_and_print_join = tokio::task::spawn(async move {
-                            task_mgr
-                                .write_task_result(outfile, verbose)
-                                .await
-                                .expect("write operation result failed");
-                        });
-
-                        let rs = self
-                            .task_mgr
-                            .run_tasks(cmd.clone(), Config::Proxy(proxy_config.clone()))
-                            .await?;
-                        recv_rs_and_print_join.await?;
-                        info!(r#"all tasks complete. task_size={}"#, rs.len());
-
-                        self.finishing(cmd, Config::Proxy(proxy_config)).await?;
-                    }
-                    _ => unreachable!(),
-                }
-            }
         }
 
         Ok(())
@@ -1430,47 +1392,6 @@ impl CmdExecutor {
             .save_deployment_config(config, upsert)
             .await?;
         info!("DeploymentConfig saved: cluster={cluster} @ {all_hosts}");
-        Ok(())
-    }
-
-    async fn save_proxy_config(&self, config: &ProxyConfig, upsert: bool) -> Result<()> {
-        println!("save_proxy_config for ProxyConfig");
-        let proxy_operation = self
-            .state_mgr
-            .get_state_operation::<ProxyOperation>(PROXY_STATE);
-
-        let proxy_name = config.proxy_service.proxy_name.clone();
-        let proxy_entity = proxy_operation
-            .load(|| -> Option<QueryCondition> {
-                Some(QueryCondition {
-                    cond_text: "proxy_name = $1".to_string(),
-                    bind_values: vec![StateValue::Varchar(proxy_name.to_string())],
-                })
-            })
-            .await?;
-        if !proxy_entity.is_empty() && !upsert {
-            bail!("Proxy {proxy_name} already exists");
-        }
-        // Extract and concatenate hosts
-        let all_hosts = config
-            .proxy_service
-            .proxy_addrs
-            .iter()
-            .map(|addr| addr.split(':').next().unwrap())
-            .collect::<Vec<&str>>()
-            .join(";");
-        let config_string = config.to_yaml();
-        info!("ProxyConfig saved: proxy_name={proxy_name} @ {all_hosts}");
-        let default_timestamp = chrono::DateTime::default();
-        proxy_operation
-            .put(ProxyEntity {
-                proxy_name: proxy_name.to_string(),
-                proxy_config: config_string,
-                proxy_host_list: all_hosts,
-                create_timestamp: default_timestamp,
-                update_timestamp: default_timestamp,
-            })
-            .await?;
         Ok(())
     }
 
@@ -2043,36 +1964,6 @@ impl CmdExecutor {
 
                 Ok(Config::Cluster(config))
             }
-            SubCommand::Proxy { command } => {
-                match &command {
-                    ProxyCommand::Start { config } => {
-                        // Load and handle the Start command with the provided config
-                        let mut proxy_config = ProxyConfig::load(Some(config.to_string()))?;
-                        self.resolve_proxy_version(&mut proxy_config);
-                        self.save_proxy_config(&proxy_config, true).await?;
-                        Ok(Config::Proxy(proxy_config))
-                    }
-                    ProxyCommand::Stop { proxy_name } => {
-                        let proxy_config = self
-                            .state_mgr
-                            .load_proxy_from_state(Some(proxy_name.clone()))
-                            .await?
-                            .ok_or(anyhow!("proxy config not found"))?;
-                        Ok(Config::Proxy(proxy_config))
-                    }
-                    ProxyCommand::List { proxy_name } => {
-                        let proxy_config = self
-                            .state_mgr
-                            .load_proxy_from_state(proxy_name.clone())
-                            .await?
-                            .ok_or_else(|| anyhow!("proxy config not found"))?;
-                        Ok(Config::Proxy(proxy_config))
-                    }
-                    ProxyCommand::Add { .. } | ProxyCommand::Remove { .. } => {
-                        todo!()
-                    }
-                }
-            }
 
             _ => Err(anyhow!("unexpected command: {cmd:?}")),
         }
@@ -2195,7 +2086,6 @@ impl CmdExecutor {
                     self.save_deployment_config(&deploy_config, true).await?;
                     Config::Cluster(deploy_config)
                 }
-                Config::Proxy(proxy_config) => Config::Proxy(proxy_config),
             },
             None => self.get_config(cmd.clone()).await?,
         };
@@ -2322,46 +2212,11 @@ impl CmdExecutor {
                     }
                 }
             }
-            Config::Proxy(proxy_config) => {
-                proxy_config.connection.auth.check_keypair()?;
-                match cmd.clone() {
-                    SubCommand::Proxy { .. } => {
-                        let task_mgr = self.task_mgr.clone();
-                        let outfile = if quiet {
-                            let f = fs::OpenOptions::new()
-                                .create(true)
-                                .truncate(true)
-                                .open(self.home.join("task-result"))?;
-                            Some(f)
-                        } else {
-                            None
-                        };
-
-                        let recv_rs_and_print_join = tokio::task::spawn(async move {
-                            task_mgr
-                                .write_task_result(outfile, verbose)
-                                .await
-                                .expect("write task result failed");
-                        });
-
-                        // Generate and run tasks
-                        let rs = self
-                            .task_mgr
-                            .run_tasks(cmd.clone(), Config::Proxy(proxy_config.clone()))
-                            .await?;
-                        recv_rs_and_print_join.await?;
-                        info!(r#"all tasks complete. task_size={}"#, rs.len());
-
-                        // Using cluster_config again without moving it
-                        self.finishing(cmd, Config::Proxy(proxy_config)).await?;
-                    }
-                    _ => unreachable!(),
-                }
-            }
         }
 
         Ok(())
     }
+
     async fn finishing(&self, cmd: SubCommand, config: Config) -> Result<()> {
         // After all tasks finished
         match config {
@@ -2544,54 +2399,6 @@ impl CmdExecutor {
                 },
                 _ => {}
             },
-            Config::Proxy(..) => match cmd {
-                SubCommand::Proxy { command } => match &command {
-                    ProxyCommand::Start { .. } => {
-                        println!("Launch proxy finished, Enjoy!");
-                    }
-                    ProxyCommand::Stop { .. } => {
-                        println!("Proxy stopped.");
-                    }
-                    ProxyCommand::List { proxy_name } => {
-                        let success_task_entity = STATE_MGR.list_proxy(proxy_name).await?;
-
-                        let success_task_vec = success_task_entity
-                            .iter()
-                            .map(|proxy_info_entity| {
-                                let proxy_name = &proxy_info_entity.proxy_name;
-                                let proxy_config = &proxy_info_entity.proxy_config;
-                                (proxy_name, proxy_config)
-                            })
-                            .collect_vec();
-
-                        // Iterate over each proxy configuration
-                        for (proxy_name, proxy_config) in success_task_vec {
-                            // Parse the proxy_config string as YAML
-                            let proxy_config: ProxyConfig = serde_yaml::from_str(proxy_config)
-                                .map_err(|e| {
-                                    anyhow!(
-                                        "Failed to parse proxy_config for '{}': {}",
-                                        proxy_name,
-                                        e
-                                    )
-                                })?;
-
-                            // Extract eloqkv_cluster_addr
-                            println!(
-                                "Proxy Name: {}\neloqkv_cluster_addr: {:#?}\n",
-                                proxy_name, proxy_config.proxy_service.eloqkv_cluster_addr
-                            );
-                        }
-                    }
-                    ProxyCommand::Add { cluster_name, .. } => {
-                        println!("Cluster {cluster_name} is added to proxy service.");
-                    }
-                    ProxyCommand::Remove { cluster_name, .. } => {
-                        println!("Cluster {cluster_name} is removed from proxy service.");
-                    }
-                },
-                _ => unreachable!(),
-            },
         }
         Ok(())
     }
@@ -2680,20 +2487,6 @@ impl CmdExecutor {
         Ok(())
     }
 
-    pub fn resolve_proxy_version(&self, cnf: &mut ProxyConfig) {
-        let arch = cpu_arch();
-        let os = self.os_vers();
-
-        // Bind the PathBuf to a variable to extend its lifetime
-        let path_buf = PathBuf::from(CDN);
-        let prefix = path_buf.as_path().to_str().unwrap();
-
-        // Rest of your code remains the same
-        let url = format!("{prefix}/eloqkv/tools/{arch}/{os}/eloqkv-proxy");
-        info!("proxy service binary is set: {url}");
-        cnf.proxy_service.bin_download_url = Some(url);
-    }
-
     async fn gen_demo_config(&self, cmd: SubCommand) -> Result<Config> {
         match cmd {
             SubCommand::Demo {
@@ -2713,7 +2506,6 @@ impl CmdExecutor {
                 let deploy = &mut config.deployment;
                 // set storage
                 match store {
-                    StorageProvider::Dynamodb => unimplemented!(),
                     StorageProvider::Rocksdb => {
                         deploy
                             .storage_service

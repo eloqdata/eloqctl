@@ -291,7 +291,6 @@ impl DeployConfig {
                     DeploymentPackage::PrometheusAlert => {
                         extract_monitor_link!(monitor_link, PROMETHEUSALERT_FILE_KEY, unpack_files);
                     }
-                    DeploymentPackage::Proxy => unreachable!(),
                 }
 
                 (pkg.clone(), unpack_files)

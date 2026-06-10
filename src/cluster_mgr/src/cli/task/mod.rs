@@ -26,7 +26,6 @@ mod local_backup_delete_task;
 mod local_copy_task;
 pub mod local_extract_task;
 pub mod monitor_ctl_task;
-mod proxy_ctl_task;
 mod redis_op_task;
 pub mod rolling_upgrade;
 pub mod s3_delete_task;

@@ -178,24 +178,6 @@ Behavior:\n\
   - Reports any issues that would prevent a successful launch or deploy.")]
     #[strum(serialize = "check")]
     Check { topology_file: String },
-    #[command(
-        long_about = "Manage the proxy service that routes client connections to EloqKV clusters.\n\n\
-Available subcommands:\n\
-  start   - Start a proxy with a YAML config file\n\
-  stop    - Stop a running proxy by name\n\
-  list    - List all proxies and the clusters behind them\n\
-  add     - Add a cluster behind an existing proxy\n\
-  remove  - Remove a cluster from behind an existing proxy\n\n\
-Examples:\n\
-  eloqctl proxy start --config proxy.yaml\n\
-  eloqctl proxy list\n\
-  eloqctl proxy stop --proxy-name my-proxy"
-    )]
-    #[strum(serialize = "proxy")]
-    Proxy {
-        #[command(subcommand)]
-        command: ProxyCommand,
-    },
     #[command(long_about = "Launch a cluster from a topology YAML file.\n\n\
 Examples:\n\
   eloqctl launch topology.yaml\n\
@@ -906,66 +888,6 @@ Behavior:\n\
             value_parser = parse_datetime
         )]
         snapshot_ts: chrono::DateTime<chrono::Utc>,
-    },
-}
-
-#[derive(Subcommand, Clone, Debug, Hash, PartialEq, Eq, AsRefStr)]
-#[command(next_line_help = true)]
-pub enum ProxyCommand {
-    #[command(long_about = "Start a proxy service with the given configuration.\n\n\
-Examples:\n\
-  eloqctl proxy start --config proxy.yaml\n\n\
-Behavior:\n\
-  - Loads the proxy configuration from the YAML file and starts the proxy process.\n\
-  - The proxy routes client connections to the appropriate EloqKV cluster.\n\
-  - Configuration is saved to local state for future management.")]
-    #[strum(serialize = "start")]
-    Start {
-        #[arg(long)]
-        config: String,
-    },
-    #[command(long_about = "Stop a running proxy service.\n\n\
-Examples:\n\
-  eloqctl proxy stop --proxy-name my-proxy\n\n\
-Behavior:\n\
-  - Stops the proxy process identified by --proxy-name.\n\
-  - The proxy configuration remains in local state and can be restarted later.")]
-    #[strum(serialize = "stop")]
-    Stop {
-        #[arg(long)]
-        proxy_name: String,
-    },
-    #[command(
-        long_about = "List all proxy names and the clusters behind each of them.\n\
-If --proxy-name is provided, displays only the clusters behind the specified proxy.\n\n\
-Examples:\n\
-  eloqctl proxy list\n\
-  eloqctl proxy list --proxy-name my-proxy"
-    )]
-    #[strum(serialize = "list")]
-    List {
-        #[arg(long)]
-        proxy_name: Option<String>,
-    },
-    #[command(long_about = "Add a cluster behind an existing proxy.\n\n\
-Examples:\n\
-  eloqctl proxy add --proxy-name my-proxy --cluster-name my-cluster")]
-    #[strum(serialize = "add")]
-    Add {
-        #[arg(long)]
-        proxy_name: String,
-        #[arg(long)]
-        cluster_name: String,
-    },
-    #[command(long_about = "Remove a cluster from behind an existing proxy.\n\n\
-Examples:\n\
-  eloqctl proxy remove --proxy-name my-proxy --cluster-name my-cluster")]
-    #[strum(serialize = "remove")]
-    Remove {
-        #[arg(long)]
-        proxy_name: String,
-        #[arg(long)]
-        cluster_name: String,
     },
 }
 

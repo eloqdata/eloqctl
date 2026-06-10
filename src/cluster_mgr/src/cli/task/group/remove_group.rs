@@ -6,7 +6,6 @@ use crate::cli::task::group::{
 };
 use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
 use crate::cli::{BackupCommand, SubCommand};
-use anyhow::bail;
 use indexmap::IndexMap;
 use itertools::Itertools;
 
@@ -105,10 +104,6 @@ impl TaskGroup for RemoveTaskGroup {
         // remove keyspace in external dynamo
         if let Some(store) = &cluster_config.deployment.storage_service {
             match store.provider().unwrap() {
-                crate::config::StorageProvider::Dynamodb => {
-                    bail!("drop dynamodb keyspace is not implemented")
-                }
-                crate::config::StorageProvider::Rocksdb => {}
                 crate::config::StorageProvider::EloqDSS => {
                     // Handle DataStoreService storage provider cleanup
                     if let Some(dss) = &store.eloqdss {
@@ -121,6 +116,7 @@ impl TaskGroup for RemoveTaskGroup {
                         }
                     }
                 }
+                _ => {}
             }
         }
 

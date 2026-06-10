@@ -550,7 +550,6 @@ impl TxConfUpload {
                 // Get the candidate status for this node from the is_candidate parameter
                 let node_is_candidate = match is_candidate {
                     Some(candidate_list) => candidate_list[i],
-                    _ => unreachable!(),
                 };
 
                 // Choose the right config file type based on is_candidate

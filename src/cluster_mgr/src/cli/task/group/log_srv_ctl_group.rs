@@ -26,7 +26,6 @@ impl TaskGroup for LogServiceCtlTaskGroup {
                 cluster: _,
                 command: log_ctl_cmd,
             } => log_ctl_cmd,
-            _ => unreachable!(),
         };
         let is_start_cmd = log_ctl_cmd_name.to_lowercase().eq("start")
             || log_ctl_cmd_name.to_lowercase().eq("status");

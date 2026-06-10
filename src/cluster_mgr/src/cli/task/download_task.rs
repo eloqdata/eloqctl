@@ -5,9 +5,8 @@ use crate::cli::task::task_base::{
     TaskInstance,
 };
 use crate::cli::util::file_pg_bar;
-use crate::cli::{download_dir, CMD, CMD_OUTPUT, CMD_STATUS};
+use crate::cli::{CMD, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::DeployConfig;
-use crate::config::proxy_config_base::ProxyConfig;
 use crate::config::DownloadUrl;
 use anyhow::{anyhow, Result};
 use futures::stream::StreamExt;
@@ -74,43 +73,6 @@ impl DownloadTask {
         }
 
         Ok(Self::instances(Self::from_urls(urls)))
-    }
-
-    pub fn from_proxy_config(config: &ProxyConfig) -> Result<IndexMap<TaskId, TaskInstance>> {
-        let proxy_ref = &config.proxy_service;
-        let proxy_download_str = &proxy_ref.bin_download_url.clone().unwrap();
-        let proxy_download_url = DownloadUrl::from_url_str(proxy_download_str)?;
-
-        let mut urls = vec![];
-        if !proxy_download_url.is_local() {
-            urls.push(proxy_download_str.to_owned());
-        }
-
-        let mpg_bar = MultiProgress::new();
-
-        let tasks: Vec<Self> = urls
-            .into_iter()
-            .map(|url| {
-                let d_url = DownloadUrl::from_url_str(url.as_str()).unwrap();
-                let dir = download_dir();
-                let filename = d_url.file_name();
-                let task_id = TaskId {
-                    cmd: "deploy".to_string(),
-                    task: format!("{filename}_download"),
-                    host: "127.0.0.1".to_owned(),
-                };
-                let pg_bar = mpg_bar.add(file_pg_bar());
-                DownloadTask {
-                    task_id,
-                    url,
-                    name: filename,
-                    dir,
-                    pg_bar,
-                }
-            })
-            .collect();
-
-        Ok(Self::instances(tasks))
     }
 
     pub fn from_urls(urls: Vec<String>) -> Vec<Self> {

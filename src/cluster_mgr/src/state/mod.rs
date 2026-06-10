@@ -1,6 +1,5 @@
 pub mod cluster_index_operation;
 pub mod deployment_operation;
-pub mod proxy_operation;
 pub mod snapshot_info_operation;
 pub mod state_base;
 pub mod state_mgr;

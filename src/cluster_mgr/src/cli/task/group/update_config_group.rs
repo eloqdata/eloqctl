@@ -38,7 +38,6 @@ impl TaskGroup for UpdateConfigTaskGroup {
                 password,
                 ..
             } => (*restart, fields.clone(), *tx_node_id, password),
-            _ => unreachable!(),
         };
 
         // Build config update tasks

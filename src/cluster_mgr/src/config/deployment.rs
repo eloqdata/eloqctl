@@ -516,7 +516,6 @@ impl Deployment {
         // Only configure storage if storage_service is provided
         if let Some(storage) = self.storage_service.as_ref() {
             match storage.provider().unwrap() {
-                StorageProvider::Dynamodb => bail!("Dynamodb storage provider is not supported"),
                 StorageProvider::Rocksdb => match storage.rocksdb.clone().unwrap() {
                     RocksDB::LOCAL(local) => {
                         let rocks_path = match &local.path {
@@ -2149,7 +2148,6 @@ impl Deployment {
             DeploymentPackage::PrometheusAlert => {
                 extract_monitor_host!(self, alertmanager)
             }
-            DeploymentPackage::Proxy => unreachable!(),
         }
     }
 
@@ -2222,7 +2220,6 @@ impl Deployment {
                     })
                 })
                 .unwrap_or_default(),
-            DeploymentPackage::Proxy => unreachable!(),
         }
     }
 

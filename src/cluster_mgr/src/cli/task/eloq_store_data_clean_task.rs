@@ -93,7 +93,6 @@ impl EloqStoreDataCleanTask {
 
         let deploy_config = match config {
             Config::Cluster(cfg) => cfg,
-            Config::Proxy(_) => return task_map,
         };
 
         // Check if EloqStore Cloud mode is enabled

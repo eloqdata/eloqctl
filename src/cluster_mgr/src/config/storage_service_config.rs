@@ -114,9 +114,7 @@ pub enum RocksDB {
 
 impl StorageService {
     pub fn provider(&self) -> Option<StorageProvider> {
-        if self.dynamodb.is_some() {
-            Some(StorageProvider::Dynamodb)
-        } else if self.rocksdb.is_some() {
+        if self.rocksdb.is_some() {
             Some(StorageProvider::Rocksdb)
         } else if self.eloqdss.is_some() {
             Some(StorageProvider::EloqDSS)
