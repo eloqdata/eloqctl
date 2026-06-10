@@ -12,10 +12,7 @@ pub struct DataDirUploadBuilder;
 impl UploadTaskBuilder for DataDirUploadBuilder {
     /// Upload the EloqDB data_dir to the remote host.
     fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => panic!("Expected ClusterConfig for TxConfUpload"),
-        };
+        let Config::Cluster(cluster_config) = config;
 
         let deployment_ref = &cluster_config.deployment;
         let local = get_source_host(None);

@@ -23,14 +23,7 @@ use tracing::{info, warn};
 #[async_trait::async_trait]
 impl TaskGroup for CtrlDBTaskGroup {
     async fn tasks(&self, cmd: SubCommand, config: &Config) -> Result<TaskExecutionContext> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Expected ClusterConfig for CtrlDBTaskGroup"
-                ))
-            }
-        };
+        let Config::Cluster(cluster_config) = config;
 
         let cmd_str = cmd.as_ref().to_owned();
         let (barrier, executable) = match cmd.clone() {

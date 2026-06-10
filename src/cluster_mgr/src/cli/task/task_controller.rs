@@ -208,7 +208,6 @@ impl TaskController {
 
         let name = match config {
             Config::Cluster(cfg) => cfg.deployment.cluster_name.clone(),
-            Config::Proxy(cfg) => cfg.proxy_service.proxy_name.clone(),
         };
 
         splits.iter().for_each(|execution_context| {

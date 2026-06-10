@@ -48,10 +48,7 @@ fn task_file_id(source_path: &str) -> String {
 
 impl UploadTaskBuilder for TxConfUpload {
     fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => panic!("Expected ClusterConfig for TxConfUpload"),
-        };
+        let Config::Cluster(cluster_config) = config;
 
         info!("Checking for host-specific configuration files in ~/.eloqctl/upload/{}/ for update-conf command", 
               cluster_config.deployment.cluster_name);
@@ -330,10 +327,7 @@ impl TxConfUpload {
         nodes_list: &Vec<String>,
         is_candidate: &Option<Vec<bool>>,
     ) -> IndexMap<TaskId, TaskInstance> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => panic!("Expected ClusterConfig for TxConfUpload"),
-        };
+        let Config::Cluster(cluster_config) = config;
 
         info!(
             "Building upload tasks for scale operation {:?} with nodes: {:?}",
@@ -550,7 +544,7 @@ impl TxConfUpload {
                 // Get the candidate status for this node from the is_candidate parameter
                 let node_is_candidate = match is_candidate {
                     Some(candidate_list) => candidate_list[i],
-                    _ => unreachable!(),
+                    None => unreachable!(),
                 };
 
                 // Choose the right config file type based on is_candidate
@@ -608,13 +602,7 @@ impl TxConfUpload {
                 info!("No cluster configuration available in the receiver yet");
             }
 
-            let deploy_config = match config {
-                Config::Cluster(cfg) => cfg,
-                _ => {
-                    warn!("Expected ClusterConfig for cluster config upload");
-                    return IndexMap::new();
-                }
-            };
+            let Config::Cluster(deploy_config) = config;
 
             // Check if nodes_list is empty
             if nodes_list.is_empty() {

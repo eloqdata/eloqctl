@@ -44,10 +44,8 @@ impl TaskGroup for ScaleLogTaskGroup {
         } = cmd_arg.clone()
         {
             // Extract DeployConfig
-            let deploy_cfg = match config {
-                Config::Cluster(c) => c.clone(),
-                _ => return Err(anyhow!("Expected cluster config for ScaleLog")),
-            };
+            let Config::Cluster(c) = config;
+            let deploy_cfg = c.clone();
 
             if add_nodes.is_empty() && remove_nodes.is_empty() {
                 return Err(anyhow!(

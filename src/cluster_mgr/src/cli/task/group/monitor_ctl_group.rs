@@ -26,14 +26,7 @@ impl TaskGroup for MonitorCtlTaskGroup {
         cmd_arg: SubCommand,
         config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Expected ClusterConfig for MonitorCtlTaskGroup"
-                ))
-            }
-        };
+        let Config::Cluster(cluster_config) = config;
 
         if cluster_config.deployment.monitor.is_none() {
             return Ok(TaskExecutionContext {
@@ -44,7 +37,7 @@ impl TaskGroup for MonitorCtlTaskGroup {
         }
         let monitor_ctl_cmd = match &cmd_arg {
             SubCommand::Monitor { command, .. } => command,
-            _ => unreachable!(),
+            _ => unreachable!("Expected Monitor command"),
         };
         let mut executable = IndexMap::new();
         let mut barrier = vec![];

@@ -13,14 +13,7 @@ impl TaskGroup for InstallDBTaskGroup {
         cmd_args: SubCommand,
         config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Expected ClusterConfig for InstallDBTaskGroup"
-                ))
-            }
-        };
+        let Config::Cluster(cluster_config) = config;
 
         let mut barrier = vec![];
         let mut executable = IndexMap::new();

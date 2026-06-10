@@ -35,14 +35,7 @@ impl TaskGroup for DeploymentTaskGroup {
         cmd_args: SubCommand,
         config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Expected ClusterConfig for DeploymentTaskGroup"
-                ))
-            }
-        };
+        let Config::Cluster(cluster_config) = config;
 
         let cmd_ref = cmd_args.as_ref().to_string();
         let cluster = &cluster_config.deployment.cluster_name;

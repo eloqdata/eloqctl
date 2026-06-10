@@ -53,9 +53,7 @@ impl UpgradeContext {
     /// Create an `UpgradeContext` from the CLI args and cluster config.
     /// Panics if `config` is not `Config::Cluster` — callers must guarantee this.
     pub(crate) fn new(cmd_arg: &SubCommand, config: Config) -> Self {
-        let Config::Cluster(ref deploy) = config else {
-            panic!("UpgradeContext requires Config::Cluster");
-        };
+        let Config::Cluster(ref deploy) = config;
         let deploy = deploy.clone();
         let (redis_password, force) = match cmd_arg {
             SubCommand::Update {

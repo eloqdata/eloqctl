@@ -9,7 +9,6 @@ mod install_dep_pkg;
 mod launch_group;
 mod log_srv_ctl_group;
 mod monitor_ctl_group;
-mod proxy_ctl_group;
 mod remove_group;
 mod scale_group;
 mod scale_log_group;
@@ -20,7 +19,6 @@ use crate::cli::task::task_base::TaskExecutionContext;
 use crate::cli::SubCommand;
 use crate::config::config_base::DeployConfig;
 use crate::config::connection::Connection;
-use crate::config::proxy_config_base::ProxyConfig;
 use dyn_clone::DynClone;
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
@@ -29,57 +27,48 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub enum Config {
     Cluster(DeployConfig),
-    Proxy(ProxyConfig),
-    // Future config types
 }
 
 impl Config {
     pub fn conn_ref(&self) -> &Connection {
         match self {
             Config::Cluster(cfg) => &cfg.connection,
-            Config::Proxy(cfg) => &cfg.connection,
         }
     }
 
     pub fn conn_user(&self) -> &str {
         match self {
             Config::Cluster(cfg) => &cfg.connection.username,
-            Config::Proxy(cfg) => &cfg.connection.username,
         }
     }
 
     pub fn ssh_port(&self) -> u16 {
         match self {
             Config::Cluster(cfg) => cfg.connection.ssh_port(),
-            Config::Proxy(cfg) => cfg.connection.ssh_port(),
         }
     }
 
     pub fn ssh_endpoint(&self, host: &str) -> (String, u16) {
         match self {
             Config::Cluster(cfg) => cfg.connection.ssh_endpoint(host),
-            Config::Proxy(cfg) => cfg.connection.ssh_endpoint(host),
         }
     }
 
     pub fn service_endpoint(&self, host: &str, port: u16) -> (String, u16) {
         match self {
             Config::Cluster(cfg) => cfg.connection.service_endpoint(host, port),
-            Config::Proxy(cfg) => cfg.connection.service_endpoint(host, port),
         }
     }
 
     pub fn conn_ssh_auth_key(&self) -> String {
         match self {
             Config::Cluster(cfg) => cfg.connection.ssh_auth_key().unwrap(),
-            Config::Proxy(cfg) => cfg.connection.ssh_auth_key().unwrap(),
         }
     }
 
     pub fn get_unique_host_list(&self) -> Vec<String> {
         match self {
             Config::Cluster(cfg) => cfg.get_unique_host_list(),
-            Config::Proxy(cfg) => cfg.get_unique_host_list(),
         }
     }
 }
@@ -116,7 +105,6 @@ macro_rules! task_group_boxed {
 task_group_boxed! {
     {InstallDBTaskGroup},
     {DeploymentTaskGroup},
-    {ProxyTaskGroup},
     {CtrlDBTaskGroup},
     {CustomCmdTaskGroup},
     {InstallDepPkgTaskGroup},
@@ -140,7 +128,6 @@ pub fn init_task_group() -> &'static HashMap<String, Box<dyn TaskGroup>> {
         HashMap::from([
             ("deploy".to_string(), DeploymentTaskGroup::boxed()),
             ("install".to_string(), InstallDBTaskGroup::boxed()),
-            ("proxy".to_string(), ProxyTaskGroup::boxed()),
             ("start".to_string(), CtrlDBTaskGroup::boxed()),
             ("stop".to_string(), CtrlDBTaskGroup::boxed()),
             ("restart".to_string(), CtrlDBTaskGroup::boxed()),

@@ -12,21 +12,14 @@ impl TaskGroup for LogServiceCtlTaskGroup {
         cmd_arg: SubCommand,
         config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Expected ClusterConfig for LogServiceCtlTaskGroup"
-                ))
-            }
-        };
+        let Config::Cluster(cluster_config) = config;
 
         let log_ctl_cmd_name = match cmd_arg.clone() {
             SubCommand::LogService {
                 cluster: _,
                 command: log_ctl_cmd,
             } => log_ctl_cmd,
-            _ => unreachable!(),
+            _ => unreachable!("Expected LogService command"),
         };
         let is_start_cmd = log_ctl_cmd_name.to_lowercase().eq("start")
             || log_ctl_cmd_name.to_lowercase().eq("status");

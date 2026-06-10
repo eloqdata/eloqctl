@@ -42,10 +42,7 @@ impl super::TaskGroup for ScaleTaskGroup {
         }
 
         // Get deployment config
-        let deploy_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => return Err(anyhow!("Expected Cluster config for Scale command")),
-        };
+        let Config::Cluster(deploy_config) = config;
 
         let mut barrier = Vec::new();
         let mut executable = IndexMap::new();

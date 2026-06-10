@@ -10,14 +10,7 @@ impl TaskGroup for CustomCmdTaskGroup {
         cmd_arg: SubCommand,
         config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
-        match config {
-            Config::Cluster(..) => {}
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Expected ClusterConfig for CustomCmdTaskGroup"
-                ))
-            }
-        };
+        let Config::Cluster(_cluster_config) = config;
 
         let cmd_ref = cmd_arg.as_ref().to_string();
         let user_command = match cmd_arg.clone() {

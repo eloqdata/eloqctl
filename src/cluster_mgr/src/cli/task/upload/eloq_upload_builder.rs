@@ -205,10 +205,7 @@ impl UploadTaskBuilder for EloqUploadBuilder {
     /// Upload installation package, EloqDB configuration file,
     /// EloqDB install script, install config to remote host.
     fn build(&self, config: &Config) -> IndexMap<TaskId, TaskInstance> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => panic!("Expected ClusterConfig for TxConfUpload"),
-        };
+        let Config::Cluster(cluster_config) = config;
 
         // copy EloqKv.ini from ~/.eloqctl/config to ~/.eloqctl/upload/{cluster_name}
         let config_template_source =

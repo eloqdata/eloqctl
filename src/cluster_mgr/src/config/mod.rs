@@ -17,14 +17,10 @@ pub mod deployment;
 #[allow(dead_code)]
 pub mod log_service;
 pub mod monitor;
-pub mod proxy_config_base;
-pub mod proxy_service;
 pub mod storage_service_config;
 
 pub const ELOQKV_TEMPLATE_INI: &str = "EloqKv.ini";
 pub const ELOQDSS_TEMPLATE_INI: &str = "EloqDss.ini";
-pub const PROXY_CONF_TEMPLATE: &str = "eloqproxy.ini";
-pub const PROXY_BIN: &str = "eloqkv-proxy";
 pub const ELOQKV_NODE_INI: &str = "EloqKv-node";
 pub const START_LOG_TEMPLATE: &str = "start_tx_log.bash";
 pub const JVM_SETTING_HOLDER: &str = "_GC_SETTINGS_PLACEHOLDER_";
@@ -77,12 +73,9 @@ pub const SECTION_LOCAL: &str = "local";
 pub const SECTION_CLUSTER: &str = "cluster";
 pub const SECTION_STORE: &str = "store";
 pub const SECTION_METRIC: &str = "metrics";
-pub const SECTION_PROXY: &str = "proxy";
 
 #[derive(Hash, Debug, Clone, PartialEq, Eq, AsRefStr, Display, clap::ValueEnum)]
 pub enum StorageProvider {
-    #[strum(serialize = "dynamodb")]
-    Dynamodb,
     #[strum(serialize = "rocksdb")]
     Rocksdb,
     #[strum(serialize = "eloqdss")]
@@ -194,8 +187,6 @@ pub enum DeploymentPackage {
     EloqStandby,
     #[strum(serialize = "eloq_voter")]
     EloqVoter,
-    #[strum(serialize = "proxy")]
-    Proxy,
 }
 
 pub fn config_path_string(path: Option<String>) -> anyhow::Result<String> {

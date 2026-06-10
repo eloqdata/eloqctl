@@ -158,10 +158,7 @@ impl super::TaskGroup for FailoverTaskGroup {
             return Err(anyhow!("Expected Failover command"));
         }
 
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => return Err(anyhow!("Expected Cluster config for Failover command")),
-        };
+        let Config::Cluster(cluster_config) = config;
 
         info!("Setting up failover task group");
 

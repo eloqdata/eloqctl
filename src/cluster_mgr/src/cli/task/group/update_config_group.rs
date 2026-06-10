@@ -21,14 +21,7 @@ impl TaskGroup for UpdateConfigTaskGroup {
         cmd_arg: SubCommand,
         config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let deploy_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Expected ClusterConfig for UpdateConfigTaskGroup"
-                ))
-            }
-        };
+        let Config::Cluster(deploy_config) = config;
 
         let (need_restart, fields, tx_node_id, password) = match &cmd_arg {
             SubCommand::UpdateConf {
@@ -38,7 +31,7 @@ impl TaskGroup for UpdateConfigTaskGroup {
                 password,
                 ..
             } => (*restart, fields.clone(), *tx_node_id, password),
-            _ => unreachable!(),
+            _ => unreachable!("Expected UpdateConf command"),
         };
 
         // Build config update tasks

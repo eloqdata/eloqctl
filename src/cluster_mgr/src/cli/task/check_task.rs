@@ -171,10 +171,6 @@ impl CheckTask {
         }
         Ok(None)
     }
-
-    async fn check_proxy(&self, _: TaskHost) -> Result<Option<ExecutionValue>> {
-        Ok(None)
-    }
 }
 
 #[async_trait::async_trait]
@@ -205,7 +201,6 @@ impl TaskExecutor for CheckTask {
             DeploymentPackage::Grafana => self.check_grafana(host).await,
             DeploymentPackage::PrometheusAlert => self.check_prometheusalert(host).await,
             DeploymentPackage::EloqLog => self.check_log_sv(host).await,
-            DeploymentPackage::Proxy => self.check_proxy(host).await,
         }
     }
 }

@@ -32,10 +32,7 @@ impl TaskGroup for CheckTaskGroup {
         cmd_arg: SubCommand,
         config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => return Err(anyhow::anyhow!("Expected ClusterConfig for CheckTaskGroup")),
-        };
+        let Config::Cluster(cluster_config) = config;
 
         let mut executable = IndexMap::new();
         let input = HashMap::new();

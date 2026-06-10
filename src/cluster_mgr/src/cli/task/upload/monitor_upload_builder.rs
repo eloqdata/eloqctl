@@ -305,10 +305,7 @@ impl UploadTaskBuilder for MonitorInfraConfUploadBuilder {
 impl MonitorInfraConfUploadBuilder {
     pub fn build_for_cmd(config: &Config, cmd: &str) -> IndexMap<TaskId, TaskInstance> {
         let builder = MonitorInfraConfUploadBuilder;
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => panic!("Expected ClusterConfig for MonitorInfraConfUploadBuilder"),
-        };
+        let Config::Cluster(cluster_config) = config;
 
         let monitor_opt = cluster_config.deployment.monitor.as_ref();
         let source_host = get_source_host(None);

@@ -10,14 +10,7 @@ impl TaskGroup for InstallDepPkgTaskGroup {
         cmd_arg: SubCommand,
         config: &Config,
     ) -> anyhow::Result<TaskExecutionContext> {
-        let cluster_config = match config {
-            Config::Cluster(cfg) => cfg,
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Expected ClusterConfig for InstallDepPkgTaskGroup"
-                ))
-            }
-        };
+        let Config::Cluster(cluster_config) = config;
 
         let install_runtime_deps = DepPkgTask::from_config(cluster_config)?;
         Ok(TaskExecutionContext {

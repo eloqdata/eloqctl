@@ -1,8 +1,0 @@
-[download]
-url = "https://downloads.apache.org/cassandra/4.1-alpha1/apache-cassandra-4.1-alpha1-bin.tar.gz"
-
-[command]
-start_script = '''
-#!/bin/bash
-$CASSANDRA_HOME/bin/cassandra -f
-'''
