@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.4](https://github.com/eloqdata/eloq_waiter/compare/v1.8.3...v1.8.4) (2026-06-17)
+
+
+### Documentation
+
+* add host setup bootstrap and refresh examples ([#422](https://github.com/eloqdata/eloq_waiter/issues/422)) ([3221874](https://github.com/eloqdata/eloq_waiter/commit/3221874bc6413eebe9351aa449c18bdcb0ee273b))
+
 ## [1.8.3](https://github.com/eloqdata/eloq_waiter/compare/v1.8.2...v1.8.3) (2026-06-17)
 
 
