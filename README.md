@@ -45,6 +45,8 @@ ssh-copy-id -i ~/.ssh/id_rsa.pub eloq@<target-host>
 
 The website prerequisite guide explains what the setup script configures and how to verify the machine state.
 
+For deployment field meanings and example YAML shapes, see the EloqKV website docs: [Deployment YAML Reference](https://eloqdata.github.io/eloq-website/eloqkv/topology-reference) and [Deploy High Availability Cluster with MinIO](https://eloqdata.github.io/eloq-website/eloqkv/quick-start-ha-local-storage).
+
 Launch an EloqKV cluster from a topology file:
 
 ```sh

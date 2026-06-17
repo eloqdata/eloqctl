@@ -32,6 +32,8 @@ ssh-copy-id -i ~/.ssh/id_rsa.pub eloq@<target-host>
 
 The setup script installs basic host dependencies, creates the `eloq` user if needed, enables passwordless sudo for that user, configures SSH, raises file-descriptor and core-dump limits, and prepares `/var/crash`.
 
+For field meanings and current YAML examples, see the EloqKV website docs: [Deployment YAML Reference](https://eloqdata.github.io/eloq-website/eloqkv/topology-reference) and [Deploy High Availability Cluster with MinIO](https://eloqdata.github.io/eloq-website/eloqkv/quick-start-ha-local-storage).
+
 ```sh
 eloqctl check /path/to/topology.yaml
 eloqctl launch /path/to/topology.yaml
