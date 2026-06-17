@@ -7,7 +7,7 @@ This test suite is documented in two common workflows.
 Build the local `eloqctl` first:
 
 ```sh
-cd /home/starrysky/workspace/eloqdata-kernel/eloq_waiter
+cd /path/to/eloq_waiter
 cargo build -p cluster_mgr --bin eloqctl
 ```
 
@@ -96,7 +96,7 @@ Notes:
 ### 1. Start the environment
 
 ```sh
-cd /home/starrysky/workspace/eloqdata-kernel/eloq_waiter
+cd /path/to/eloq_waiter
 cargo build -p cluster_mgr --bin eloqctl
 tests/e2e/devctl.sh env-up
 tests/e2e/devctl.sh install-control
@@ -157,7 +157,7 @@ eloqctl monitor status --cluster test-e2e
 Host side:
 
 ```sh
-cd /home/starrysky/workspace/eloqdata-kernel/eloq_waiter
+cd /path/to/eloq_waiter
 cargo build -p cluster_mgr --bin eloqctl
 export E2E_TOPOLOGY_TEMPLATE=tests/e2e/topology.eloqstore-cloud.yaml
 export ELOQKV_VERSION=1.3.0
@@ -418,7 +418,7 @@ inside `stress-python`, then pause/resume it manually as needed.
 Run on the host in a separate terminal after the cluster is healthy:
 
 ```sh
-cd /home/starrysky/workspace/eloqdata-kernel/eloq_waiter
+cd /path/to/eloq_waiter
 
 # Start cluster-client-only traffic in the background
 tests/e2e/devctl.sh traffic-start

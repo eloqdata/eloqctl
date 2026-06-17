@@ -96,10 +96,21 @@ install_binary() {
     return 0
 }
 
+ensure_binary_compat() {
+    if [ ! -e "${BIN_PATH}" ] && [ -e "${LEGACY_BIN_PATH}" ]; then
+        ln -sfn cluster_mgr "${BIN_PATH}"
+    fi
+    if [ ! -e "${LEGACY_BIN_PATH}" ] && [ -e "${BIN_PATH}" ]; then
+        ln -sfn eloqctl "${LEGACY_BIN_PATH}"
+    fi
+}
+
 if ! install_binary; then
     echo "Failed to download and/or extract eloqctl archive."
     exit 1
 fi
+
+ensure_binary_compat
 
 chmod 755 "${BIN_DIR}/eloqctl"
 if [ -e "${LEGACY_BIN_PATH}" ]; then
