@@ -10,6 +10,8 @@ deployment:
   install_dir: "/home/${USER}"
   enable_wal: true
   enable_io_uring: false
+  enable_tls: false
+  cluster_mode: true
   checkpointer_interval: 120
   tx_service:
     tx_host_ports: [10.0.0.1:6379]
@@ -26,3 +28,16 @@ deployment:
   storage_service:
     rocksdb: !LOCAL
       # path: /tmp
+  hardware:
+    10.0.0.1:
+      cpu: 4
+      memory: 8192
+    10.0.0.2:
+      cpu: 4
+      memory: 8192
+    10.0.0.3:
+      cpu: 2
+      memory: 4096
+    10.0.0.4:
+      cpu: 4
+      memory: 8192

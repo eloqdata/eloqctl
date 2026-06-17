@@ -9,6 +9,10 @@ deployment:
   product: "EloqKV"
   version: "latest"
   install_dir: "${ELOQCTL_HOME}/demo/eloqkv-local-demo"
+  enable_wal: false
+  enable_io_uring: false
+  enable_tls: false
+  cluster_mode: false
   tx_service:
     tx_host_ports: [127.0.0.1:6389]
   log_service:

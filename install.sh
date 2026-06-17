@@ -111,7 +111,6 @@ if ! install_binary; then
 fi
 
 ensure_binary_compat
-
 chmod 755 "${BIN_DIR}/eloqctl"
 if [ -e "${LEGACY_BIN_PATH}" ]; then
     chmod 755 "${LEGACY_BIN_PATH}"

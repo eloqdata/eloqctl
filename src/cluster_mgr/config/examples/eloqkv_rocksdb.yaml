@@ -10,6 +10,8 @@ deployment:
   install_dir: "/mnt/ssd/${USER}/zhouxiao"
   enable_wal: true
   enable_io_uring: false
+  enable_tls: false
+  cluster_mode: false
   checkpointer_interval: 6000
   tx_service:
     tx_host_ports: [192.168.122.24:6389]
@@ -38,3 +40,10 @@ deployment:
     bthread_concurrency: 1
   storage_service:
     rocksdb: !LOCAL
+  hardware:
+    192.168.122.24:
+      cpu: 8
+      memory: 32768
+    192.168.122.25:
+      cpu: 4
+      memory: 16384

@@ -10,6 +10,8 @@ deployment:
   install_dir: "/home/${USER}"
   enable_wal: true
   enable_io_uring: true
+  enable_tls: false
+  cluster_mode: true
   checkpointer_interval: 120
   maxclients: 60000
   tx_service:
@@ -66,3 +68,13 @@ deployment:
     node_exporter:
       url: "https://github.com/prometheus/node_exporter/releases/download/v1.5.0/node_exporter-1.5.0.linux-amd64.tar.gz"
       port: 9200
+  hardware:
+    10.0.0.1:
+      cpu: 8
+      memory: 32768
+    10.0.0.2:
+      cpu: 8
+      memory: 32768
+    10.0.0.3:
+      cpu: 4
+      memory: 16384

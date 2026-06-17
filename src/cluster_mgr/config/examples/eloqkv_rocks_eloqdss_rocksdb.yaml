@@ -10,6 +10,8 @@ deployment:
   install_dir: "/home/${USER}"
   enable_wal: true
   enable_io_uring: false
+  enable_tls: false
+  cluster_mode: false
   checkpointer_interval: 120
   tx_service:
     tx_host_ports: [127.0.0.1:6389]
@@ -32,3 +34,7 @@ deployment:
       # bucket_prefix: "eloqkv"
       # target_file_size_base: "64MB"
       # sst_file_cache_size: "1GB"
+  hardware:
+    127.0.0.1:
+      cpu: 2
+      memory: 2048
