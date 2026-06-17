@@ -175,6 +175,20 @@ pub struct Hardware {
     pub memory: u32, // MiB
     #[serde(skip_serializing_if = "Option::is_none")]
     pub event_dispatcher_num: Option<u16>,
+    /// Optional per-node override for the node's base data directory
+    /// (the `[local] eloq_data_path` INI key). Defaults to
+    /// `{install_dir}/EloqKV/data/port-{port}`. Overriding it relocates the
+    /// whole node data tree; the EloqStore default path follows this base
+    /// unless `eloq_store_data_path_list` is also set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eloq_data_path: Option<String>,
+    /// Optional per-node override for the EloqStore data directory list
+    /// (the `[store] eloq_store_data_path_list` INI key). When multiple nodes
+    /// run on the same host, an `ip:port`-keyed entry lets each node use a
+    /// distinct path (e.g. spread across disks). Takes precedence over the
+    /// shared `storage_service` value and the auto-derived default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eloq_store_data_path_list: Option<String>,
 }
 
 pub enum Version {
@@ -228,11 +242,31 @@ impl Deployment {
         }
     }
 
-    pub fn get_hardware(&self, host: &str) -> Option<&Hardware> {
-        if let Some(all_hw) = self.hardware.as_ref() {
-            all_hw.get(host)
-        } else {
-            None
+    /// Look up the hardware spec for a node.
+    ///
+    /// Keys in the `hardware` map may be written in two formats:
+    /// - `ip:port` (preferred) — addresses a single node, required to give
+    ///   distinct specs to multiple nodes co-located on the same host.
+    /// - `ip` (legacy) — shared by every node running on that host.
+    ///
+    /// The `ip:port` key is tried first; when absent we fall back to the
+    /// bare `ip` key so existing single-node-per-host topologies keep working.
+    pub fn get_hardware(&self, host: &str, port: &str) -> Option<&Hardware> {
+        let all_hw = self.hardware.as_ref()?;
+        all_hw
+            .get(&format!("{host}:{port}"))
+            .or_else(|| all_hw.get(host))
+    }
+
+    /// Returns the cluster-wide (shared) `eloq_store_data_path_list` from the
+    /// embedded EloqStore backend config, if one was explicitly set. Used to
+    /// decide whether a per-node `eloq_data_path` override should also redirect
+    /// the EloqStore data directory (an explicit shared value still wins).
+    fn global_eloq_store_data_path_list(&self) -> Option<&str> {
+        match self.storage_service.as_ref()?.eloqdss.as_ref()?.backend_config() {
+            DataStoreServiceBackend::EloqStore(config) => {
+                config.eloq_store_data_path_list.as_deref()
+            }
         }
     }
 
@@ -954,6 +988,14 @@ impl Deployment {
                                             Some(value.to_string()),
                                         );
                                     }
+                                    if let Some(value) = config.eloq_store_standby_max_concurrency
+                                    {
+                                        ini.set(
+                                            SECTION_STORE,
+                                            "eloq_store_standby_max_concurrency",
+                                            Some(value.to_string()),
+                                        );
+                                    }
                                     if let Some(value) = &config.eloq_store_local_space_limit {
                                         ini.set(
                                             SECTION_STORE,
@@ -1471,7 +1513,7 @@ impl Deployment {
                 }
             }
 
-            if let Some(hw) = self.get_hardware(&host_get) {
+            if let Some(hw) = self.get_hardware(&host_get, &port_get) {
                 let key = "core_number";
                 let mut core_tx = 1; // minimal value
                 if let Some(val) = set_by_user!(ini.get(SECTION_LOCAL, key), u16) {
@@ -1511,6 +1553,36 @@ impl Deployment {
                         bail!("Memory limit must be greater than 0");
                     }
                     ini.set(SECTION_LOCAL, key, Some(limit.to_string()));
+                }
+
+                // Per-node base data directory override. Relocates the whole
+                // node data tree so co-located nodes can use distinct paths.
+                if let Some(data_path) = &hw.eloq_data_path {
+                    ini.set(SECTION_LOCAL, "eloq_data_path", Some(data_path.clone()));
+                }
+
+                // Per-node EloqStore data directory resolution (precedence:
+                // per-node store override > shared storage_service value >
+                // derived from the effective base path). Overrides the value
+                // already written by build_eloqkv_config.
+                if let Some(data_path_list) = &hw.eloq_store_data_path_list {
+                    ini.set(
+                        SECTION_STORE,
+                        "eloq_store_data_path_list",
+                        Some(data_path_list.clone()),
+                    );
+                } else if let Some(base) = &hw.eloq_data_path {
+                    // Base was redirected and no explicit store list given:
+                    // keep the EloqStore data under the new base, unless a
+                    // shared explicit value was configured.
+                    if self.global_eloq_store_data_path_list().is_none() {
+                        use crate::config::storage_service_config::EloqStoreConfig;
+                        ini.set(
+                            SECTION_STORE,
+                            "eloq_store_data_path_list",
+                            Some(EloqStoreConfig::compute_default_eloq_store_data_path(base)),
+                        );
+                    }
                 }
             }
 
@@ -1651,7 +1723,7 @@ impl Deployment {
         )?)
         .map_err(|e| anyhow!("Failed to load template ini: {e}"))?;
 
-        ini.set("local", "ip", Some(host));
+        ini.set("local", "ip", Some(host.clone()));
         ini.set("local", "port", Some(port.clone()));
         ini.set(
             "local",
@@ -1758,6 +1830,20 @@ impl Deployment {
                                     "store",
                                     "eloq_store_data_path_list",
                                     Some(default_data_path),
+                                );
+                                store_fields_set = true;
+                            }
+                            // Per-node override (see gen_eloqkv_node_config):
+                            // an ip:port-keyed hardware entry wins over the
+                            // shared value and the default computed above.
+                            if let Some(hw_path) = self
+                                .get_hardware(&host, &port)
+                                .and_then(|hw| hw.eloq_store_data_path_list.as_ref())
+                            {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_data_path_list",
+                                    Some(hw_path.clone()),
                                 );
                                 store_fields_set = true;
                             }
@@ -1899,6 +1985,14 @@ impl Deployment {
                                 ini.set(
                                     "store",
                                     "eloq_store_file_amplify_factor",
+                                    Some(value.to_string()),
+                                );
+                                store_fields_set = true;
+                            }
+                            if let Some(value) = config.eloq_store_standby_max_concurrency {
+                                ini.set(
+                                    "store",
+                                    "eloq_store_standby_max_concurrency",
                                     Some(value.to_string()),
                                 );
                                 store_fields_set = true;

@@ -348,6 +348,9 @@ pub struct EloqStoreConfig {
     pub eloq_store_overflow_pointers: Option<u32>,
     pub eloq_store_enable_compression: Option<bool>,
     pub eloq_store_max_upload_batch: Option<u32>,
+    /// Max concurrent standby rsync/ssh jobs (EloqKV default: 100). Only
+    /// relevant when the cluster runs EloqStore standby replicas.
+    pub eloq_store_standby_max_concurrency: Option<u32>,
     /// Cloud store path for cloud mode (empty or None means local mode).
     /// Format: bucket-name
     pub eloq_store_cloud_store_path: Option<String>,

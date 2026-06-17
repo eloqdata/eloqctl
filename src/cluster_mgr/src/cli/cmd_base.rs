@@ -2567,6 +2567,7 @@ impl CmdExecutor {
                                 eloq_store_overflow_pointers: None,
                                 eloq_store_enable_compression: None,
                                 eloq_store_max_upload_batch: None,
+                                eloq_store_standby_max_concurrency: None,
                                 eloq_store_cloud_store_path: None,
                                 eloq_store_cloud_config: None,
                                 eloq_store_data_append_mode: None,
