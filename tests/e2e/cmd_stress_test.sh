@@ -45,7 +45,7 @@ TS_INFO_ONLY_INFLIGHT="${TS_INFO_ONLY_INFLIGHT:-8}"
 TS_INFO_ONLY_REPEAT="${TS_INFO_ONLY_REPEAT:-50}"
 TS_INFO_ONLY_DURATION="${TS_INFO_ONLY_DURATION_SECONDS:-30}"
 GRAFANA_UPDATE_URL="${GRAFANA_UPDATE_URL:-https://dl.grafana.com/grafana/release/13.0.1+security-01/grafana_13.0.1+security-01_25720641773_linux_amd64.tar.gz}"
-ELOQKV_UPDATE_VERSION="${ELOQKV_UPDATE_VERSION:-${ELOQKV_VERSION:-1.2.3}}"
+ELOQKV_UPDATE_VERSION="${ELOQKV_UPDATE_VERSION:-${ELOQKV_VERSION:-1.3.1}}"
 GRAFANA_HTTP_URL="${GRAFANA_HTTP_URL:-http://172.28.10.14:3301}"
 ALERTMANAGER_HTTP_URL="${ALERTMANAGER_HTTP_URL:-http://172.28.10.14:9093}"
 ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL="${ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL:-http://172.28.10.14:8080}"
@@ -497,16 +497,17 @@ do_resp_compat() {
     local compose_file="${DOCKER_E2E_DIR}/docker-compose.yaml"
     local standalone_log="${SCRIPT_DIR}/resp-compat-standalone.log"
     local cluster_log="${SCRIPT_DIR}/resp-compat-cluster.log"
+    local summary_log="${SCRIPT_DIR}/resp-compat-summary.log"
     local cts="/tmp/cts_filtered.json"
     local script="/opt/resp-compatibility/resp_compatibility.py"
 
-    local common_args=(
-        python3 -u "${script}"
-        --host "${master_host}" --port "${master_port}"
-        --password "${PASSWD}" --testfile "${cts}"
-        --specific-version "${RESP_COMPAT_VERSION}"
-        --show-failed
-    )
+    # Generate summary report header
+    {
+        echo "╔══════════════════════════════════════════════╗"
+        echo "║  RESP Compatibility Report (Redis ${RESP_COMPAT_VERSION})"
+        printf "║  EloqKV: %-37s║\n" "eloqctl cluster ${CLUSTER}"
+        echo "╚══════════════════════════════════════════════╝"
+    } > "${summary_log}"
 
     # Filter out commands known to hang on EloqKV
     docker compose -f "${compose_file}" exec -T resp-compat python3 -c "
@@ -527,6 +528,16 @@ with open('${cts}','w') as f:
     docker compose -f "${compose_file}" cp resp-compat:/tmp/standalone.log "${standalone_log}"
     cat "${standalone_log}"
     local standalone_status=${PIPESTATUS[0]}
+
+    # Extract standalone summary and failed tests
+    {
+        echo ""
+        echo "─── Standalone Mode ───"
+        grep "^Summary:" "${standalone_log}" || echo "Summary: N/A"
+        echo ""
+        echo "Failed tests:"
+        awk '/^FailedTest/,/^$/' "${standalone_log}" | grep "^FailedTest" | sort || echo "  (none)"
+    } >> "${summary_log}"
 
     # Wait for cluster to recover after standalone test
     echo "  waiting for cluster recovery..."
@@ -550,6 +561,16 @@ r.close()
     docker compose -f "${compose_file}" cp resp-compat:/tmp/cluster.log "${cluster_log}"
     cat "${cluster_log}"
     local cluster_status=${PIPESTATUS[0]}
+
+    # Extract cluster summary and failed tests
+    {
+        echo ""
+        echo "─── Cluster Mode ───"
+        grep "^Summary:" "${cluster_log}" || echo "Summary: N/A"
+        echo ""
+        echo "Failed tests:"
+        awk '/^FailedTest/,/^$/' "${cluster_log}" | grep "^FailedTest" | sort || echo "  (none)"
+    } >> "${summary_log}"
 
     if [ ${standalone_status} -ne 0 ] || [ ${cluster_status} -ne 0 ]; then
         echo "FAIL: resp-compat standalone=${standalone_status} cluster=${cluster_status}"

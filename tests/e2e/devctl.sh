@@ -64,7 +64,7 @@ render_control_topology() {
     local version
     local feishu_url
     template="$(topology_template)"
-    version="${ELOQKV_VERSION:-1.2.2}"
+    version="${ELOQKV_VERSION:-1.3.1}"
     feishu_url="${ELOQCTL_FEISHU_ROBOT_URL:-}"
     control_exec env \
         ELOQKV_VERSION="${version}" \
@@ -117,7 +117,7 @@ grafana_update() {
 cluster_update() {
     local cluster version
     cluster="$(cluster_name)"
-    version="${1:-${ELOQKV_VERSION:-1.2.2}}"
+    version="${1:-${ELOQKV_VERSION:-1.3.1}}"
     control_exec bash -lc "
         eloqctl update '${cluster}' '${version}' --password testpass
     "
