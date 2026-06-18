@@ -45,7 +45,7 @@ TS_INFO_ONLY_INFLIGHT="${TS_INFO_ONLY_INFLIGHT:-8}"
 TS_INFO_ONLY_REPEAT="${TS_INFO_ONLY_REPEAT:-50}"
 TS_INFO_ONLY_DURATION="${TS_INFO_ONLY_DURATION_SECONDS:-30}"
 GRAFANA_UPDATE_URL="${GRAFANA_UPDATE_URL:-https://dl.grafana.com/grafana/release/13.0.1+security-01/grafana_13.0.1+security-01_25720641773_linux_amd64.tar.gz}"
-ELOQKV_UPDATE_VERSION="${ELOQKV_UPDATE_VERSION:-${ELOQKV_VERSION:-1.2.3}}"
+ELOQKV_UPDATE_VERSION="${ELOQKV_UPDATE_VERSION:-${ELOQKV_VERSION:-1.3.1}}"
 GRAFANA_HTTP_URL="${GRAFANA_HTTP_URL:-http://172.28.10.14:3301}"
 ALERTMANAGER_HTTP_URL="${ALERTMANAGER_HTTP_URL:-http://172.28.10.14:9093}"
 ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL="${ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL:-http://172.28.10.14:8080}"
@@ -497,16 +497,17 @@ do_resp_compat() {
     local compose_file="${DOCKER_E2E_DIR}/docker-compose.yaml"
     local standalone_log="${SCRIPT_DIR}/resp-compat-standalone.log"
     local cluster_log="${SCRIPT_DIR}/resp-compat-cluster.log"
+    local summary_log="${SCRIPT_DIR}/resp-compat-summary.log"
     local cts="/tmp/cts_filtered.json"
     local script="/opt/resp-compatibility/resp_compatibility.py"
 
-    local common_args=(
-        python3 -u "${script}"
-        --host "${master_host}" --port "${master_port}"
-        --password "${PASSWD}" --testfile "${cts}"
-        --specific-version "${RESP_COMPAT_VERSION}"
-        --show-failed
-    )
+    # Generate summary report header
+    {
+        echo "╔══════════════════════════════════════════════╗"
+        echo "║  RESP Compatibility Report (Redis ${RESP_COMPAT_VERSION})"
+        printf "║  EloqKV: %-37s║\n" "eloqctl cluster ${CLUSTER}"
+        echo "╚══════════════════════════════════════════════╝"
+    } > "${summary_log}"
 
     # Filter out commands known to hang on EloqKV
     docker compose -f "${compose_file}" exec -T resp-compat python3 -c "
@@ -527,6 +528,37 @@ with open('${cts}','w') as f:
     docker compose -f "${compose_file}" cp resp-compat:/tmp/standalone.log "${standalone_log}"
     cat "${standalone_log}"
     local standalone_status=${PIPESTATUS[0]}
+
+    # Extract standalone summary and failed tests
+    {
+        echo ""
+        echo "─── Standalone Mode ───"
+        if [ -s "${standalone_log}" ]; then
+            grep "^Summary:" "${standalone_log}" || {
+                echo "Summary: not found in log"
+                echo "  (log size: $(wc -c < "${standalone_log}") bytes)"
+                echo "  first 5 lines:"
+                head -5 "${standalone_log}" | while IFS= read -r line; do echo "    | ${line}"; done
+                echo "  last 5 lines:"
+                tail -5 "${standalone_log}" | while IFS= read -r line; do echo "    | ${line}"; done
+            }
+            echo ""
+            echo "Failed tests:"
+            local standalone_failed
+            standalone_failed=$(awk '/^FailedTest/,/^$/' "${standalone_log}" | grep "^FailedTest" | sort || true)
+            if [ -n "${standalone_failed}" ]; then
+                echo "${standalone_failed}"
+            else
+                if grep -q "^Summary:" "${standalone_log}"; then
+                    echo "  (none)"
+                else
+                    echo "  (log contains no Summary line — test may have failed to run)"
+                fi
+            fi
+        else
+            echo "  (log file empty or missing)"
+        fi
+    } >> "${summary_log}"
 
     # Wait for cluster to recover after standalone test
     echo "  waiting for cluster recovery..."
@@ -550,6 +582,37 @@ r.close()
     docker compose -f "${compose_file}" cp resp-compat:/tmp/cluster.log "${cluster_log}"
     cat "${cluster_log}"
     local cluster_status=${PIPESTATUS[0]}
+
+    # Extract cluster summary and failed tests
+    {
+        echo ""
+        echo "─── Cluster Mode ───"
+        if [ -s "${cluster_log}" ]; then
+            grep "^Summary:" "${cluster_log}" || {
+                echo "Summary: not found in log"
+                echo "  (log size: $(wc -c < "${cluster_log}") bytes)"
+                echo "  first 5 lines:"
+                head -5 "${cluster_log}" | while IFS= read -r line; do echo "    | ${line}"; done
+                echo "  last 5 lines:"
+                tail -5 "${cluster_log}" | while IFS= read -r line; do echo "    | ${line}"; done
+            }
+            echo ""
+            echo "Failed tests:"
+            local cluster_failed
+            cluster_failed=$(awk '/^FailedTest/,/^$/' "${cluster_log}" | grep "^FailedTest" | sort || true)
+            if [ -n "${cluster_failed}" ]; then
+                echo "${cluster_failed}"
+            else
+                if grep -q "^Summary:" "${cluster_log}"; then
+                    echo "  (none)"
+                else
+                    echo "  (log contains no Summary line — test may have failed to run)"
+                fi
+            fi
+        else
+            echo "  (log file empty or missing)"
+        fi
+    } >> "${summary_log}"
 
     if [ ${standalone_status} -ne 0 ] || [ ${cluster_status} -ne 0 ]; then
         echo "FAIL: resp-compat standalone=${standalone_status} cluster=${cluster_status}"

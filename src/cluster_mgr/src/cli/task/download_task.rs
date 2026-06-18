@@ -13,7 +13,7 @@ use futures::stream::StreamExt;
 use indexmap::IndexMap;
 use indicatif::{MultiProgress, ProgressBar};
 use itertools::Itertools;
-use reqwest::header::{ACCEPT, CONNECTION, RANGE, USER_AGENT};
+use reqwest::header::{ACCEPT, ACCEPT_RANGES, CONNECTION, CONTENT_RANGE, RANGE, USER_AGENT};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::task::spawn_blocking;
 use tokio::time::timeout;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 const MAX_DOWNLOAD_ATTEMPTS: usize = 8;
 const DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(3);
@@ -45,6 +45,34 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
+    async fn resolve_remote_target(&self) -> (Option<u64>, String) {
+        match HTTP_CLIENT
+            .head(&self.url)
+            .header(CONNECTION, "close")
+            .timeout(HTTP_REQUEST_TIMEOUT)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                let effective_url = response.url().to_string();
+                if effective_url != self.url {
+                    info!(
+                        "resolved download URL for {}: {} → {}",
+                        self.name, self.url, effective_url
+                    );
+                }
+                (response.content_length(), effective_url)
+            }
+            Err(err) => {
+                info!(
+                    "HEAD request failed for {} ({}), falling back to original URL",
+                    self.name, err
+                );
+                (None, self.url.clone())
+            }
+        }
+    }
+
     pub fn from_config(config: &DeployConfig) -> Result<IndexMap<TaskId, TaskInstance>> {
         let deployment_ref = &config.deployment;
         let tx_download_str = deployment_ref.tx_image();
@@ -238,15 +266,10 @@ impl TaskExecutor for DownloadTask {
         let save_path = save_dir.join(&self.name);
         let expected_digest = self.expected_digest().await.ok().flatten();
 
-        // Try HEAD first to check remote content-length for cache validation
-        let remote_len = HTTP_CLIENT
-            .head(&self.url)
-            .header(CONNECTION, "close")
-            .timeout(HTTP_REQUEST_TIMEOUT)
-            .send()
-            .await
-            .ok()
-            .and_then(|r| r.content_length());
+        // Try HEAD first to check remote content-length for cache validation,
+        // and resolve the final URL after redirects (github.com → S3) so
+        // subsequent Range requests go directly to the object store.
+        let (mut remote_len, mut effective_url) = self.resolve_remote_target().await;
 
         if save_path.exists() {
             let digest_matches = match &expected_digest {
@@ -310,10 +333,35 @@ impl TaskExecutor for DownloadTask {
         }
         let mut final_file_len = remote_len.unwrap_or(0);
         for attempt in 1..=MAX_DOWNLOAD_ATTEMPTS {
+            if attempt > 1 {
+                let (attempt_remote_len, attempt_effective_url) =
+                    self.resolve_remote_target().await;
+                if let (Some(previous), Some(current)) = (remote_len, attempt_remote_len) {
+                    if previous != current {
+                        warn!(
+                            "remote content length changed for {} between retries: {} -> {}",
+                            self.name, previous, current
+                        );
+                    }
+                }
+                if remote_len.is_none() {
+                    remote_len = attempt_remote_len;
+                }
+                effective_url = attempt_effective_url;
+            }
+
             let mut resume_from = fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);
+            info!(
+                "download attempt {attempt}/{MAX_DOWNLOAD_ATTEMPTS} for {}: resume_from={}, expected_len={:?}, partial_path={:?}",
+                self.name, resume_from, remote_len, part_path
+            );
 
             if let Some(expected_len) = remote_len {
                 if resume_from > expected_len {
+                    warn!(
+                        "partial file for {} is larger than expected remote size ({} > {}), removing it",
+                        self.name, resume_from, expected_len
+                    );
                     fs::remove_file(&part_path).ok();
                     resume_from = 0;
                 } else if resume_from == expected_len && expected_len > 0 {
@@ -337,9 +385,13 @@ impl TaskExecutor for DownloadTask {
                 }
             }
 
-            let mut request = HTTP_CLIENT.get(&self.url).header(CONNECTION, "close");
+            let mut request = HTTP_CLIENT.get(&effective_url).header(CONNECTION, "close");
             if resume_from > 0 {
                 request = request.header(RANGE, format!("bytes={resume_from}-"));
+                info!(
+                    "issuing resume request for {} with Range: bytes={resume_from}-",
+                    self.name
+                );
             }
             let response = match request.timeout(HTTP_REQUEST_TIMEOUT).send().await {
                 Ok(response) => response,
@@ -357,33 +409,97 @@ impl TaskExecutor for DownloadTask {
                 }
             };
             let status = response.status();
+            let content_length = response.content_length();
+            let accept_ranges = response
+                .headers()
+                .get(ACCEPT_RANGES)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned);
+            let content_range = response
+                .headers()
+                .get(CONTENT_RANGE)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned);
+            info!(
+                "download response for {} attempt {attempt}: status={}, content_length={:?}, accept_ranges={:?}, content_range={:?}, resume_from={}",
+                self.name,
+                status.as_str(),
+                content_length,
+                accept_ranges,
+                content_range,
+                resume_from
+            );
             if !(status.is_success() || status == StatusCode::PARTIAL_CONTENT) {
                 error!("Download falied http status_code = {:?}", status.as_str());
                 return Err(anyhow!(DownloadErr(self.url.clone(), status.to_string())));
             }
 
-            let (mut part_file, file_len, resumed) =
-                if resume_from > 0 && status == StatusCode::PARTIAL_CONTENT {
-                    let total_len = remote_len
-                        .unwrap_or_else(|| resume_from + response.content_length().unwrap_or(0));
-                    let file = OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(part_path.as_path())
-                        .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
-                    (file, total_len, true)
-                } else {
-                    if resume_from > 0 {
-                        fs::remove_file(&part_path).ok();
+            let (mut part_file, file_len, resumed) = if resume_from > 0
+                && status == StatusCode::PARTIAL_CONTENT
+            {
+                match content_range.as_deref() {
+                    Some(range) if range.starts_with(&format!("bytes {resume_from}-")) => {
+                        info!(
+                            "resume response for {} matched requested offset {}",
+                            self.name, resume_from
+                        );
                     }
-                    let file = std::fs::File::create(part_path.as_path())
-                        .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
-                    (
-                        file,
-                        response.content_length().unwrap_or(remote_len.unwrap_or(0)),
-                        false,
+                    Some(range) => {
+                        warn!(
+                                "resume response for {} returned unexpected Content-Range {:?} for requested offset {}",
+                                self.name, range, resume_from
+                            );
+                    }
+                    None => {
+                        warn!(
+                            "resume response for {} returned 206 without Content-Range header",
+                            self.name
+                        );
+                    }
+                }
+                let total_len =
+                    remote_len.unwrap_or_else(|| resume_from + content_length.unwrap_or(0));
+                let file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(part_path.as_path())
+                    .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+                info!(
+                    "resuming download for {} from byte {}",
+                    self.name, resume_from
+                );
+                (file, total_len, true)
+            } else if resume_from > 0 {
+                warn!(
+                        "resume request for {} returned {} instead of 206; preserving partial file and retrying with a fresh URL",
+                        self.name,
+                        status.as_str()
+                    );
+                if attempt < MAX_DOWNLOAD_ATTEMPTS {
+                    self.pg_bar.set_message(format!(
+                        "{} Resume pending, retrying with preserved partial...",
+                        self.name
+                    ));
+                    tokio::time::sleep(DOWNLOAD_RETRY_DELAY).await;
+                    continue;
+                }
+                return Err(anyhow!(DownloadErr(
+                    self.url.clone(),
+                    format!(
+                        "resume request returned {} instead of 206 after {} attempts",
+                        status.as_str(),
+                        MAX_DOWNLOAD_ATTEMPTS
                     )
-                };
+                )));
+            } else {
+                let file = std::fs::File::create(part_path.as_path())
+                    .map_err(|err| DownloadErr(url.clone(), err.to_string()))?;
+                (
+                    file,
+                    content_length.unwrap_or(remote_len.unwrap_or(0)),
+                    false,
+                )
+            };
             final_file_len = file_len;
 
             // Double-check cache after successful GET (in case of concurrent download)
@@ -470,8 +586,9 @@ impl TaskExecutor for DownloadTask {
 
             if attempt < MAX_DOWNLOAD_ATTEMPTS {
                 info!(
-                    "download attempt {attempt}/{MAX_DOWNLOAD_ATTEMPTS} incomplete for {} (have {current_len}/{file_len} bytes), retrying",
-                    self.name
+                    "download attempt {attempt}/{MAX_DOWNLOAD_ATTEMPTS} incomplete for {} (have {current_len}/{file_len} bytes, resumed={}), retrying",
+                    self.name,
+                    resumed
                 );
                 tokio::time::sleep(DOWNLOAD_RETRY_DELAY).await;
             } else {
