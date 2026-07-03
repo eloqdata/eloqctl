@@ -1224,11 +1224,11 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "topk(10, histogram_quantile($percentile / 100, sum by (le, type)(rate(redis_command_duration_bucket{instance=~\"$eloqdata_server\"}[$__rate_interval]))) > 0)",
+          "expr": "topk(10, eloqkv:cmd_latency:1m{instance=~\"$eloqdata_server\", quantile=\"$percentile\"} > 0)",
           "format": "time_series",
           "instant": false,
           "interval": "",
-          "legendFormat": "{{type}}",
+          "legendFormat": "{{type}} @ {{instance}}",
           "range": true,
           "refId": "A"
         }
@@ -1332,7 +1332,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "topk(10, sum by (type)(rate(redis_command_total{instance=~\"$eloqdata_server\"}[$__rate_interval])) > 0)",
+          "expr": "topk(10, sum by (type)(eloqkv:cmd_qps:rate1m{instance=~\"$eloqdata_server\"}) > 0)",
           "format": "time_series",
           "instant": false,
           "interval": "",

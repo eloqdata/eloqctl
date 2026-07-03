@@ -1,4 +1,30 @@
 groups:
+  # Pre-aggregation (recording rules). Collapse the high-cardinality
+  # redis_command_duration_bucket / redis_command_total into low-cardinality
+  # per-(type,instance) series so Top-N command dashboards can query 24h ranges
+  # without loading the raw buckets into memory (which OOM'd Prometheus).
+  # No Alertmanager involved; evaluated by Prometheus itself every 15s.
+  - name: eloqkv_precompute
+    interval: 15s
+    rules:
+      - record: eloqkv:cmd_qps:rate1m
+        expr: sum by (type, instance)(rate(redis_command_total[1m]))
+      - record: eloqkv:cmd_latency:1m
+        expr: histogram_quantile(0.999, sum by (le, type, instance)(rate(redis_command_duration_bucket[1m])))
+        labels: {quantile: "99.9"}
+      - record: eloqkv:cmd_latency:1m
+        expr: histogram_quantile(0.99, sum by (le, type, instance)(rate(redis_command_duration_bucket[1m])))
+        labels: {quantile: "99"}
+      - record: eloqkv:cmd_latency:1m
+        expr: histogram_quantile(0.95, sum by (le, type, instance)(rate(redis_command_duration_bucket[1m])))
+        labels: {quantile: "95"}
+      - record: eloqkv:cmd_latency:1m
+        expr: histogram_quantile(0.90, sum by (le, type, instance)(rate(redis_command_duration_bucket[1m])))
+        labels: {quantile: "90"}
+      - record: eloqkv:cmd_latency:1m
+        expr: histogram_quantile(0.50, sum by (le, type, instance)(rate(redis_command_duration_bucket[1m])))
+        labels: {quantile: "50"}
+
   - name: alert_rules
     rules:
       - alert: memory_usage_more_than_70%
