@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.10.0](https://github.com/eloqdata/eloqctl/compare/v1.9.0...v1.10.0) (2026-07-03)
+
+
+### Features
+
+* **dashboard:** add ops-visibility panels to EloqKV overview dashboards ([#430](https://github.com/eloqdata/eloqctl/issues/430)) ([a3d98bd](https://github.com/eloqdata/eloqctl/commit/a3d98bd3664f6074dd06f8bce7757ed5c08b571b))
+* **eloqstore:** per-node hardware keys, data-dir overrides, standby … ([#424](https://github.com/eloqdata/eloqctl/issues/424)) ([df302df](https://github.com/eloqdata/eloqctl/commit/df302dfee5a6fec3e75ce24ef599279db15b178b))
+
+
+### Bug Fixes
+
+* restore Prometheus datasource variable in host metrics dashboard ([#429](https://github.com/eloqdata/eloqctl/issues/429)) ([79db084](https://github.com/eloqdata/eloqctl/commit/79db084eaf97e6f29ba122400712faa41da20e52))
+
 ## [1.9.0](https://github.com/eloqdata/eloq_waiter/compare/v1.8.4...v1.9.0) (2026-06-18)
 
 
