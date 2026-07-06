@@ -457,8 +457,7 @@ impl Deployment {
     }
 
     pub fn client_bin(&self) -> String {
-        let tx_home = self.tx_srv_home();
-        format!("{tx_home}/bin/eloqkv-cli")
+        "redis-cli".to_string()
     }
 
     pub fn get_redis_keyspace(&self) -> anyhow::Result<String> {
