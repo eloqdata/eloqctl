@@ -689,6 +689,13 @@ impl Deployment {
                                 Some(val.clone()),
                             );
                         }
+                        if let Some(val) = &s3.rocksdb_delete_obsolete_files_period_micros {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_delete_obsolete_files_period_micros",
+                                Some(val.clone()),
+                            );
+                        }
                         if let Some(val) = &s3.rocksdb_storage_path {
                             ini.set(SECTION_STORE, "rocksdb_storage_path", Some(val.clone()));
                         }
@@ -747,6 +754,13 @@ impl Deployment {
                                 Some(val.clone()),
                             );
                         }
+                        if let Some(val) = &minio.rocksdb_delete_obsolete_files_period_micros {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_delete_obsolete_files_period_micros",
+                                Some(val.clone()),
+                            );
+                        }
                         if let Some(val) = &minio.object_path {
                             ini.set(
                                 SECTION_STORE,
@@ -791,6 +805,13 @@ impl Deployment {
                             ini.set(
                                 SECTION_STORE,
                                 "rocksdb_periodic_compaction_seconds",
+                                Some(val.clone()),
+                            );
+                        }
+                        if let Some(val) = &gcs.rocksdb_delete_obsolete_files_period_micros {
+                            ini.set(
+                                SECTION_STORE,
+                                "rocksdb_delete_obsolete_files_period_micros",
                                 Some(val.clone()),
                             );
                         }
@@ -1791,6 +1812,14 @@ impl Deployment {
                     ini.set(
                         "store",
                         "rocksdb_periodic_compaction_seconds",
+                        Some(v.clone()),
+                    );
+                    store_fields_set = true;
+                }
+                if let Some(v) = &s.rocksdb_delete_obsolete_files_period_micros {
+                    ini.set(
+                        "store",
+                        "rocksdb_delete_obsolete_files_period_micros",
                         Some(v.clone()),
                     );
                     store_fields_set = true;
