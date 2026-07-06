@@ -393,10 +393,19 @@ impl TaskExecutor for DownloadTask {
                     self.name
                 );
             }
-            let response = match request.timeout(HTTP_REQUEST_TIMEOUT).send().await {
+            // reqwest's per-request timeout spans the entire body transfer,
+            // which would cap each attempt at HTTP_REQUEST_TIMEOUT worth of
+            // data. Bound only the time-to-response-headers here; the body
+            // stream is guarded per chunk by DOWNLOAD_PROGRESS_TIMEOUT below.
+            let send_result = match timeout(HTTP_REQUEST_TIMEOUT, request.send()).await {
+                Ok(result) => result.map_err(|err| err.to_string()),
+                Err(_) => Err(format!(
+                    "no response headers within {HTTP_REQUEST_TIMEOUT:?}"
+                )),
+            };
+            let response = match send_result {
                 Ok(response) => response,
-                Err(err) => {
-                    let err_msg = err.to_string();
+                Err(err_msg) => {
                     if attempt < MAX_DOWNLOAD_ATTEMPTS {
                         info!(
                             "download attempt {attempt}/{MAX_DOWNLOAD_ATTEMPTS} failed to start for {}: {}",
