@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/eloqdata/eloqctl/compare/v1.11.0...v1.11.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* don't cap download body transfer at request timeout; use redis-cli in connect hint ([#433](https://github.com/eloqdata/eloqctl/issues/433)) ([08d889c](https://github.com/eloqdata/eloqctl/commit/08d889cc89760bb47134f8e9c24d6422f1628911))
+
 ## [1.11.0](https://github.com/eloqdata/eloqctl/compare/v1.10.0...v1.11.0) (2026-07-06)
 
 
