@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/eloqdata/eloqctl/compare/v1.10.0...v1.11.0) (2026-07-06)
+
+
+### Features
+
+* support rocksdb_delete_obsolete_files_period_micros in store config ([#431](https://github.com/eloqdata/eloqctl/issues/431)) ([35f8a92](https://github.com/eloqdata/eloqctl/commit/35f8a921f03c778c28d220e5ee521a7109cbffc8))
+
 ## [1.10.0](https://github.com/eloqdata/eloqctl/compare/v1.9.0...v1.10.0) (2026-07-03)
 
 
