@@ -1,5 +1,5 @@
 use crate::cli::task::cluster_config_utils::parse_cluster_config;
-use crate::cli::task::config_fields::field_exists;
+use crate::cli::task::config_fields::{field_exists, field_ini_section};
 use crate::cli::task::redis_op_task::ClusterNodes;
 use crate::cli::task::task_base::TaskExecutor;
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskHost, TaskId, TaskInstance};
@@ -755,10 +755,19 @@ impl TopologyUpdateTask {
             }
         }
 
-        // Check additional settings
+        // Check additional settings. Insert each missing key under the INI
+        // section EloqKV reads it from, creating the section if needed.
         for (key, value) in &config.additional_settings {
             if !updated_fields.get(key).unwrap_or(&false) {
-                updated_lines.insert(insert_position, format!("{}={}", key, value));
+                let header = format!("[{}]", field_ini_section(key));
+                let pos = match updated_lines.iter().position(|l| l == &header) {
+                    Some(header_pos) => header_pos + 1,
+                    None => {
+                        updated_lines.push(header);
+                        updated_lines.len()
+                    }
+                };
+                updated_lines.insert(pos, format!("{}={}", key, value));
             }
         }
 

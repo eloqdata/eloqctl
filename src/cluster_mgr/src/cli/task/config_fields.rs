@@ -346,6 +346,28 @@ pub static AVAILABLE_FIELDS: Lazy<HashMap<&'static str, FieldMetadata>> = Lazy::
     );
 
     fields.insert(
+        "rocksdb_periodic_compaction_seconds",
+        FieldMetadata {
+            description: "RocksDB periodic compaction interval in seconds",
+            scope: FieldScope::NodeSpecific,
+            example: "86400",
+            value_type: FieldValueType::Integer,
+            default_value: "86400",
+        },
+    );
+
+    fields.insert(
+        "rocksdb_delete_obsolete_files_period_micros",
+        FieldMetadata {
+            description: "RocksDB obsolete-file full-scan period in microseconds",
+            scope: FieldScope::NodeSpecific,
+            example: "21600000000",
+            value_type: FieldValueType::Integer,
+            default_value: "21600000000",
+        },
+    );
+
+    fields.insert(
         "node_log_limit_mb",
         FieldMetadata {
             description: "TxService node log limit in MB",
@@ -734,4 +756,16 @@ pub fn is_cluster_wide_field(field_name: &str) -> bool {
     AVAILABLE_FIELDS
         .get(field_name)
         .is_some_and(|metadata| metadata.scope == FieldScope::ClusterWide)
+}
+
+/// The INI section a field belongs to. EloqKV reads most keys from `[local]`,
+/// but the RocksDB store tuning knobs live in `[store]`; inserting them into
+/// the wrong section makes EloqKV silently ignore them.
+pub fn field_ini_section(field_name: &str) -> &'static str {
+    match field_name {
+        "rocksdb_periodic_compaction_seconds" | "rocksdb_delete_obsolete_files_period_micros" => {
+            "store"
+        }
+        _ => "local",
+    }
 }
