@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/eloqdata/eloqctl/compare/v1.11.1...v1.12.0) (2026-07-07)
+
+
+### Features
+
+* support bind_all in topology/update-conf and rocksdb store tuning fields in update-conf ([#435](https://github.com/eloqdata/eloqctl/issues/435)) ([c0e6bbd](https://github.com/eloqdata/eloqctl/commit/c0e6bbdb5cf770540b50342412503162cffc84d5))
+
 ## [1.11.1](https://github.com/eloqdata/eloqctl/compare/v1.11.0...v1.11.1) (2026-07-06)
 
 
