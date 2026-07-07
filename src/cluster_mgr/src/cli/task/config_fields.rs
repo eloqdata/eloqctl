@@ -117,6 +117,17 @@ pub static AVAILABLE_FIELDS: Lazy<HashMap<&'static str, FieldMetadata>> = Lazy::
     );
 
     fields.insert(
+        "bind_all",
+        FieldMetadata {
+            description: "Listen on all interfaces (0.0.0.0) instead of only the node's ip",
+            scope: FieldScope::NodeSpecific,
+            example: "true",
+            value_type: FieldValueType::Boolean,
+            default_value: "false",
+        },
+    );
+
+    fields.insert(
         "port",
         FieldMetadata {
             description: "Redis Port",
