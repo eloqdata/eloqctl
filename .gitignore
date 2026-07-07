@@ -53,3 +53,4 @@ tests/**/go-cluster-tls-stress
 tests/e2e/cmd-stress-*.log
 tests/e2e/*.generated.yaml
 .tmp-e2e-download-cache/
+src/cluster_mgr/upload/

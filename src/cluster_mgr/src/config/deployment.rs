@@ -217,6 +217,10 @@ pub struct Deployment {
     pub hardware: Option<HashMap<String, Hardware>>,
     pub enable_wal: Option<bool>,
     pub enable_io_uring: Option<bool>,
+    /// Whether EloqKV listens on all interfaces (0.0.0.0) or only on the
+    /// node's configured `ip`. Defaults to false, matching the eloqkv
+    /// built-in default.
+    pub bind_all: Option<bool>,
     #[serde(rename = "checkpointer_interval", alias = "checkpoint_interval")]
     pub checkpoint_interval: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1359,6 +1363,16 @@ impl Deployment {
             );
         } else {
             println!("**WARNING:** Manually modifying `enable_io_uring` in template `EloqKv.ini` is not recommended.");
+        }
+
+        if self.is_empty(&ini, SECTION_LOCAL, "bind_all") {
+            ini.set(
+                SECTION_LOCAL,
+                "bind_all",
+                Some(self.bind_all.unwrap_or(false).to_string()),
+            );
+        } else {
+            println!("**WARNING:** Manually modifying `bind_all` in template `EloqKv.ini` is not recommended.");
         }
 
         if self.is_empty(&ini, SECTION_LOCAL, "checkpointer_interval") {

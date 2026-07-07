@@ -526,6 +526,7 @@ mod tests {
                 hardware: None,
                 enable_wal: None,
                 enable_io_uring: None,
+                bind_all: None,
                 checkpoint_interval: None,
                 enable_tls: None,
                 maxclients: None,
