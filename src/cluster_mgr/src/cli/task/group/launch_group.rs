@@ -85,11 +85,12 @@ impl TaskGroup for LaunchTaskGroup {
             );
         }
 
-        // Start log service before bootstrap (InstallDBTaskGroup) for EloqKV
-        // Log service must be running before eloqkv bootstrap
-        let log_service_startup = if cluster_config.deployment.log_service.is_some()
-            && cluster_config.deployment.storage_service.is_some()
-        {
+        // Start log service before bootstrap (InstallDBTaskGroup) for EloqKV.
+        // A configured `log_service` means a standalone (launch_sv) log
+        // deployment, so it must be started whenever it is present -- even
+        // without `storage_service`. (When `log_service` is omitted, EloqKV
+        // runs its in-process log instead and there is nothing to start here.)
+        let log_service_startup = if cluster_config.deployment.log_service.is_some() {
             let start_cmd = SubCommand::Start {
                 cluster: cluster_config.deployment.cluster_name.clone(),
                 nodes: Vec::new(),
