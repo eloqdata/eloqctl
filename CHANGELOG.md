@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/eloqdata/eloqctl/compare/v1.12.0...v1.12.1) (2026-07-09)
+
+
+### Bug Fixes
+
+* start standalone log service even without storage_service ([#437](https://github.com/eloqdata/eloqctl/issues/437)) ([121ca46](https://github.com/eloqdata/eloqctl/commit/121ca462a73357e8b373fbc2e36f4dea7c5b6411))
+
 ## [1.12.0](https://github.com/eloqdata/eloqctl/compare/v1.11.1...v1.12.0) (2026-07-07)
 
 
