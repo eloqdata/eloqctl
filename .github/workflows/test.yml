@@ -53,6 +53,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free disk space
+        run: |
+          echo "::group::Disk usage before cleanup"
+          df -h
+          echo "::endgroup::"
+
+          # Remove large preinstalled toolchains not used by this repository.
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+
+          sudo apt-get clean
+          docker system prune -af --volumes 2>/dev/null || true
+
+          echo "::group::Disk usage after cleanup"
+          df -h
+          echo "::endgroup::"
+
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
@@ -112,12 +131,15 @@ jobs:
           export REPEAT="${repeat}"
           export RESP_COMPAT_VERSION="${resp_compat_version}"
           export SKIP_DEPS=1
-          export STEPS="launch,cluster-update,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,resp-compat,remove"
+          export STEPS="launch,cluster-update,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,remove"
+          if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+            export STEPS="launch,cluster-update,monitor-update,eloqctl-mutate,py-stress,go-stress,ts-stress,resp-compat,remove"
+          fi
           echo "Running E2E with ELOQKV_VERSION=${ELOQKV_VERSION} ELOQKV_UPDATE_VERSION=${ELOQKV_UPDATE_VERSION} WORKERS=${WORKERS} INFLIGHT=${INFLIGHT} DURATION_SECONDS=${DURATION_SECONDS} REPEAT=${REPEAT} RESP_COMPAT_VERSION=${RESP_COMPAT_VERSION}"
           tests/e2e/devctl.sh stress "${STEPS}"
 
       - name: RESP Compatibility Report
-        if: always()
+        if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           echo "::group::Compatibility Summary"
           if [ -f tests/e2e/resp-compat-summary.log ]; then
@@ -128,7 +150,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Upload resp-compat logs
-        if: always()
+        if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: resp-compat-logs

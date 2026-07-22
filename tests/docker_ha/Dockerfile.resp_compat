@@ -12,4 +12,6 @@ WORKDIR /opt/resp-compatibility
 
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY tests/e2e/resp_compat/resp_compatibility_eloq.py /opt/resp-compatibility/resp_compatibility_eloq.py
+
 CMD ["sleep", "infinity"]

@@ -50,6 +50,7 @@ GRAFANA_HTTP_URL="${GRAFANA_HTTP_URL:-http://172.28.10.14:3301}"
 ALERTMANAGER_HTTP_URL="${ALERTMANAGER_HTTP_URL:-http://172.28.10.14:9093}"
 ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL="${ALERTMANAGER_WEBHOOK_ADAPTER_HTTP_URL:-http://172.28.10.14:8080}"
 RESP_COMPAT_VERSION="${RESP_COMPAT_VERSION:-7.0.0}"
+RESP_COMPAT_TIMEOUT_SECONDS="${RESP_COMPAT_TIMEOUT_SECONDS:-3600}"
 
 PASSWD="testpass"
 N1="172.28.10.11"
@@ -181,6 +182,93 @@ assert_export_contains() {
         || { echo "FAIL: export does not contain expected text: ${expected}"; return 1; }
 }
 
+ssh_port_for_node() {
+    local host="${1%:*}"
+    case "${host}" in
+        172.28.10.11)
+            echo 2221
+            ;;
+        172.28.10.12)
+            echo 2222
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+dump_eloqkv_backtrace_for_node() {
+    local role="$1"
+    local node="$2"
+    local host="${node%:*}"
+    local ssh_port
+    if ! ssh_port="$(ssh_port_for_node "${node}")"; then
+        echo "---- ${role} (${node}) ----"
+        echo "  skip: unknown SSH port for node"
+        return 0
+    fi
+
+    echo "---- ${role} (${node}) ----"
+    ssh_cmd "${ssh_port}" bash -lc "$(cat <<'EOF'
+set +e
+echo "  hostname=$(hostname)"
+echo "  user=$(id -un)"
+if ! command -v gdb >/dev/null 2>&1; then
+    echo "  skip: gdb not installed"
+    exit 0
+fi
+pid_line=$(ps -u eloq -o pid=,args= | grep '[e]loqkv' | head -n1)
+if [ -z "${pid_line}" ]; then
+    echo "  skip: eloqkv process not found"
+    ps -u eloq -o pid=,args= || true
+    exit 0
+fi
+pid=$(printf '%s\n' "${pid_line}" | awk '{print $1}')
+echo "  pid=${pid}"
+echo "  cmd=${pid_line}"
+sudo -n timeout 30s gdb -batch -nx \
+    -ex 'set pagination off' \
+    -ex 'thread apply all bt full' \
+    -p "${pid}" 2>&1 || true
+EOF
+    )" || true
+}
+
+dump_cluster_change_backtraces() {
+    local master="${MASTER:-}"
+    local replica="${REPLICA:-}"
+    if discover_master >/dev/null 2>&1; then
+        master="${MASTER}"
+        replica="${REPLICA}"
+    fi
+    if [ -z "${master}" ]; then
+        master="${N1}:6379"
+    fi
+    if [ -z "${replica}" ]; then
+        replica="${N2}:6379"
+    fi
+
+    echo "---- cluster node backtraces ----"
+    echo "  master=${master}"
+    echo "  standby=${replica}"
+    dump_eloqkv_backtrace_for_node "master" "${master}"
+    if [ "${replica}" != "${master}" ]; then
+        dump_eloqkv_backtrace_for_node "standby" "${replica}"
+    fi
+}
+
+run_control_eloqctl_with_cluster_backtraces() {
+    local timeout_seconds="$1"
+    local log_file="$2"
+    shift 2
+    local subcommand="$1"
+    local control_log_file="${CONTROL_ELOQCTL_HOME}/logs/last-${subcommand}.log"
+    local observer_timeout=$((timeout_seconds + 60))
+    run_with_progress "${observer_timeout}" "${log_file}" --eloq-log "${control_log_file}" \
+        bash -lc "$(control_ssh_exec_string_with_timeout "${timeout_seconds}" "$@")" \
+        || { dump_failure_diagnostics "${log_file}"; dump_cluster_change_backtraces; return 1; }
+}
+
 cleanup() {
     if [ "${KEEP_LOGS:-0}" != "1" ]; then
         rm -f "${SCRIPT_DIR}/cmd-stress-"*.log "${SCRIPT_DIR}/launch-cmd-stress.log" "${TOPO}"
@@ -211,29 +299,34 @@ step() {
 # ── Master discovery (works independently of launch) ──
 discover_master() {
     echo "  discovering cluster topology ..."
-    local nodes_info
-    nodes_info=$(docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-python python3 -c "
+    local slots_info
+    slots_info=$(docker compose -f "${DOCKER_E2E_DIR}/docker-compose.yaml" exec -T stress-python python3 -c "
 import ssl
 TLS={'ssl':True,'ssl_cert_reqs':ssl.CERT_NONE,'ssl_check_hostname':False}
 from redis import Redis
-r=Redis(host='${N1}',port=6379,password='${PASSWD}',socket_timeout=5,**TLS)
-print(r.execute_command('CLUSTER','NODES').decode())
+r=Redis(host='${N1}',port=6379,password='${PASSWD}',socket_timeout=5,decode_responses=True,**TLS)
+slots=r.execute_command('CLUSTER','SLOTS')
+master=slots[0][2]
+replica=slots[0][3] if len(slots[0]) > 3 else None
+print(f\"MASTER={master[0]}:{master[1]}\")
+print(f\"REPLICA={replica[0]}:{replica[1]}\" if replica else \"REPLICA=\")
 r.close()
 " 2>/dev/null) || { echo "FAIL: cannot connect to cluster for discovery"; return 1; }
 
     MASTER=""
+    REPLICA=""
     while IFS= read -r line; do
-        local addr role
-        addr=$(echo "$line" | awk '{print $2}' | cut -d@ -f1)
-        role=$(echo "$line" | awk '{print $3}')
-        if echo "$role" | grep -q 'master'; then
-            MASTER="${addr}"
-        elif echo "$role" | grep -q 'slave'; then
-            REPLICA="${addr}"
-        fi
-    done <<< "$nodes_info"
+        case "$line" in
+            MASTER=*)
+                MASTER="${line#MASTER=}"
+                ;;
+            REPLICA=*)
+                REPLICA="${line#REPLICA=}"
+                ;;
+        esac
+    done <<< "$slots_info"
     if [ -z "$MASTER" ]; then
-        echo "FAIL: could not discover master from CLUSTER NODES"
+        echo "FAIL: could not discover master from CLUSTER SLOTS"
         return 1
     fi
     echo "  master=${MASTER} replica=${REPLICA}"
@@ -304,7 +397,8 @@ do_monitor_update() {
 do_cluster_update() {
     echo "=== EloqKV rolling update check (${ELOQKV_VERSION} -> ${ELOQKV_UPDATE_VERSION}) ==="
     assert_cluster_registered || return 1
-    run_control_eloqctl_with_progress 900 "${SCRIPT_DIR}/cmd-stress-cluster-update.log" \
+    discover_master || return 1
+    run_control_eloqctl_with_cluster_backtraces 900 "${SCRIPT_DIR}/cmd-stress-cluster-update.log" \
         update "${CLUSTER}" "${ELOQKV_UPDATE_VERSION}" --password "${PASSWD}" \
         || return 1
     wait_cluster_ready || return 1
@@ -345,7 +439,7 @@ do_eloqctl_mutate() {
     echo "=== eloqctl mutation check ==="
 
     echo "  failover ${original_master} -> ${original_replica}"
-    run_control_eloqctl_with_progress 240 "${SCRIPT_DIR}/cmd-stress-failover-1.log" \
+    run_control_eloqctl_with_cluster_backtraces 240 "${SCRIPT_DIR}/cmd-stress-failover-1.log" \
         failover "${CLUSTER}" \
         --old-leader-host "${original_master_host}" --old-leader-port "${original_master_port}" \
         --new-leader-host "${original_replica_host}" --new-leader-port "${original_replica_port}" \
@@ -361,7 +455,7 @@ do_eloqctl_mutate() {
     current_master_host="${MASTER%:*}"
     current_master_port="${MASTER##*:}"
     echo "  failover ${MASTER} -> ${original_master}"
-    run_control_eloqctl_with_progress 240 "${SCRIPT_DIR}/cmd-stress-failover-2.log" \
+    run_control_eloqctl_with_cluster_backtraces 240 "${SCRIPT_DIR}/cmd-stress-failover-2.log" \
         failover "${CLUSTER}" \
         --old-leader-host "${current_master_host}" --old-leader-port "${current_master_port}" \
         --new-leader-host "${original_master_host}" --new-leader-port "${original_master_port}" \
@@ -499,7 +593,10 @@ do_resp_compat() {
     local cluster_log="${SCRIPT_DIR}/resp-compat-cluster.log"
     local summary_log="${SCRIPT_DIR}/resp-compat-summary.log"
     local cts="/tmp/cts_filtered.json"
-    local script="/opt/resp-compatibility/resp_compatibility.py"
+    local script="/opt/resp-compatibility/resp_compatibility_eloq.py"
+    local ssl_flag=""
+    [ "${TLS_ENABLED}" = "1" ] && ssl_flag="--ssl"
+    local observer_timeout=$((RESP_COMPAT_TIMEOUT_SECONDS + 60))
 
     # Generate summary report header
     {
@@ -523,11 +620,15 @@ with open('${cts}','w') as f:
 "
 
     echo "--- standalone mode ---"
-    docker compose -f "${compose_file}" exec -T resp-compat bash -c \
-        "python3 -u ${script} --host ${master_host} --port ${master_port} --password ${PASSWD} --testfile ${cts} --specific-version ${RESP_COMPAT_VERSION} --show-failed >/tmp/standalone.log 2>&1"
-    docker compose -f "${compose_file}" cp resp-compat:/tmp/standalone.log "${standalone_log}"
-    cat "${standalone_log}"
-    local standalone_status=${PIPESTATUS[0]}
+    local standalone_inner_cmd
+    standalone_inner_cmd=$(cat <<EOF
+set -o pipefail
+python3 -u ${script} --host ${master_host} --port ${master_port} --password ${PASSWD} ${ssl_flag} --testfile ${cts} --specific-version ${RESP_COMPAT_VERSION} --show-failed | tee /tmp/standalone.log
+EOF
+)
+    run_with_progress "${observer_timeout}" "${standalone_log}" \
+        bash -lc "docker compose -f '${compose_file}' exec -T resp-compat bash -lc $(printf '%q' "${standalone_inner_cmd}")"
+    local standalone_status=$?
 
     # Extract standalone summary and failed tests
     {
@@ -577,11 +678,15 @@ r.close()
     done
 
     echo "--- cluster mode ---"
-    docker compose -f "${compose_file}" exec -T resp-compat bash -c \
-        "python3 -u ${script} --host ${master_host} --port ${master_port} --password ${PASSWD} --testfile ${cts} --specific-version ${RESP_COMPAT_VERSION} --show-failed --cluster >/tmp/cluster.log 2>&1"
-    docker compose -f "${compose_file}" cp resp-compat:/tmp/cluster.log "${cluster_log}"
-    cat "${cluster_log}"
-    local cluster_status=${PIPESTATUS[0]}
+    local cluster_inner_cmd
+    cluster_inner_cmd=$(cat <<EOF
+set -o pipefail
+python3 -u ${script} --host ${master_host} --port ${master_port} --password ${PASSWD} ${ssl_flag} --testfile ${cts} --specific-version ${RESP_COMPAT_VERSION} --show-failed --cluster | tee /tmp/cluster.log
+EOF
+)
+    run_with_progress "${observer_timeout}" "${cluster_log}" \
+        bash -lc "docker compose -f '${compose_file}' exec -T resp-compat bash -lc $(printf '%q' "${cluster_inner_cmd}")"
+    local cluster_status=$?
 
     # Extract cluster summary and failed tests
     {
