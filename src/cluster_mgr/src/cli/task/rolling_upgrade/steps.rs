@@ -1078,11 +1078,10 @@ impl Step for VerifyVersion {
     }
 
     async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
+        let tx_dir = self.ctx.deploy.deployment.tx_srv_home();
+        let tx_bin = self.ctx.deploy.deployment.tx_srv_bin();
         let tasks = ExecCustomCommand::build_task_by_host(
-            format!(
-                "{}/EloqKV/bin/eloqkv --version",
-                self.ctx.deploy.install_dir()
-            ),
+            format!("cd {tx_dir}; export LD_LIBRARY_PATH={tx_dir}/lib:$LD_LIBRARY_PATH; {tx_bin} --version"),
             &self.ctx.config,
             self.ctx.deploy.deployment.tx_service.merge_hosts(),
             Some("check_eloqkv_version".to_string()),
