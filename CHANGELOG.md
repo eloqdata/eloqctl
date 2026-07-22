@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.2](https://github.com/eloqdata/eloqctl/compare/v1.12.1...v1.12.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* add LD_LIBRARY_PATH for rolling upgrade version check ([#439](https://github.com/eloqdata/eloqctl/issues/439)) ([fa8ab7d](https://github.com/eloqdata/eloqctl/commit/fa8ab7db4860de911ce5f6a8d8203dc3e70758c8))
+
 ## [1.12.1](https://github.com/eloqdata/eloqctl/compare/v1.12.0...v1.12.1) (2026-07-09)
 
 
