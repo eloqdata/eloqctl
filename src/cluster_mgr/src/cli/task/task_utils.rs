@@ -164,7 +164,10 @@ where
     let mut cmd_exec_rs = None;
     let mut last_err = None;
     for attempt in 1..=CHECK_PID_RETRY_ATTEMPTS {
-        match ssh_session.command(find_ps_cmd.as_str(), CollectOutput).await {
+        match ssh_session
+            .command(find_ps_cmd.as_str(), CollectOutput)
+            .await
+        {
             Ok(rs) => {
                 cmd_exec_rs = Some(rs);
                 break;
