@@ -98,6 +98,62 @@ fn ordered_without(nodes: Vec<String>, excluded: &HashSet<String>) -> Vec<String
         .collect()
 }
 
+fn select_connected_failover_targets(
+    topology: &ClusterNodes,
+    managed_tx_standby: &HashSet<String>,
+) -> anyhow::Result<Vec<(String, String)>> {
+    let current_masters = connected_managed_node_infos(&topology.masters, managed_tx_standby);
+    let current_replicas = connected_managed_node_infos(&topology.replicas, managed_tx_standby);
+    if current_masters.is_empty() {
+        bail!(
+            "rolling update could not find connected current master; topology reported masters={:?}, replicas={:?}",
+            topology.masters,
+            topology.replicas
+        );
+    }
+    if current_replicas.is_empty() {
+        bail!(
+            "rolling update requires at least one connected standby/replica before failover; topology reported masters={:?}, replicas={:?}",
+            topology.masters,
+            topology.replicas
+        );
+    }
+
+    let mut failover_pairs: Vec<(String, String)> = Vec::new();
+    let mut selected_targets = HashSet::new();
+    for master in &current_masters {
+        let master_addr = node_addr(&master.ip, master.port);
+        let target = if let Some(master_id) = master.node_id.as_ref() {
+            current_replicas
+                .iter()
+                .find(|replica| replica.master_id.as_ref() == Some(master_id))
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "no connected replica available for master {master_addr} ({master_id})"
+                    )
+                })?
+        } else if current_masters.len() == 1 {
+            current_replicas.first().ok_or_else(|| {
+                anyhow::anyhow!("no connected replica available for master {master_addr}")
+            })?
+        } else {
+            bail!(
+                "CLUSTER NODES output did not include node id for master {master_addr}; cannot safely map replicas to masters in a multi-master cluster"
+            );
+        };
+        let target_addr = node_addr(&target.ip, target.port);
+        if selected_targets.contains(&target_addr) {
+            bail!(
+                "replica {target_addr} was selected for more than one current master; cannot safely fail over"
+            );
+        }
+        selected_targets.insert(target_addr.clone());
+        failover_pairs.push((master_addr, target_addr));
+    }
+
+    Ok(failover_pairs)
+}
+
 async fn fetch_cluster_nodes(
     ctx: &UpgradeContext,
     task_name: &str,
@@ -641,6 +697,52 @@ pub struct FailoverToStandby {
     ctx: UpgradeContext,
 }
 
+pub struct SelectStandbyForFailover {
+    ctx: UpgradeContext,
+}
+
+impl SelectStandbyForFailover {
+    pub fn new(ctx: UpgradeContext) -> Self {
+        Self { ctx }
+    }
+}
+
+#[async_trait]
+impl Step for SelectStandbyForFailover {
+    fn name(&self) -> &str {
+        "SelectStandbyForFailover"
+    }
+
+    async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
+        if !self.ctx.has_standby() {
+            return Ok(TaskExecutionContext::dummy());
+        }
+
+        let topology =
+            fetch_cluster_nodes(&self.ctx, "rolling-update-select-failover-target").await?;
+        let managed_tx_standby = self.ctx.managed_tx_and_standby_set();
+        let failover_pairs = select_connected_failover_targets(&topology, &managed_tx_standby)?;
+        let temporary_leaders: Vec<String> = failover_pairs
+            .iter()
+            .map(|(_old_leader, new_leader)| new_leader.clone())
+            .collect();
+        let temporary_leader_set: HashSet<String> = temporary_leaders.iter().cloned().collect();
+        let restart_nodes =
+            ordered_without(self.ctx.rolling_update_kv_nodes(), &temporary_leader_set);
+
+        self.ctx
+            .set_temporary_leader_nodes(temporary_leaders.clone());
+        self.ctx.set_restart_nodes(restart_nodes.clone());
+        self.ctx.set_second_batch_nodes(restart_nodes);
+        info!(
+            "Rolling update selected standby nodes to restart before failover: {:?}; initial failover pairs: {:?}",
+            temporary_leaders, failover_pairs
+        );
+
+        Ok(TaskExecutionContext::dummy())
+    }
+}
+
 impl FailoverToStandby {
     pub fn new(ctx: UpgradeContext) -> Self {
         Self { ctx }
@@ -659,69 +761,96 @@ impl Step for FailoverToStandby {
         }
 
         let topology =
-            fetch_cluster_nodes(&self.ctx, "rolling-update-select-failover-target").await?;
+            fetch_cluster_nodes(&self.ctx, "rolling-update-pre-failover-topology").await?;
         let managed_tx_standby = self.ctx.managed_tx_and_standby_set();
-        let current_masters = connected_managed_node_infos(&topology.masters, &managed_tx_standby);
-        let current_replicas =
-            connected_managed_node_infos(&topology.replicas, &managed_tx_standby);
-        if current_masters.is_empty() {
-            bail!(
-                "rolling update could not find connected current master; topology reported masters={:?}, replicas={:?}",
-                topology.masters,
-                topology.replicas
-            );
-        }
-        if current_replicas.is_empty() {
-            bail!(
-                "rolling update requires at least one connected standby/replica before failover; topology reported masters={:?}, replicas={:?}",
-                topology.masters,
-                topology.replicas
-            );
-        }
-
-        let mut failover_pairs: Vec<(String, String)> = Vec::new();
-        let mut temporary_leaders = Vec::new();
-        let mut temporary_leader_set = HashSet::new();
-        for master in &current_masters {
-            let master_addr = node_addr(&master.ip, master.port);
-            let target = if let Some(master_id) = master.node_id.as_ref() {
-                current_replicas
-                    .iter()
-                    .find(|replica| replica.master_id.as_ref() == Some(master_id))
-                    .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "no connected replica available for master {master_addr} ({master_id})"
-                        )
-                    })?
-            } else if current_masters.len() == 1 {
-                current_replicas.first().ok_or_else(|| {
-                    anyhow::anyhow!("no connected replica available for master {master_addr}")
-                })?
-            } else {
+        let selected_targets = self.ctx.temporary_leader_nodes();
+        let failover_pairs = if selected_targets.is_empty() {
+            let pairs = select_connected_failover_targets(&topology, &managed_tx_standby)?;
+            let targets: Vec<String> = pairs
+                .iter()
+                .map(|(_old_leader, new_leader)| new_leader.clone())
+                .collect();
+            let target_set: HashSet<String> = targets.iter().cloned().collect();
+            let restart_nodes = ordered_without(self.ctx.rolling_update_kv_nodes(), &target_set);
+            self.ctx.set_temporary_leader_nodes(targets.clone());
+            self.ctx.set_restart_nodes(restart_nodes.clone());
+            self.ctx.set_second_batch_nodes(restart_nodes);
+            pairs
+        } else {
+            let connected_masters =
+                connected_managed_node_infos(&topology.masters, &managed_tx_standby);
+            if connected_masters.is_empty() {
                 bail!(
-                    "CLUSTER NODES output did not include node id for master {master_addr}; cannot safely map replicas to masters in a multi-master cluster"
-                );
-            };
-            let target_addr = node_addr(&target.ip, target.port);
-            if temporary_leader_set.contains(&target_addr) {
-                bail!(
-                    "replica {target_addr} was selected for more than one current master; cannot safely fail over"
+                    "rolling update could not find connected current master before failover; topology reported masters={:?}, replicas={:?}",
+                    topology.masters,
+                    topology.replicas
                 );
             }
-            failover_pairs.push((master_addr, target_addr.clone()));
-            temporary_leader_set.insert(target_addr.clone());
-            temporary_leaders.push(target_addr);
-        }
 
-        let restart_nodes =
-            ordered_without(self.ctx.rolling_update_kv_nodes(), &temporary_leader_set);
-        self.ctx
-            .set_temporary_leader_nodes(temporary_leaders.clone());
-        self.ctx.set_restart_nodes(restart_nodes.clone());
-        self.ctx.set_second_batch_nodes(restart_nodes);
+            let mut pairs = Vec::new();
+            for target_addr in &selected_targets {
+                let (target_host, target_port) =
+                    parse_host_port(target_addr, "selected failover target")?;
+                if connected_masters
+                    .iter()
+                    .any(|node| node.ip == target_host && node.port == target_port)
+                {
+                    info!(
+                        "Selected failover target {target_addr} is already connected as master; no failover command needed"
+                    );
+                    continue;
+                }
+
+                let target = topology
+                    .replicas
+                    .iter()
+                    .find(|node| {
+                        node.ip == target_host && node.port == target_port && node.connected
+                    })
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "selected standby {target_addr} is not a connected replica before failover; topology reported masters={:?}, replicas={:?}",
+                            topology.masters,
+                            topology.replicas
+                        )
+                    })?;
+
+                let master = if let Some(master_id) = target.master_id.as_ref() {
+                    connected_masters
+                        .iter()
+                        .find(|master| master.node_id.as_ref() == Some(master_id))
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "selected standby {target_addr} follows master id {master_id}, but that master is not connected; topology reported masters={:?}, replicas={:?}",
+                                topology.masters,
+                                topology.replicas
+                            )
+                        })?
+                } else if connected_masters.len() == 1 {
+                    connected_masters.first().expect("checked non-empty")
+                } else {
+                    bail!(
+                        "CLUSTER NODES output did not include master id for selected standby {target_addr}; cannot safely map it to a master in a multi-master cluster"
+                    );
+                };
+                pairs.push((node_addr(&master.ip, master.port), target_addr.clone()));
+            }
+            pairs
+        };
+
+        if failover_pairs.is_empty() {
+            return build_wait_node_ready_tasks(
+                &self.ctx,
+                "wait-failover-target-masters",
+                "wait-failover-target-master",
+                &self.ctx.temporary_leader_nodes(),
+                true,
+            );
+        }
         info!(
-            "Rolling update failover pairs: {:?}; temporary leaders held until final restart: {:?}",
-            failover_pairs, temporary_leaders
+            "Rolling update failover pairs after selected standby restart: {:?}; temporary leaders held until final restart: {:?}",
+            failover_pairs,
+            self.ctx.temporary_leader_nodes()
         );
 
         build_failover_pairs_ctx("failover-to-standby", &failover_pairs, &self.ctx)
@@ -1198,6 +1327,32 @@ impl Step for RestartNonLeaderNodes {
             "restart-non-leader-nodes",
             "restart-non-leader-node",
             self.ctx.restart_nodes(),
+        )
+    }
+}
+
+pub struct RestartSelectedStandby {
+    ctx: UpgradeContext,
+}
+
+impl RestartSelectedStandby {
+    pub fn new(ctx: UpgradeContext) -> Self {
+        Self { ctx }
+    }
+}
+
+#[async_trait]
+impl Step for RestartSelectedStandby {
+    fn name(&self) -> &str {
+        "RestartSelectedStandby"
+    }
+
+    async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
+        build_restart_nodes_sequence_ctx(
+            &self.ctx,
+            "restart-selected-standby",
+            "restart-selected-standby",
+            self.ctx.temporary_leader_nodes(),
         )
     }
 }
@@ -1719,11 +1874,12 @@ impl Step for VerifyVersion {
 
 /// Build the list of steps for a rolling binary upgrade (`eloqctl update`).
 ///
-/// Strategy: fail over to a connected standby first, then restart tx/standby
-/// nodes one by one, and restart the temporary leader last. Voter nodes are
-/// intentionally left running because their braft readiness is not exposed by
-/// Redis CLUSTER NODES. The final leader movement is left to the cluster's
-/// normal election/preferred-leader logic.
+/// Strategy: upload the new binaries, restart one connected standby for each
+/// current master, wait for that standby to reconnect, fail over to the upgraded
+/// standby, then restart the remaining tx/standby nodes one by one and restart
+/// the temporary leader last. Voter nodes are intentionally left running because
+/// their braft readiness is not exposed by Redis CLUSTER NODES. The final leader
+/// movement is left to the cluster's normal election/preferred-leader logic.
 pub fn build_upgrade_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
     if !ctx.has_standby() {
         let mut steps: Vec<Box<dyn Step>> = vec![
@@ -1742,8 +1898,10 @@ pub fn build_upgrade_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
 
     let mut steps: Vec<Box<dyn Step>> = vec![
         Box::new(DownloadAndExtract::new(ctx.clone())),
-        Box::new(FailoverToStandby::new(ctx.clone())),
         Box::new(UploadToAllNodes::new(ctx.clone())),
+        Box::new(SelectStandbyForFailover::new(ctx.clone())),
+        Box::new(RestartSelectedStandby::new(ctx.clone())),
+        Box::new(FailoverToStandby::new(ctx.clone())),
     ];
 
     if ctx.skip_log_restart {

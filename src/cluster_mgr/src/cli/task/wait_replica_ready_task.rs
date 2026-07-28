@@ -8,9 +8,11 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::watch;
 use tokio::time::sleep;
+use tracing::info;
 
 const REPLICA_READY_RETRIES: usize = 120;
 const REPLICA_READY_RETRY_DELAY: Duration = Duration::from_secs(2);
+const WAIT_PROGRESS_LOG_INTERVAL: usize = 5;
 
 #[derive(Clone, Debug)]
 pub struct WaitReplicaReadyTask {
@@ -33,6 +35,30 @@ pub struct WaitNodeReadyTask {
     required_role: Option<&'static str>,
     password: Option<String>,
     service_endpoints: Option<HashMap<String, ServiceEndpoint>>,
+}
+
+fn describe_nodes(nodes: &[crate::cli::task::redis_op_task::NodeInfo]) -> String {
+    let described = nodes
+        .iter()
+        .map(|node| {
+            format!(
+                "{}:{} ({})",
+                node.ip,
+                node.port,
+                if node.connected {
+                    "connected"
+                } else {
+                    "disconnected"
+                }
+            )
+        })
+        .collect::<Vec<_>>();
+
+    if described.is_empty() {
+        "<none>".to_string()
+    } else {
+        described.join(", ")
+    }
 }
 
 impl WaitReplicaReadyTask {
@@ -257,41 +283,11 @@ impl TaskExecutor for WaitReplicaReadyTask {
         let mut last_seen =
             String::from("required nodes not yet observed as connected in cluster topology");
 
-        for _ in 0..REPLICA_READY_RETRIES {
+        for attempt in 1..=REPLICA_READY_RETRIES {
             match self.fetch_cluster_nodes().await {
                 Ok(cluster_nodes) => {
-                    let masters = cluster_nodes
-                        .masters
-                        .iter()
-                        .map(|node| {
-                            format!(
-                                "{}:{} ({})",
-                                node.ip,
-                                node.port,
-                                if node.connected {
-                                    "connected"
-                                } else {
-                                    "disconnected"
-                                }
-                            )
-                        })
-                        .collect::<Vec<_>>();
-                    let replicas = cluster_nodes
-                        .replicas
-                        .iter()
-                        .map(|node| {
-                            format!(
-                                "{}:{} ({})",
-                                node.ip,
-                                node.port,
-                                if node.connected {
-                                    "connected"
-                                } else {
-                                    "disconnected"
-                                }
-                            )
-                        })
-                        .collect::<Vec<_>>();
+                    let masters = describe_nodes(&cluster_nodes.masters);
+                    let replicas = describe_nodes(&cluster_nodes.replicas);
                     if self.find_connected_master(&cluster_nodes).is_some()
                         && self.find_connected_target_replica(&cluster_nodes).is_some()
                     {
@@ -300,33 +296,24 @@ impl TaskExecutor for WaitReplicaReadyTask {
                             CMD_OUTPUT.to_string(),
                             TaskArgValue::Str(format!(
                                 "Master {source} and replica {target} are connected and ready for failover. Masters: {}. Replicas: {}",
-                                masters.join(", "),
-                                replicas.join(", ")
+                                masters,
+                                replicas
                             )),
                         );
                         return Ok(Some(task_result));
                     }
-                    last_seen = if masters.is_empty() && replicas.is_empty() {
-                        "cluster currently reports no masters or replicas".to_string()
-                    } else {
-                        format!(
-                            "masters currently visible: {}; replicas currently visible: {}",
-                            if masters.is_empty() {
-                                "<none>".to_string()
-                            } else {
-                                masters.join(", ")
-                            },
-                            if replicas.is_empty() {
-                                "<none>".to_string()
-                            } else {
-                                replicas.join(", ")
-                            }
-                        )
-                    };
+                    last_seen = format!(
+                        "masters currently visible: {masters}; replicas currently visible: {replicas}"
+                    );
                 }
                 Err(err) => {
                     last_seen = err.to_string();
                 }
+            }
+            if attempt == 1 || attempt % WAIT_PROGRESS_LOG_INTERVAL == 0 {
+                info!(
+                    "Waiting for master {source} and replica {target} to become connected ({attempt}/{REPLICA_READY_RETRIES}): {last_seen}"
+                );
             }
             sleep(REPLICA_READY_RETRY_DELAY).await;
         }
@@ -362,7 +349,7 @@ impl TaskExecutor for WaitNodeReadyTask {
         let mut last_seen =
             String::from("target node not yet observed as connected in cluster topology");
 
-        for _ in 0..REPLICA_READY_RETRIES {
+        for attempt in 1..=REPLICA_READY_RETRIES {
             match self.fetch_cluster_nodes().await {
                 Ok(cluster_nodes) => {
                     let has_connected_master =
@@ -374,6 +361,12 @@ impl TaskExecutor for WaitNodeReadyTask {
                                     "target node {target} is connected as {role}, waiting for {}",
                                     self.required_role.unwrap()
                                 );
+                                if attempt == 1 || attempt % WAIT_PROGRESS_LOG_INTERVAL == 0 {
+                                    info!(
+                                        "Waiting for node {target} to become connected as {} ({attempt}/{REPLICA_READY_RETRIES}): {last_seen}",
+                                        self.required_role.unwrap()
+                                    );
+                                }
                                 sleep(REPLICA_READY_RETRY_DELAY).await;
                                 continue;
                             }
@@ -387,33 +380,25 @@ impl TaskExecutor for WaitNodeReadyTask {
                             return Ok(Some(task_result));
                         }
                     }
-                    let describe = |nodes: &[crate::cli::task::redis_op_task::NodeInfo]| {
-                        nodes
-                            .iter()
-                            .map(|node| {
-                                format!(
-                                    "{}:{} ({})",
-                                    node.ip,
-                                    node.port,
-                                    if node.connected {
-                                        "connected"
-                                    } else {
-                                        "disconnected"
-                                    }
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                    };
                     last_seen = format!(
                         "masters: {}; replicas: {}; voters: {}",
-                        describe(&cluster_nodes.masters).join(", "),
-                        describe(&cluster_nodes.replicas).join(", "),
-                        describe(&cluster_nodes.voters).join(", ")
+                        describe_nodes(&cluster_nodes.masters),
+                        describe_nodes(&cluster_nodes.replicas),
+                        describe_nodes(&cluster_nodes.voters)
                     );
                 }
                 Err(err) => {
                     last_seen = err.to_string();
                 }
+            }
+            if attempt == 1 || attempt % WAIT_PROGRESS_LOG_INTERVAL == 0 {
+                let role = self
+                    .required_role
+                    .map(|role| format!(" as {role}"))
+                    .unwrap_or_default();
+                info!(
+                    "Waiting for node {target} to become connected{role} ({attempt}/{REPLICA_READY_RETRIES}): {last_seen}"
+                );
             }
             sleep(REPLICA_READY_RETRY_DELAY).await;
         }

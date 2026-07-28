@@ -134,8 +134,10 @@ impl RollingUpgrade {
 fn friendly_step_name(name: &str) -> &str {
     match name {
         "DownloadAndExtract" => "Prepare upgrade package",
-        "FailoverToStandby" => "Fail over to standby",
         "UploadToAllNodes" => "Upload binaries to all nodes",
+        "SelectStandbyForFailover" => "Select standby for failover",
+        "RestartSelectedStandby" => "Restart selected standby node",
+        "FailoverToStandby" => "Fail over to upgraded standby",
         "RestartNonLeaderNodes" => "Restart non-leader nodes one by one",
         "RestartTemporaryLeaders" => "Restart temporary leader nodes",
         "UploadToStandby" => "Upload binaries to standby nodes",
