@@ -453,10 +453,8 @@ impl UpgradeContext {
         host_ports
     }
 
-    fn managed_all_kv_nodes(&self) -> Vec<String> {
-        let mut host_ports = self.managed_tx_and_standby_nodes();
-        host_ports.extend(self.voter_host_ports());
-        host_ports
+    fn rolling_update_kv_nodes(&self) -> Vec<String> {
+        self.managed_tx_and_standby_nodes()
     }
 
     fn managed_tx_and_standby_set(&self) -> HashSet<String> {
@@ -715,7 +713,8 @@ impl Step for FailoverToStandby {
             temporary_leaders.push(target_addr);
         }
 
-        let restart_nodes = ordered_without(self.ctx.managed_all_kv_nodes(), &temporary_leader_set);
+        let restart_nodes =
+            ordered_without(self.ctx.rolling_update_kv_nodes(), &temporary_leader_set);
         self.ctx
             .set_temporary_leader_nodes(temporary_leaders.clone());
         self.ctx.set_restart_nodes(restart_nodes.clone());
@@ -1401,7 +1400,7 @@ impl Step for StartTx {
     }
 
     async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
-        let mut start_tx = if self.ctx.has_standby() {
+        let start_tx = if self.ctx.has_standby() {
             build_start_node_tasks(&self.ctx, "start-tx", self.ctx.second_batch_nodes()).executable
         } else {
             EloqTxCtlTask::from_config(
@@ -1413,18 +1412,6 @@ impl Step for StartTx {
                 ServerType::Tx,
             )
         };
-
-        if self.ctx.has_voter() {
-            let start_voter = EloqTxCtlTask::from_config(
-                SubCommand::Start {
-                    cluster: self.ctx.cluster.clone(),
-                    nodes: Vec::new(),
-                },
-                &self.ctx.deploy,
-                ServerType::Voter,
-            );
-            start_tx.extend(start_voter);
-        }
 
         Ok(single_barrier_ctx("start-tx", start_tx))
     }
@@ -1732,9 +1719,11 @@ impl Step for VerifyVersion {
 
 /// Build the list of steps for a rolling binary upgrade (`eloqctl update`).
 ///
-/// Strategy: fail over to a connected standby first, then restart every other
-/// KV node one by one, and restart the temporary leader last. The final leader
-/// movement is left to the cluster's normal election/preferred-leader logic.
+/// Strategy: fail over to a connected standby first, then restart tx/standby
+/// nodes one by one, and restart the temporary leader last. Voter nodes are
+/// intentionally left running because their braft readiness is not exposed by
+/// Redis CLUSTER NODES. The final leader movement is left to the cluster's
+/// normal election/preferred-leader logic.
 pub fn build_upgrade_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
     if !ctx.has_standby() {
         let mut steps: Vec<Box<dyn Step>> = vec![
