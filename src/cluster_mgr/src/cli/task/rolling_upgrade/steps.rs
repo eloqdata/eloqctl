@@ -63,6 +63,93 @@ fn connected_managed_nodes(
         .collect()
 }
 
+fn validate_host_port(value: &str, field: &str) -> anyhow::Result<()> {
+    let Some((host, port_str)) = value.split_once(':') else {
+        bail!("invalid {field} host:port: '{value}'");
+    };
+    if host.trim().is_empty() {
+        bail!("invalid {field} host:port with empty host: '{value}'");
+    }
+    port_str
+        .parse::<u16>()
+        .map_err(|_| anyhow::anyhow!("invalid {field} port in host:port: '{value}'"))?;
+    Ok(())
+}
+
+fn select_first_batch_nodes(
+    ctx: &UpgradeContext,
+    current_masters: &[String],
+    current_replicas: &[String],
+) -> anyhow::Result<Vec<String>> {
+    if ctx.current_master_nodes.is_empty() {
+        return Ok(current_replicas.to_vec());
+    }
+
+    for node in &ctx.current_master_nodes {
+        validate_host_port(node, "--current-master-nodes")?;
+    }
+
+    let current_master_set: HashSet<String> = current_masters.iter().cloned().collect();
+    let managed_nodes = ctx.managed_tx_and_standby_set();
+    let mut provided_master_set = HashSet::new();
+    for node in &ctx.current_master_nodes {
+        if !managed_nodes.contains(node) {
+            bail!(
+                "--current-master-nodes entry '{}' is not in configured tx/standby nodes",
+                node
+            );
+        }
+        if !current_master_set.contains(node) {
+            bail!(
+                "--current-master-nodes entry '{}' is not a connected current master; current masters={:?}",
+                node,
+                current_masters
+            );
+        }
+        provided_master_set.insert(node.clone());
+    }
+
+    let missing_masters: Vec<String> = current_masters
+        .iter()
+        .filter(|node| !provided_master_set.contains(*node))
+        .cloned()
+        .collect();
+    if !missing_masters.is_empty() {
+        bail!(
+            "--current-master-nodes must include all connected current masters; missing={:?}, current masters={:?}",
+            missing_masters,
+            current_masters
+        );
+    }
+
+    let first_batch_nodes: Vec<String> = ctx
+        .managed_tx_and_standby_nodes()
+        .into_iter()
+        .filter(|node| !provided_master_set.contains(node))
+        .collect();
+    if first_batch_nodes.is_empty() {
+        bail!(
+            "--current-master-nodes covers all configured tx/standby nodes; no standby node remains for the first rolling-update batch"
+        );
+    }
+
+    let current_replica_set: HashSet<String> = current_replicas.iter().cloned().collect();
+    let offline_or_unknown: Vec<String> = first_batch_nodes
+        .iter()
+        .filter(|node| !current_replica_set.contains(*node))
+        .cloned()
+        .collect();
+    if !offline_or_unknown.is_empty() {
+        bail!(
+            "nodes outside --current-master-nodes must be connected current replicas before first restart; invalid={:?}, current replicas={:?}",
+            offline_or_unknown,
+            current_replicas
+        );
+    }
+
+    Ok(first_batch_nodes)
+}
+
 async fn fetch_cluster_nodes(ctx: &UpgradeContext, task_name: &str) -> anyhow::Result<ClusterNodes> {
     let task_id = TaskId {
         cmd: "topology".to_string(),
@@ -223,6 +310,7 @@ pub struct UpgradeContext {
     pub redis_password: Option<String>,
     pub force: bool,
     pub skip_log_restart: bool,
+    pub current_master_nodes: Vec<String>,
     update_state: Arc<Mutex<RollingUpdateState>>,
 }
 
@@ -232,21 +320,23 @@ impl UpgradeContext {
     pub(crate) fn new(cmd_arg: &SubCommand, config: Config) -> Self {
         let Config::Cluster(ref deploy) = config;
         let deploy = deploy.clone();
-        let (redis_password, force, skip_log_restart) = match cmd_arg {
+        let (redis_password, force, skip_log_restart, current_master_nodes) = match cmd_arg {
             SubCommand::Update {
                 password,
                 force,
                 skip_log_restart,
+                current_master_nodes,
                 ..
             } => (
                 deploy.redis_password(password.clone()),
                 *force,
                 *skip_log_restart,
+                current_master_nodes.clone(),
             ),
             SubCommand::UpdateConf { password, .. } => {
-                (deploy.redis_password(password.clone()), false, false)
+                (deploy.redis_password(password.clone()), false, false, Vec::new())
             }
-            _ => (None, false, false),
+            _ => (None, false, false, Vec::new()),
         };
         Self {
             cluster: deploy.deployment.cluster_name.clone(),
@@ -255,6 +345,7 @@ impl UpgradeContext {
             redis_password,
             force,
             skip_log_restart,
+            current_master_nodes,
             update_state: Arc::new(Mutex::new(RollingUpdateState::default())),
         }
     }
@@ -359,7 +450,10 @@ impl Step for StopStandbyOnly {
         }
         let topology = fetch_cluster_nodes(&self.ctx, "rolling-update-initial-topology").await?;
         let managed_nodes = self.ctx.managed_tx_and_standby_set();
-        let first_batch_nodes = connected_managed_nodes(&topology.replicas, &managed_nodes);
+        let current_masters = connected_managed_nodes(&topology.masters, &managed_nodes);
+        let current_replicas = connected_managed_nodes(&topology.replicas, &managed_nodes);
+        let first_batch_nodes =
+            select_first_batch_nodes(&self.ctx, &current_masters, &current_replicas)?;
         if first_batch_nodes.is_empty() {
             bail!(
                 "rolling update requires a connected replica/standby node, but topology reported masters={:?}, replicas={:?}",
