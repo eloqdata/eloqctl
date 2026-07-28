@@ -1876,9 +1876,10 @@ impl Step for VerifyVersion {
 ///
 /// Strategy: upload the new binaries, restart one connected standby for each
 /// current master, wait for that standby to reconnect, fail over to the upgraded
-/// standby, then restart the remaining tx/standby nodes one by one and restart
-/// the temporary leader last. Voter nodes are intentionally left running because
-/// their braft readiness is not exposed by Redis CLUSTER NODES. The final leader
+/// standby, then restart the remaining tx/standby nodes one by one. The selected
+/// standby is not restarted again after failover because it already runs the
+/// upgraded binary. Voter nodes are intentionally left running because their
+/// braft readiness is not exposed by Redis CLUSTER NODES. The final leader
 /// movement is left to the cluster's normal election/preferred-leader logic.
 pub fn build_upgrade_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
     if !ctx.has_standby() {
@@ -1915,7 +1916,6 @@ pub fn build_upgrade_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
     }
 
     steps.push(Box::new(RestartNonLeaderNodes::new(ctx.clone())));
-    steps.push(Box::new(RestartTemporaryLeaders::new(ctx.clone())));
     steps.push(Box::new(VerifyVersion::new(ctx)));
 
     steps
