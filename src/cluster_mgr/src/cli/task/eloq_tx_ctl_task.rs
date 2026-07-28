@@ -216,9 +216,8 @@ impl RedisProbe {
                     }
                 }
                 Err(err) => {
-                    if err.is_connection_refusal() {
-                        maybe_continue_probe!(wait_secs);
-                    }
+                    info!("Redis connection to {} failed: {}, retrying", url, err);
+                    maybe_continue_probe!(wait_secs);
                     return Ok(HashMap::from([
                         (
                             CMD.to_string(),
@@ -939,7 +938,7 @@ impl TaskExecutor for EloqTxCtlTask {
                 (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
                 (
                     CMD_OUTPUT.to_string(),
-                    TaskArgValue::Str(format!("eloqkv service is down: {err}")),
+                    TaskArgValue::Str(format!("eloqkv service status unknown: {err}")),
                 ),
             ]),
             Err(err) => return Err(err),
