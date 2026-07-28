@@ -9,16 +9,19 @@ use crate::cli::task::failover_op_task::FailoverOpTask;
 use crate::cli::task::group::Config;
 use crate::cli::task::local_extract_task::LocalExtractTask;
 use crate::cli::task::redis_op_task::{ClusterNodes, RedisOpTask};
-use crate::cli::task::task_base::{TaskExecutionContext, TaskHost, TaskId, TaskInstance};
+use crate::cli::task::task_base::{
+    TaskArgValue, TaskExecutionContext, TaskExecutor, TaskHost, TaskId, TaskInstance,
+};
 use crate::cli::task::wait_replica_ready_task::WaitReplicaReadyTask;
-use crate::cli::SubCommand;
+use crate::cli::{SubCommand, CMD_OUTPUT, CMD_STATUS};
 use crate::config::config_base::{DeployConfig, ELOQ_FILE_KEY, ELOQ_LOG_FILE_KEY};
 use crate::config::storage_service_config::DataStoreServiceBackend;
 use crate::config::DeploymentPackage;
 use anyhow::bail;
 use async_trait::async_trait;
 use indexmap::IndexMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
 use tracing::info;
 
@@ -36,6 +39,178 @@ fn single_barrier_ctx(
     }
 }
 
+fn node_addr(host: &str, port: u16) -> String {
+    format!("{host}:{port}")
+}
+
+fn hosts_from_host_ports(host_ports: &[String]) -> Vec<String> {
+    host_ports
+        .iter()
+        .filter_map(|host_port| host_port.split_once(':').map(|(host, _)| host.to_string()))
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn connected_managed_nodes(
+    nodes: &[crate::cli::task::redis_op_task::NodeInfo],
+    managed_nodes: &HashSet<String>,
+) -> Vec<String> {
+    nodes.iter()
+        .filter(|node| node.connected)
+        .map(|node| node_addr(&node.ip, node.port))
+        .filter(|node| managed_nodes.contains(node))
+        .collect()
+}
+
+async fn fetch_cluster_nodes(ctx: &UpgradeContext, task_name: &str) -> anyhow::Result<ClusterNodes> {
+    let task_id = TaskId {
+        cmd: "topology".to_string(),
+        task: task_name.to_string(),
+        host: "_local".to_string(),
+    };
+    let (topology_tx, _) = watch::channel(ClusterNodes {
+        masters: Vec::new(),
+        replicas: Vec::new(),
+    });
+    let result = RedisOpTask::new(
+        task_id,
+        ctx.redis_cluster_startup_nodes(),
+        "cluster topology".to_string(),
+        topology_tx,
+        ctx.redis_password.clone(),
+        true,
+    )
+    .with_service_endpoints(ctx.deploy.connection.service_endpoints.clone())
+    .execute(TaskHost::Local, HashMap::default())
+    .await?;
+
+    let values = result.ok_or_else(|| anyhow::anyhow!("missing topology task result"))?;
+    let status = values
+        .get(CMD_STATUS)
+        .cloned()
+        .unwrap_or(TaskArgValue::Number(1));
+    let output = values
+        .get(CMD_OUTPUT)
+        .cloned()
+        .unwrap_or_else(|| TaskArgValue::Str("missing cluster topology output".to_string()));
+
+    match (status, output) {
+        (TaskArgValue::Number(0), TaskArgValue::Str(json)) => {
+            Ok(serde_json::from_str::<ClusterNodes>(&json)?)
+        }
+        (_, TaskArgValue::Str(err)) => Err(anyhow::anyhow!(err)),
+        _ => Err(anyhow::anyhow!("unexpected topology task output")),
+    }
+}
+
+fn build_stop_node_tasks(
+    ctx: &UpgradeContext,
+    task_group: &str,
+    nodes: Vec<String>,
+) -> anyhow::Result<TaskExecutionContext> {
+    if nodes.is_empty() {
+        return Ok(TaskExecutionContext::dummy());
+    }
+    let stop = EloqTxCtlTask::from_config_with_channel(
+        SubCommand::Stop {
+            cluster: ctx.cluster.clone(),
+            tx: Some(true),
+            log: true,
+            store: false,
+            monitor: false,
+            force: true,
+            all: false,
+            password: ctx.redis_password.clone(),
+            nodes,
+        },
+        &ctx.deploy,
+        ServerType::Node,
+        None,
+    )?;
+    Ok(single_barrier_ctx(task_group, stop))
+}
+
+fn build_start_node_tasks(
+    ctx: &UpgradeContext,
+    task_group: &str,
+    nodes: Vec<String>,
+) -> TaskExecutionContext {
+    if nodes.is_empty() {
+        return TaskExecutionContext::dummy();
+    }
+    let start = EloqTxCtlTask::from_config(
+        SubCommand::Start {
+            cluster: ctx.cluster.clone(),
+            nodes,
+        },
+        &ctx.deploy,
+        ServerType::Node,
+    );
+    single_barrier_ctx(task_group, start)
+}
+
+fn build_wait_replica_ready_tasks(
+    ctx: &UpgradeContext,
+    task_group: &str,
+    task_prefix: &str,
+    source_master: &str,
+    target_replicas: &[String],
+) -> anyhow::Result<TaskExecutionContext> {
+    if target_replicas.is_empty() {
+        return Ok(TaskExecutionContext::dummy());
+    }
+
+    let Some((source_host, source_port_str)) = source_master.split_once(':') else {
+        bail!("invalid host:port in current master: '{source_master}'");
+    };
+    let Ok(source_port) = source_port_str.parse::<u16>() else {
+        bail!("invalid port in current master: '{source_master}'");
+    };
+
+    let mut executable = IndexMap::new();
+    for target_addr in target_replicas {
+        let Some((target_host, target_port_str)) = target_addr.split_once(':') else {
+            bail!("invalid host:port in target replica list: '{target_addr}'");
+        };
+        let Ok(target_port) = target_port_str.parse::<u16>() else {
+            bail!("invalid port in target replica list: '{target_addr}'");
+        };
+        let task_id = TaskId {
+            cmd: "topology".to_string(),
+            task: format!("{task_prefix}-{target_port}"),
+            host: target_host.to_string(),
+        };
+        executable.insert(
+            task_id.clone(),
+            TaskInstance {
+                task_input: HashMap::default(),
+                task: Box::new(
+                    WaitReplicaReadyTask::new(
+                        task_id,
+                        ctx.redis_cluster_startup_nodes(),
+                        source_host.to_string(),
+                        source_port,
+                        target_host.to_string(),
+                        target_port,
+                        ctx.redis_password.clone(),
+                    )
+                    .with_service_endpoints(ctx.deploy.connection.service_endpoints.clone()),
+                ),
+                task_host: TaskHost::Local,
+            },
+        );
+    }
+
+    Ok(single_barrier_ctx(task_group, executable))
+}
+
+#[derive(Clone, Default)]
+struct RollingUpdateState {
+    first_batch_nodes: Vec<String>,
+    second_batch_nodes: Vec<String>,
+}
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 /// All configuration extracted upfront from CLI args + deploy config.
@@ -47,6 +222,8 @@ pub struct UpgradeContext {
     pub cluster: String,
     pub redis_password: Option<String>,
     pub force: bool,
+    pub skip_log_restart: bool,
+    update_state: Arc<Mutex<RollingUpdateState>>,
 }
 
 impl UpgradeContext {
@@ -55,14 +232,21 @@ impl UpgradeContext {
     pub(crate) fn new(cmd_arg: &SubCommand, config: Config) -> Self {
         let Config::Cluster(ref deploy) = config;
         let deploy = deploy.clone();
-        let (redis_password, force) = match cmd_arg {
+        let (redis_password, force, skip_log_restart) = match cmd_arg {
             SubCommand::Update {
-                password, force, ..
-            } => (deploy.redis_password(password.clone()), *force),
+                password,
+                force,
+                skip_log_restart,
+                ..
+            } => (
+                deploy.redis_password(password.clone()),
+                *force,
+                *skip_log_restart,
+            ),
             SubCommand::UpdateConf { password, .. } => {
-                (deploy.redis_password(password.clone()), false)
+                (deploy.redis_password(password.clone()), false, false)
             }
-            _ => (None, false),
+            _ => (None, false, false),
         };
         Self {
             cluster: deploy.deployment.cluster_name.clone(),
@@ -70,6 +254,8 @@ impl UpgradeContext {
             deploy,
             redis_password,
             force,
+            skip_log_restart,
+            update_state: Arc::new(Mutex::new(RollingUpdateState::default())),
         }
     }
 
@@ -107,6 +293,46 @@ impl UpgradeContext {
         host_ports.extend(self.standby_host_ports());
         host_ports
     }
+
+    fn managed_tx_and_standby_nodes(&self) -> Vec<String> {
+        let mut host_ports = self.tx_host_ports();
+        host_ports.extend(self.standby_host_ports());
+        host_ports
+    }
+
+    fn managed_tx_and_standby_set(&self) -> HashSet<String> {
+        self.managed_tx_and_standby_nodes().into_iter().collect()
+    }
+
+    fn set_first_batch_nodes(&self, nodes: Vec<String>) {
+        self.update_state
+            .lock()
+            .expect("rolling update state poisoned")
+            .first_batch_nodes = nodes;
+    }
+
+    fn first_batch_nodes(&self) -> Vec<String> {
+        self.update_state
+            .lock()
+            .expect("rolling update state poisoned")
+            .first_batch_nodes
+            .clone()
+    }
+
+    fn set_second_batch_nodes(&self, nodes: Vec<String>) {
+        self.update_state
+            .lock()
+            .expect("rolling update state poisoned")
+            .second_batch_nodes = nodes;
+    }
+
+    fn second_batch_nodes(&self) -> Vec<String> {
+        self.update_state
+            .lock()
+            .expect("rolling update state poisoned")
+            .second_batch_nodes
+            .clone()
+    }
 }
 
 // ── Helper: build a round of topo→failover→stop ─────────────────────────────
@@ -131,22 +357,22 @@ impl Step for StopStandbyOnly {
         if !self.ctx.has_standby() {
             return Ok(TaskExecutionContext::dummy());
         }
-        let stop = EloqTxCtlTask::from_config(
-            SubCommand::Stop {
-                cluster: self.ctx.cluster.clone(),
-                tx: None,
-                log: false,
-                store: false,
-                monitor: false,
-                force: true,
-                all: false,
-                password: self.ctx.redis_password.clone(),
-                nodes: Vec::new(),
-            },
-            &self.ctx.deploy,
-            ServerType::Standby,
+        let topology = fetch_cluster_nodes(&self.ctx, "rolling-update-initial-topology").await?;
+        let managed_nodes = self.ctx.managed_tx_and_standby_set();
+        let first_batch_nodes = connected_managed_nodes(&topology.replicas, &managed_nodes);
+        if first_batch_nodes.is_empty() {
+            bail!(
+                "rolling update requires a connected replica/standby node, but topology reported masters={:?}, replicas={:?}",
+                topology.masters,
+                topology.replicas
+            );
+        }
+        info!(
+            "Rolling update first batch nodes selected from current replicas: {:?}",
+            first_batch_nodes
         );
-        Ok(single_barrier_ctx("stop-standby", stop))
+        self.ctx.set_first_batch_nodes(first_batch_nodes.clone());
+        build_stop_node_tasks(&self.ctx, "stop-standby", first_batch_nodes)
     }
 }
 
@@ -186,15 +412,36 @@ impl Step for FailoverAndStopOldMaster {
             return Ok(single_barrier_ctx("stop-old-master", stop_tx));
         }
 
-        let tx_host_ports = self.ctx.tx_host_ports();
-        let standby_host_ports = self.ctx.standby_host_ports();
-        let mut all_nodes = tx_host_ports.clone();
-        all_nodes.extend(standby_host_ports);
+        let topology = fetch_cluster_nodes(&self.ctx, "rolling-update-pre-failover-topology").await?;
+        let managed_nodes = self.ctx.managed_tx_and_standby_set();
+        let current_masters = connected_managed_nodes(&topology.masters, &managed_nodes);
+        let current_replicas = connected_managed_nodes(&topology.replicas, &managed_nodes);
+        if current_masters.is_empty() {
+            bail!(
+                "rolling update could not find a connected current master before failover; topology reported masters={:?}, replicas={:?}",
+                topology.masters,
+                topology.replicas
+            );
+        }
+        if current_replicas.is_empty() {
+            bail!(
+                "rolling update could not find a connected current replica to fail over to; topology reported masters={:?}, replicas={:?}",
+                topology.masters,
+                topology.replicas
+            );
+        }
+        info!(
+            "Rolling update failover sources selected from current masters: {:?}; current replicas: {:?}",
+            current_masters,
+            current_replicas
+        );
+        self.ctx.set_second_batch_nodes(current_masters.clone());
+        let all_nodes = self.ctx.managed_tx_and_standby_nodes();
 
         build_round(
             "failover-stop-master",
-            &tx_host_ports,
-            &tx_host_ports,
+            &current_masters,
+            &current_masters,
             &all_nodes,
             &self.ctx,
         )
@@ -377,11 +624,9 @@ impl Step for UploadToStandby {
                 &self.ctx.deploy.deployment,
             );
 
-        let standby_hosts: std::collections::HashSet<String> = self
-            .ctx
-            .standby_host_ports()
-            .iter()
-            .filter_map(|hp| hp.split(':').next().map(|h| h.to_string()))
+        let first_batch_nodes = self.ctx.first_batch_nodes();
+        let standby_hosts: HashSet<String> = hosts_from_host_ports(&first_batch_nodes)
+            .into_iter()
             .collect();
 
         let log_hosts: std::collections::HashSet<String> = self
@@ -440,11 +685,9 @@ impl Step for UploadToMaster {
                 &self.ctx.deploy.deployment,
             );
 
-        let tx_hosts: std::collections::HashSet<String> = self
-            .ctx
-            .tx_host_ports()
-            .iter()
-            .filter_map(|hp| hp.split(':').next().map(|h| h.to_string()))
+        let second_batch_nodes = self.ctx.second_batch_nodes();
+        let tx_hosts: HashSet<String> = hosts_from_host_ports(&second_batch_nodes)
+            .into_iter()
             .collect();
 
         let voter_hosts: std::collections::HashSet<String> = self
@@ -597,10 +840,16 @@ impl Step for CleanEloqStoreData {
                                 .and_then(|cc| cc.eloq_store_reuse_local_files)
                                 .unwrap_or(false);
                             if !should_skip_cleanup {
+                                let first_batch_hosts =
+                                    hosts_from_host_ports(&self.ctx.first_batch_nodes());
                                 let clean_tasks = EloqStoreDataCleanTask::build_tasks(
                                     start_cmd,
                                     &self.ctx.config,
-                                    None,
+                                    if first_batch_hosts.is_empty() {
+                                        None
+                                    } else {
+                                        Some(first_batch_hosts.as_slice())
+                                    },
                                 );
                                 if !clean_tasks.is_empty() {
                                     let len = clean_tasks.len();
@@ -692,14 +941,18 @@ impl Step for StartTx {
     }
 
     async fn build(&self) -> anyhow::Result<TaskExecutionContext> {
-        let mut start_tx = EloqTxCtlTask::from_config(
-            SubCommand::Start {
-                cluster: self.ctx.cluster.clone(),
-                nodes: Vec::new(),
-            },
-            &self.ctx.deploy,
-            ServerType::Tx,
-        );
+        let mut start_tx = if self.ctx.has_standby() {
+            build_start_node_tasks(&self.ctx, "start-tx", self.ctx.second_batch_nodes()).executable
+        } else {
+            EloqTxCtlTask::from_config(
+                SubCommand::Start {
+                    cluster: self.ctx.cluster.clone(),
+                    nodes: Vec::new(),
+                },
+                &self.ctx.deploy,
+                ServerType::Tx,
+            )
+        };
 
         if self.ctx.has_voter() {
             let start_voter = EloqTxCtlTask::from_config(
@@ -796,60 +1049,25 @@ impl Step for WaitTxReplicaReady {
         if !self.ctx.has_standby() {
             return Ok(TaskExecutionContext::dummy());
         }
-
-        let tx_nodes = self.ctx.tx_host_ports();
-        let standby_nodes = self.ctx.standby_host_ports();
-        if tx_nodes.len() != standby_nodes.len() {
+        let targets = self.ctx.second_batch_nodes();
+        let topology = fetch_cluster_nodes(&self.ctx, "rolling-update-wait-second-batch-topology")
+            .await?;
+        let managed_nodes = self.ctx.managed_tx_and_standby_set();
+        let current_masters = connected_managed_nodes(&topology.masters, &managed_nodes);
+        let Some(source_master) = current_masters.first() else {
             bail!(
-                "tx/standby node count mismatch: tx={}, standby={}",
-                tx_nodes.len(),
-                standby_nodes.len()
+                "rolling update could not find current master while waiting for updated old master replicas; topology reported masters={:?}, replicas={:?}",
+                topology.masters,
+                topology.replicas
             );
-        }
-        let mut executable = IndexMap::new();
-
-        for (source_addr, target_addr) in standby_nodes.iter().zip(tx_nodes.iter()) {
-            let Some((source_host, source_port_str)) = source_addr.split_once(':') else {
-                bail!("invalid host:port in standby list: '{source_addr}'");
-            };
-            let Ok(source_port) = source_port_str.parse::<u16>() else {
-                bail!("invalid port in standby list: '{source_addr}'");
-            };
-            let Some((target_host, target_port_str)) = target_addr.split_once(':') else {
-                bail!("invalid host:port in tx list: '{target_addr}'");
-            };
-            let Ok(target_port) = target_port_str.parse::<u16>() else {
-                bail!("invalid port in tx list: '{target_addr}'");
-            };
-            let task_id = TaskId {
-                cmd: "topology".to_string(),
-                task: format!("wait-tx-replica-ready-{target_port}"),
-                host: target_host.to_string(),
-            };
-            executable.insert(
-                task_id.clone(),
-                TaskInstance {
-                    task_input: HashMap::default(),
-                    task: Box::new(
-                        WaitReplicaReadyTask::new(
-                            task_id,
-                            self.ctx.redis_cluster_startup_nodes(),
-                            source_host.to_string(),
-                            source_port,
-                            target_host.to_string(),
-                            target_port,
-                            self.ctx.redis_password.clone(),
-                        )
-                        .with_service_endpoints(
-                            self.ctx.deploy.connection.service_endpoints.clone(),
-                        ),
-                    ),
-                    task_host: TaskHost::Local,
-                },
-            );
-        }
-
-        Ok(single_barrier_ctx("wait-tx-replica-ready", executable))
+        };
+        build_wait_replica_ready_tasks(
+            &self.ctx,
+            "wait-tx-replica-ready",
+            "wait-tx-replica-ready",
+            source_master,
+            &targets,
+        )
     }
 }
 
@@ -873,62 +1091,25 @@ impl Step for WaitStandbyReplicaReady {
         if !self.ctx.has_standby() {
             return Ok(TaskExecutionContext::dummy());
         }
-
-        let tx_nodes = self.ctx.tx_host_ports();
-        let standby_nodes = self.ctx.standby_host_ports();
-        if tx_nodes.len() != standby_nodes.len() {
+        let targets = self.ctx.first_batch_nodes();
+        let topology = fetch_cluster_nodes(&self.ctx, "rolling-update-wait-first-batch-topology")
+            .await?;
+        let managed_nodes = self.ctx.managed_tx_and_standby_set();
+        let current_masters = connected_managed_nodes(&topology.masters, &managed_nodes);
+        let Some(source_master) = current_masters.first() else {
             bail!(
-                "tx/standby node count mismatch: tx={}, standby={}",
-                tx_nodes.len(),
-                standby_nodes.len()
+                "rolling update could not find current master while waiting for updated replica; topology reported masters={:?}, replicas={:?}",
+                topology.masters,
+                topology.replicas
             );
-        }
-
-        let mut executable = IndexMap::new();
-
-        for (source_addr, target_addr) in tx_nodes.iter().zip(standby_nodes.iter()) {
-            let Some((source_host, source_port_str)) = source_addr.split_once(':') else {
-                bail!("invalid host:port in tx list: '{source_addr}'");
-            };
-            let Ok(source_port) = source_port_str.parse::<u16>() else {
-                bail!("invalid port in tx list: '{source_addr}'");
-            };
-            let Some((target_host, target_port_str)) = target_addr.split_once(':') else {
-                bail!("invalid host:port in standby list: '{target_addr}'");
-            };
-            let Ok(target_port) = target_port_str.parse::<u16>() else {
-                bail!("invalid port in standby list: '{target_addr}'");
-            };
-
-            let task_id = TaskId {
-                cmd: "topology".to_string(),
-                task: format!("wait-standby-replica-ready-{target_port}"),
-                host: target_host.to_string(),
-            };
-            executable.insert(
-                task_id.clone(),
-                TaskInstance {
-                    task_input: HashMap::default(),
-                    task: Box::new(
-                        WaitReplicaReadyTask::new(
-                            task_id,
-                            self.ctx.redis_cluster_startup_nodes(),
-                            source_host.to_string(),
-                            source_port,
-                            target_host.to_string(),
-                            target_port,
-                            self.ctx.redis_password.clone(),
-                        )
-                        .with_service_endpoints(
-                            self.ctx.deploy.connection.service_endpoints.clone(),
-                        ),
-                    ),
-                    task_host: TaskHost::Local,
-                },
-            );
-        }
-
-        Ok(single_barrier_ctx("wait-standby-replica-ready", executable))
+        };
+        build_wait_replica_ready_tasks(
+            &self.ctx,
+            "wait-standby-replica-ready",
+            "wait-standby-replica-ready",
+            source_master,
+            &targets,
+        )
     }
 }
 
@@ -978,15 +1159,11 @@ impl Step for StartStandby {
         if !self.ctx.has_standby() {
             return Ok(TaskExecutionContext::dummy());
         }
-        let start = EloqTxCtlTask::from_config(
-            SubCommand::Start {
-                cluster: self.ctx.cluster.clone(),
-                nodes: Vec::new(),
-            },
-            &self.ctx.deploy,
-            ServerType::Standby,
-        );
-        Ok(single_barrier_ctx("start-standby", start))
+        Ok(build_start_node_tasks(
+            &self.ctx,
+            "start-standby",
+            self.ctx.first_batch_nodes(),
+        ))
     }
 }
 
@@ -1098,21 +1275,33 @@ impl Step for VerifyVersion {
 /// This minimizes downtime because the master continues serving during
 /// the standby update phase.
 pub fn build_upgrade_steps(ctx: UpgradeContext) -> Vec<Box<dyn Step>> {
-    vec![
+    let mut steps: Vec<Box<dyn Step>> = vec![
         Box::new(DownloadAndExtract::new(ctx.clone())),
         Box::new(StopStandbyOnly::new(ctx.clone())),
         Box::new(UploadToStandby::new(ctx.clone())),
-        Box::new(StopLog::new(ctx.clone())),
-        Box::new(CleanEloqStoreData::new(ctx.clone())),
-        Box::new(StartLogAndWait::new(ctx.clone())),
-        Box::new(StartStandby::new(ctx.clone())),
-        Box::new(WaitStandbyReplicaReady::new(ctx.clone())),
-        Box::new(FailoverAndStopOldMaster::new(ctx.clone())),
-        Box::new(UploadToMaster::new(ctx.clone())),
-        Box::new(StartTx::new(ctx.clone())),
-        Box::new(WaitTxReplicaReady::new(ctx.clone())),
-        Box::new(VerifyVersion::new(ctx)),
-    ]
+    ];
+
+    if ctx.skip_log_restart {
+        info!("Skipping log service restart during rolling update (--skip-log-restart)");
+    } else {
+        steps.push(Box::new(StopLog::new(ctx.clone())));
+    }
+
+    steps.push(Box::new(CleanEloqStoreData::new(ctx.clone())));
+
+    if !ctx.skip_log_restart {
+        steps.push(Box::new(StartLogAndWait::new(ctx.clone())));
+    }
+
+    steps.push(Box::new(StartStandby::new(ctx.clone())));
+    steps.push(Box::new(WaitStandbyReplicaReady::new(ctx.clone())));
+    steps.push(Box::new(FailoverAndStopOldMaster::new(ctx.clone())));
+    steps.push(Box::new(UploadToMaster::new(ctx.clone())));
+    steps.push(Box::new(StartTx::new(ctx.clone())));
+    steps.push(Box::new(WaitTxReplicaReady::new(ctx.clone())));
+    steps.push(Box::new(VerifyVersion::new(ctx)));
+
+    steps
 }
 
 /// Build the list of steps for a rolling config restart (`eloqctl update-conf --restart`).

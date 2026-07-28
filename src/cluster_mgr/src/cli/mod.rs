@@ -327,6 +327,12 @@ Behavior:\n\
             default_value_t = false
         )]
         force: bool,
+        #[arg(
+            long,
+            default_value_t = false,
+            help = "Skip stopping and restarting the standalone log service during rolling update"
+        )]
+        skip_log_restart: bool,
     },
 
     #[command(

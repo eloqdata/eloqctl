@@ -730,6 +730,7 @@ impl TaskExecutor for EloqTxCtlTask {
             }
             "stop" | "force_stop" => {
                 let stop_cmd = self.ctl_cmd.cmd_value();
+                let has_topology_filter = self.receiver.is_some();
                 let mut target_ports: Vec<String> = Vec::new();
                 match server_type {
                     "txservice" => {
@@ -766,8 +767,28 @@ impl TaskExecutor for EloqTxCtlTask {
                         unreachable!("Unknown server type: {}", server_type);
                     }
                 }
-                if target_ports.is_empty() {
+                if target_ports.is_empty() && !has_topology_filter {
                     target_ports.push(port.to_string());
+                }
+
+                if target_ports.is_empty() {
+                    info!(
+                        "No matching {} ports found for host {} in current topology; skipping {}.",
+                        server_type,
+                        self.task_id.host,
+                        ctl_cmd_ref
+                    );
+                    return Ok(Some(HashMap::from([
+                        (CMD.to_string(), TaskArgValue::Str(stop_cmd)),
+                        (CMD_STATUS.to_string(), TaskArgValue::Number(0)),
+                        (
+                            CMD_OUTPUT.to_string(),
+                            TaskArgValue::Str(format!(
+                                "No matching {server_type} ports found for host {} in current topology; skipped.",
+                                self.task_id.host
+                            )),
+                        ),
+                    ])));
                 }
 
                 let runtime_ports = target_ports

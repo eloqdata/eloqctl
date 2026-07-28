@@ -1506,22 +1506,10 @@ impl Deployment {
             }
 
             if self.log_service.is_some() {
-                // If MINIO is used, skip setting txlog_service_list but keep other log configs
-                let is_minio = self
-                    .storage_service
-                    .as_ref()
-                    .and_then(|s| s.rocksdb.as_ref())
-                    .map(|r| matches!(r, RocksDB::MINIO(_)))
-                    .unwrap_or(false);
-
                 self.build_log_config()
                     .into_iter()
                     .for_each(|(key, conf_val)| {
-                        if is_minio && key == "txlog_service_list" {
-                            // skip
-                        } else {
-                            ini.set(SECTION_CLUSTER, &key, Some(conf_val));
-                        }
+                        ini.set(SECTION_CLUSTER, &key, Some(conf_val));
                     });
             }
 
