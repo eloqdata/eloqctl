@@ -461,6 +461,7 @@ impl TaskExecutor for TxConfUpdateTask {
                 nodes: ClusterNodes {
                     masters: Vec::new(),
                     replicas: Vec::new(),
+                    voters: Vec::new(),
                 },
                 cluster_config: Some(content),
             };

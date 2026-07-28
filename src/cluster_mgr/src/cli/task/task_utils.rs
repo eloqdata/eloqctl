@@ -414,6 +414,7 @@ pub async fn stop_with_hot_standby(
         let (tx_channel, rx_standby) = watch::channel::<ClusterNodes>(ClusterNodes {
             masters: Vec::new(),
             replicas: Vec::new(),
+            voters: Vec::new(),
         });
         let rx_tx = tx_channel.subscribe();
 
@@ -600,6 +601,7 @@ pub async fn stop_with_failover(
     let (topology_tx, failover_rx) = watch::channel::<ClusterNodes>(ClusterNodes {
         masters: Vec::new(),
         replicas: Vec::new(),
+        voters: Vec::new(),
     });
 
     // Create additional receivers that will get the same data

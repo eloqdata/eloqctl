@@ -841,6 +841,7 @@ impl TaskGroup for ScaleLogTaskGroup {
             let empty_cluster_nodes = ClusterNodes {
                 masters: Vec::new(),
                 replicas: Vec::new(),
+                voters: Vec::new(),
             };
             let (final_topology_tx, final_topology_rx) =
                 watch::channel(empty_cluster_nodes.clone());

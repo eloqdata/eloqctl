@@ -333,13 +333,6 @@ Behavior:\n\
             help = "Skip stopping and restarting the standalone log service during rolling update"
         )]
         skip_log_restart: bool,
-        #[arg(
-            long,
-            value_delimiter = ',',
-            value_name = "host:port[,host:port...]",
-            help = "Current master node(s) to keep running while restarting other tx/standby nodes first"
-        )]
-        current_master_nodes: Vec<String>,
     },
 
     #[command(

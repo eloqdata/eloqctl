@@ -281,6 +281,7 @@ impl TaskExecutor for DbDeploymentUpdateTask {
                 nodes: ClusterNodes {
                     masters: Vec::new(),
                     replicas: Vec::new(),
+                    voters: Vec::new(),
                 },
                 cluster_config: Some(content),
             }

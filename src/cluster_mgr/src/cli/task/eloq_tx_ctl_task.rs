@@ -774,9 +774,7 @@ impl TaskExecutor for EloqTxCtlTask {
                 if target_ports.is_empty() {
                     info!(
                         "No matching {} ports found for host {} in current topology; skipping {}.",
-                        server_type,
-                        self.task_id.host,
-                        ctl_cmd_ref
+                        server_type, self.task_id.host, ctl_cmd_ref
                     );
                     return Ok(Some(HashMap::from([
                         (CMD.to_string(), TaskArgValue::Str(stop_cmd)),
