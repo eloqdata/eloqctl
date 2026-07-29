@@ -181,6 +181,7 @@ impl TaskGroup for CtrlDBTaskGroup {
                     let (redis_tx, redis_rx) = watch::channel(ClusterNodes {
                         masters: Vec::new(),
                         replicas: Vec::new(),
+                        voters: Vec::new(),
                     });
                     let redis_task_id = TaskId {
                         cmd: "topology".to_string(),
@@ -517,6 +518,7 @@ impl CtrlDBTaskGroup {
                 let (topology_tx, _) = watch::channel(ClusterNodes {
                     masters: Vec::new(),
                     replicas: Vec::new(),
+                    voters: Vec::new(),
                 });
                 let mut topology_nodes = config.get_host_port_list(DeploymentPackage::EloqTx);
                 topology_nodes.extend(config.get_host_port_list(DeploymentPackage::EloqStandby));

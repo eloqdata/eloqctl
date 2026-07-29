@@ -118,6 +118,7 @@ impl TopologyUpdateTask {
         let (_, rx) = watch::channel(ClusterNodes {
             masters: Vec::new(),
             replicas: Vec::new(),
+            voters: Vec::new(),
         });
 
         let task = Box::new(TopologyUpdateTask {

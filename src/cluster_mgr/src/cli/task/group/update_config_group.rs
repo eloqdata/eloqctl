@@ -96,6 +96,7 @@ fn build_config_update(
         let (redis_op_tx, redis_op_rx) = watch::channel(ClusterNodes {
             masters: Vec::new(),
             replicas: Vec::new(),
+            voters: Vec::new(),
         });
 
         let redis_task_id = TaskId {

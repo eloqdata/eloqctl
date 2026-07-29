@@ -137,6 +137,7 @@ mod tests {
         let (tx, _rx) = watch::channel(ClusterNodes {
             masters: Vec::new(),
             replicas: Vec::new(),
+            voters: Vec::new(),
         });
         let task = RedisOpTask::new(
             TaskId {
@@ -175,6 +176,10 @@ pub struct NodeInfo {
     pub ip: String,
     pub port: u16,
     pub connected: bool,
+    #[serde(default)]
+    pub node_id: Option<String>,
+    #[serde(default)]
+    pub master_id: Option<String>,
 }
 
 // Implement Eq and Hash for NodeInfo
@@ -204,6 +209,8 @@ impl fmt::Display for NodeInfo {
 pub struct ClusterNodes {
     pub masters: Vec<NodeInfo>,
     pub replicas: Vec<NodeInfo>,
+    #[serde(default)]
+    pub voters: Vec<NodeInfo>,
 }
 
 const MAX_RETRIES: usize = 500;
@@ -302,6 +309,7 @@ pub fn parse_cluster_nodes(value: Value) -> RedisResult<Vec<ClusterNodes>> {
     let mut cluster_nodes_list = Vec::new();
     let mut masters = Vec::new();
     let mut replicas = Vec::new();
+    let mut voters = Vec::new();
 
     // Parse each line of the CLUSTER NODES output
     for line in nodes_str.lines() {
@@ -332,9 +340,17 @@ pub fn parse_cluster_nodes(value: Value) -> RedisResult<Vec<ClusterNodes>> {
             Err(_) => continue, // Skip if port is not a valid u16
         };
 
-        // Check if node is master or replica
+        // Check node role from comma-delimited flags.
         let flags = parts[2];
-        let is_master = !flags.contains("slave");
+        let is_master = flags
+            .split(',')
+            .any(|flag| flag.eq_ignore_ascii_case("master"));
+        let is_replica = flags
+            .split(',')
+            .any(|flag| flag.eq_ignore_ascii_case("slave"));
+        let is_voter = flags
+            .split(',')
+            .any(|flag| flag.eq_ignore_ascii_case("voter"));
 
         // Add node to appropriate list
         let connected = parts[7].eq_ignore_ascii_case("connected");
@@ -342,18 +358,26 @@ pub fn parse_cluster_nodes(value: Value) -> RedisResult<Vec<ClusterNodes>> {
             ip,
             port,
             connected,
+            node_id: Some(parts[0].to_string()),
+            master_id: (parts[3] != "-").then(|| parts[3].to_string()),
         };
 
         if is_master {
             masters.push(node_info);
-        } else {
+        } else if is_replica {
             replicas.push(node_info);
+        } else if is_voter {
+            voters.push(node_info);
         }
     }
 
     // Group all masters and replicas into one ClusterNodes
-    if !masters.is_empty() || !replicas.is_empty() {
-        cluster_nodes_list.push(ClusterNodes { masters, replicas });
+    if !masters.is_empty() || !replicas.is_empty() || !voters.is_empty() {
+        cluster_nodes_list.push(ClusterNodes {
+            masters,
+            replicas,
+            voters,
+        });
     }
 
     Ok(cluster_nodes_list)
@@ -402,8 +426,11 @@ pub fn parse_cluster_nodes_single(value: Value, default_host: &str) -> RedisResu
             ip,
             port,
             connected: true,
+            node_id: None,
+            master_id: None,
         }],
         replicas: vec![],
+        voters: vec![],
     })
 }
 
@@ -588,6 +615,7 @@ impl TaskExecutor for RedisOpTask {
                 };
                 let mut unique_masters = HashSet::new();
                 let mut unique_replicas = HashSet::new();
+                let mut unique_voters = HashSet::new();
 
                 for slot in &cluster_nodes {
                     for master in &slot.masters {
@@ -595,6 +623,9 @@ impl TaskExecutor for RedisOpTask {
                     }
                     for replica in &slot.replicas {
                         unique_replicas.insert(replica.clone());
+                    }
+                    for voter in &slot.voters {
+                        unique_voters.insert(voter.clone());
                     }
                 }
 
@@ -708,6 +739,7 @@ impl TaskExecutor for RedisOpTask {
                 // Convert HashSets to Vectors
                 let unique_masters: Vec<NodeInfo> = unique_masters.into_iter().collect();
                 let unique_replicas: Vec<NodeInfo> = unique_replicas.into_iter().collect();
+                let unique_voters: Vec<NodeInfo> = unique_voters.into_iter().collect();
 
                 // For debugging: print the unique masters and replicas
                 for master in &unique_masters {
@@ -716,10 +748,14 @@ impl TaskExecutor for RedisOpTask {
                 for replica in &unique_replicas {
                     info!("Replicas:  {}:{}", replica.ip, replica.port);
                 }
+                for voter in &unique_voters {
+                    info!("Voters:  {}:{}", voter.ip, voter.port);
+                }
 
                 let cluster_nodes = ClusterNodes {
                     masters: unique_masters,
                     replicas: unique_replicas,
+                    voters: unique_voters,
                 };
 
                 let response_str = serde_json::to_string(&cluster_nodes)?;

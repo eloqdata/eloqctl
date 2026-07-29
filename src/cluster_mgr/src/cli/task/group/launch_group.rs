@@ -201,6 +201,7 @@ impl TaskGroup for LaunchTaskGroup {
         let empty_cluster_nodes = ClusterNodes {
             masters: Vec::new(),
             replicas: Vec::new(),
+            voters: Vec::new(),
         };
         let (redis_op_tx, redis_op_rx) = watch::channel(empty_cluster_nodes.clone());
 

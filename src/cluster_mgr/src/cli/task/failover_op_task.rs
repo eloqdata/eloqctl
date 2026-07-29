@@ -22,6 +22,7 @@ pub struct FailoverOpTask {
     receiver: watch::Receiver<ClusterNodes>,
     password: Option<String>,
     service_endpoints: Option<HashMap<String, ServiceEndpoint>>,
+    require_explicit_target: bool,
 }
 
 impl FailoverOpTask {
@@ -43,6 +44,7 @@ impl FailoverOpTask {
             receiver,
             password,
             service_endpoints: None,
+            require_explicit_target: false,
         }
     }
 
@@ -54,27 +56,82 @@ impl FailoverOpTask {
         self
     }
 
+    pub fn require_explicit_target(mut self) -> Self {
+        self.require_explicit_target = true;
+        self
+    }
+
     // Helper function to find the best replica for failover
     fn find_best_replica(&self, cluster_nodes: &ClusterNodes) -> Option<(String, u16)> {
-        // If we have explicit new_leader_host/port set and it's in the replicas list, use it
+        // If the caller selected a new_leader_host/port, require it to be a valid replica.
         if !self.new_leader_host.is_empty() && self.new_leader_port > 0 {
-            let specified_replica = cluster_nodes
+            let Some(specified_replica) = cluster_nodes
                 .replicas
                 .iter()
-                .find(|r| r.ip == self.new_leader_host && r.port == self.new_leader_port);
+                .find(|r| r.ip == self.new_leader_host && r.port == self.new_leader_port)
+            else {
+                if self.require_explicit_target {
+                    error!(
+                        "Selected new leader {}:{} not found as replica",
+                        self.new_leader_host, self.new_leader_port
+                    );
+                    return None;
+                }
+                info!(
+                    "Selected new leader {}:{} not found as replica, will choose another one",
+                    self.new_leader_host, self.new_leader_port
+                );
+                return cluster_nodes
+                    .replicas
+                    .iter()
+                    .find(|replica| replica.connected)
+                    .map(|replica| (replica.ip.clone(), replica.port));
+            };
 
-            if specified_replica.is_some() {
+            let old_leader = cluster_nodes
+                .masters
+                .iter()
+                .find(|node| node.ip == self.old_leader_host && node.port == self.old_leader_port);
+            if let (Some(old_leader), Some(master_id)) =
+                (old_leader, specified_replica.master_id.as_ref())
+            {
+                if old_leader.node_id.as_ref() != Some(master_id) {
+                    error!(
+                        "Selected new leader {}:{} is not a replica of old leader {}:{}",
+                        self.new_leader_host,
+                        self.new_leader_port,
+                        self.old_leader_host,
+                        self.old_leader_port
+                    );
+                    return None;
+                }
+            }
+
+            if specified_replica.connected {
                 return Some((self.new_leader_host.clone(), self.new_leader_port));
             }
 
-            info!(
-                "Specified new leader {}:{} not found as replica, will choose another one",
+            error!(
+                "Selected new leader {}:{} is not connected as replica",
                 self.new_leader_host, self.new_leader_port
             );
+            return None;
+        }
+
+        if self.require_explicit_target {
+            error!(
+                "Internal failover target is required for {}:{}, but no target was selected",
+                self.old_leader_host, self.old_leader_port
+            );
+            return None;
         }
 
         // Select first available replica
-        if let Some(replica) = cluster_nodes.replicas.first() {
+        if let Some(replica) = cluster_nodes
+            .replicas
+            .iter()
+            .find(|replica| replica.connected)
+        {
             return Some((replica.ip.clone(), replica.port));
         }
 

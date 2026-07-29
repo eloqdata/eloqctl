@@ -52,6 +52,7 @@ fn failover_task_group(
     let (pre_failover_tx, pre_failover_rx) = watch::channel::<ClusterNodes>(ClusterNodes {
         masters: Vec::new(),
         replicas: Vec::new(),
+        voters: Vec::new(),
     });
 
     // Create another channel for the post-failover task
@@ -59,6 +60,7 @@ fn failover_task_group(
     let (post_failover_tx, post_failover_rx) = watch::channel::<ClusterNodes>(ClusterNodes {
         masters: Vec::new(),
         replicas: Vec::new(),
+        voters: Vec::new(),
     });
 
     // Keep the receiver alive to prevent the channel from closing

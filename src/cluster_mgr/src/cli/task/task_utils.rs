@@ -57,6 +57,8 @@ pub(crate) const PROCESS_PID: &str = "_process_pid_";
 pub(crate) const PROCESS_PID_LIST: &str = "_process_pid_list_";
 pub(crate) const DEFAULT_ELOQ_METRICS_PORT: u16 = 18081;
 pub(crate) const TX_INTERNAL_PORT_DELTA: u16 = 10000;
+const CHECK_PID_RETRY_ATTEMPTS: usize = 3;
+const CHECK_PID_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
 pub(crate) type NodeId = u32;
 pub(crate) type NodeGroupId = u32;
@@ -159,9 +161,33 @@ where
     F: Fn(String) -> Option<T>,
     T: Any + Debug,
 {
-    let mut cmd_exec_rs = ssh_session
-        .command(find_ps_cmd.as_str(), CollectOutput)
-        .await?;
+    let mut cmd_exec_rs = None;
+    let mut last_err = None;
+    for attempt in 1..=CHECK_PID_RETRY_ATTEMPTS {
+        match ssh_session
+            .command(find_ps_cmd.as_str(), CollectOutput)
+            .await
+        {
+            Ok(rs) => {
+                cmd_exec_rs = Some(rs);
+                break;
+            }
+            Err(err) => {
+                let err_msg = err.to_string();
+                error!(
+                    "check_pid command failed on attempt {}/{}: {}. cmd={}",
+                    attempt, CHECK_PID_RETRY_ATTEMPTS, err_msg, find_ps_cmd
+                );
+                last_err = Some(err_msg);
+                if attempt < CHECK_PID_RETRY_ATTEMPTS {
+                    sleep(CHECK_PID_RETRY_INTERVAL).await;
+                }
+            }
+        }
+    }
+    let mut cmd_exec_rs = cmd_exec_rs.ok_or_else(|| {
+        anyhow!(last_err.unwrap_or_else(|| "check_pid command failed".to_string()))
+    })?;
     let cmd_status = cmd_exec_rs.get(CMD_STATUS).ok_or_else(|| {
         anyhow!(
             "check_pid failed: CMD_STATUS key missing from command result. \
@@ -414,6 +440,7 @@ pub async fn stop_with_hot_standby(
         let (tx_channel, rx_standby) = watch::channel::<ClusterNodes>(ClusterNodes {
             masters: Vec::new(),
             replicas: Vec::new(),
+            voters: Vec::new(),
         });
         let rx_tx = tx_channel.subscribe();
 
@@ -600,6 +627,7 @@ pub async fn stop_with_failover(
     let (topology_tx, failover_rx) = watch::channel::<ClusterNodes>(ClusterNodes {
         masters: Vec::new(),
         replicas: Vec::new(),
+        voters: Vec::new(),
     });
 
     // Create additional receivers that will get the same data
