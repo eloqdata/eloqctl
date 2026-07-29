@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.3](https://github.com/eloqdata/eloqctl/compare/v1.12.2...v1.12.3) (2026-07-29)
+
+
+### Bug Fixes
+
+* rolling update current leader handling ([#441](https://github.com/eloqdata/eloqctl/issues/441)) ([bc7ca80](https://github.com/eloqdata/eloqctl/commit/bc7ca80e541afdc7159590701904a2b5fbf452a9))
+
 ## [1.12.2](https://github.com/eloqdata/eloqctl/compare/v1.12.1...v1.12.2) (2026-07-22)
 
 
