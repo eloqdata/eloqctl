@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.4](https://github.com/eloqdata/eloqctl/compare/v1.12.3...v1.12.4) (2026-08-12)
+
+
+### Bug Fixes
+
+* restore RocksDB Cloud snapshots on main branch ([#443](https://github.com/eloqdata/eloqctl/issues/443)) ([12c8cb7](https://github.com/eloqdata/eloqctl/commit/12c8cb712fcd96b8842c0bde088ea5a33f70e683))
+
 ## [1.12.3](https://github.com/eloqdata/eloqctl/compare/v1.12.2...v1.12.3) (2026-07-29)
 
 
