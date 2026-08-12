@@ -208,7 +208,7 @@ impl StorageService {
                         s3.aws_access_key_id.clone(),
                         s3.aws_secret_key.clone(),
                         s3.region.clone(),
-                        None,
+                        s3.endpoint.clone(),
                     ))
                 }
                 RocksDB::MINIO(minio) => {
