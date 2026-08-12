@@ -10,6 +10,8 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use tracing::{info, warn};
 
+pub const ROCKSDB_CLOUD_RESTORE_BRANCH: &str = "main";
+
 /// Join manifest filenames into comma-separated string
 /// Validates that manifest filenames don't contain commas
 /// For single manifest, returns as-is (backward compatible)
@@ -329,7 +331,7 @@ pub fn parse_snapshot_manifest(manifest: &str) -> Result<(String, u32, String)> 
 }
 
 /// Parse current database manifest filename to extract ng_id and epoch
-/// Format: CLOUDMANIFEST-development-<ng_id>-<epoch>
+/// Format: CLOUDMANIFEST-main-<ng_id>-<epoch>
 /// Returns: (ng_id, epoch)
 pub fn parse_database_manifest(manifest: &str) -> Result<(u32, u64)> {
     // Remove CLOUDMANIFEST- prefix
@@ -337,8 +339,8 @@ pub fn parse_database_manifest(manifest: &str) -> Result<(u32, u64)> {
         .strip_prefix("CLOUDMANIFEST-")
         .ok_or_else(|| anyhow::anyhow!("Manifest must start with CLOUDMANIFEST-: {}", manifest))?;
 
-    // Pattern: development-<ng_id>-<epoch>
-    let re = Regex::new(r"^development-(\d+)-(\d+)$").context("Failed to compile regex")?;
+    // Pattern: main-<ng_id>-<epoch>
+    let re = Regex::new(r"^main-(\d+)-(\d+)$").context("Failed to compile regex")?;
 
     let caps = re
         .captures(manifest)
@@ -353,7 +355,7 @@ pub fn parse_database_manifest(manifest: &str) -> Result<(u32, u64)> {
 /// Find maximum epoch for a given ng_id from list of manifest keys
 /// Returns the maximum epoch found, or 0 if none found
 pub fn find_max_epoch_for_ng(manifest_keys: &[String], ng_id: u32) -> Result<u64> {
-    let prefix = format!("CLOUDMANIFEST-development-{}-", ng_id);
+    let prefix = format!("CLOUDMANIFEST-{}-{}-", ROCKSDB_CLOUD_RESTORE_BRANCH, ng_id);
     let mut max_epoch = 0u64;
 
     for key in manifest_keys {

@@ -1,5 +1,6 @@
 use crate::cli::task::backup_utils::{
     find_max_epoch_for_ng, parse_database_manifest, parse_snapshot_manifest, split_manifests,
+    ROCKSDB_CLOUD_RESTORE_BRANCH,
 };
 use crate::cli::task::s3_utils::{copy_s3_object, list_s3_objects, S3ClientBuilder};
 use crate::cli::task::task_base::{ExecutionValue, TaskArgValue, TaskExecutor, TaskHost, TaskId};
@@ -9,6 +10,10 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use tracing::{error, info, warn};
+
+// TODO: Read the object path and branch name from cluster configuration, and derive
+// the ds_<shard_id> path for every snapshot manifest in multi-shard deployments.
+const ROCKSDB_CLOUD_RESTORE_OBJECT_PATH: &str = "rocksdb_cloud/ds_0";
 
 #[derive(Clone, Debug)]
 pub struct S3RestoreTask {
@@ -100,8 +105,11 @@ impl TaskExecutor for S3RestoreTask {
         info!("Found {} manifest(s) to restore", manifest_list.len());
 
         // List all current database manifests to find max epochs
-        let db_manifest_prefix = "rocksdb_cloud/CLOUDMANIFEST-development-";
-        let all_manifests = list_s3_objects(&s3_client, &self.bucket, db_manifest_prefix)
+        let db_manifest_prefix = format!(
+            "{}/CLOUDMANIFEST-{}-",
+            ROCKSDB_CLOUD_RESTORE_OBJECT_PATH, ROCKSDB_CLOUD_RESTORE_BRANCH
+        );
+        let all_manifests = list_s3_objects(&s3_client, &self.bucket, &db_manifest_prefix)
             .await
             .context("Failed to list current database manifests")?;
 
@@ -133,7 +141,10 @@ impl TaskExecutor for S3RestoreTask {
             );
 
             // Construct source S3 key
-            let source_key = format!("rocksdb_cloud/CLOUDMANIFEST-{}", snapshot_manifest);
+            let source_key = format!(
+                "{}/CLOUDMANIFEST-{}",
+                ROCKSDB_CLOUD_RESTORE_OBJECT_PATH, snapshot_manifest
+            );
 
             // Check if source file exists
             match s3_client
@@ -172,8 +183,8 @@ impl TaskExecutor for S3RestoreTask {
 
             // Construct destination S3 key
             let dest_key = format!(
-                "rocksdb_cloud/CLOUDMANIFEST-development-{}-{}",
-                ng_id, new_epoch
+                "{}/CLOUDMANIFEST-{}-{}-{}",
+                ROCKSDB_CLOUD_RESTORE_OBJECT_PATH, ROCKSDB_CLOUD_RESTORE_BRANCH, ng_id, new_epoch
             );
 
             // Copy manifest file
