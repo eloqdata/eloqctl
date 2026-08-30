@@ -4,6 +4,6 @@ members = ["src/cluster_mgr"]
 resolver = "2"
 
 [workspace.package]
-version = "1.12.4"
+version = "1.13.0"
 edition = "2021"
 repository = "https://github.com/eloqdata/eloq_waiter"

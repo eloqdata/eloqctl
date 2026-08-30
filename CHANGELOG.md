@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/eloqdata/eloqctl/compare/v1.12.4...v1.13.0) (2026-08-30)
+
+
+### Features
+
+* **dashboard:** add cache and checkpoint observability ([1f8b4b3](https://github.com/eloqdata/eloqctl/commit/1f8b4b36158662d40f2b2fb8f5f34aa15a80311e))
+
 ## [1.12.4](https://github.com/eloqdata/eloqctl/compare/v1.12.3...v1.12.4) (2026-08-12)
 
 
