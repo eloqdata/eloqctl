@@ -8109,6 +8109,351 @@
       ],
       "title": "Standby Lag",
       "type": "row"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 140
+      },
+      "id": 123510,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "description": "All non-meta CCMap entries currently resident in memory, including deleted and transient entries until physical removal. Dirty entries are shown as a second raw signal.",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 141
+          },
+          "id": 123511,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "sum by (node_id) (resident_data_key_count{instance=~\"$eloqdata_server\"})",
+              "legendFormat": "resident node {{node_id}}",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "sum by (node_id) (dirty_data_key_count{instance=~\"$eloqdata_server\"})",
+              "legendFormat": "dirty node {{node_id}}",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Cache Key Population",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "description": "Query-layer ratio of dirty entries to all resident non-meta CCMap entries, aggregated by node ID. An empty resident population evaluates to zero.",
+          "fieldConfig": {
+            "defaults": {
+              "max": 1,
+              "min": 0,
+              "unit": "percentunit"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 141
+          },
+          "id": 123512,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "sum by (node_id) (dirty_data_key_count{instance=~\"$eloqdata_server\"}) / clamp_min(sum by (node_id) (resident_data_key_count{instance=~\"$eloqdata_server\"}), 1)",
+              "legendFormat": "node {{node_id}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Dirty Key Ratio",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "description": "Start-to-start interval between eligible checkpoint attempts for each node group. Attempts that later produce no work, stall, or deduplicate are included; the node view combines their observations.",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 149
+          },
+          "id": 123513,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "sum by (node_id) (rate(checkpoint_attempt_interval_seconds_sum{instance=~\"$eloqdata_server\"}[$__rate_interval])) / clamp_min(sum by (node_id) (rate(checkpoint_attempt_interval_seconds_count{instance=~\"$eloqdata_server\"}[$__rate_interval])), 1e-9)",
+              "legendFormat": "average node {{node_id}}",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum by (le, node_id) (rate(checkpoint_attempt_interval_seconds_bucket{instance=~\"$eloqdata_server\"}[$__rate_interval])))",
+              "legendFormat": "p95 node {{node_id}}",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Checkpoint Attempt Interval",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "description": "Interval between successful local durable checkpoint timestamp advances for each node group. Recovery and checkpoint timestamps received from another node are excluded.",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 149
+          },
+          "id": 123514,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "sum by (node_id) (rate(checkpoint_advance_interval_seconds_sum{instance=~\"$eloqdata_server\"}[$__rate_interval])) / clamp_min(sum by (node_id) (rate(checkpoint_advance_interval_seconds_count{instance=~\"$eloqdata_server\"}[$__rate_interval])), 1e-9)",
+              "legendFormat": "average node {{node_id}}",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "histogram_quantile(0.95, sum by (le, node_id) (rate(checkpoint_advance_interval_seconds_bucket{instance=~\"$eloqdata_server\"}[$__rate_interval])))",
+              "legendFormat": "p95 node {{node_id}}",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "Checkpoint Advance Interval",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "description": "Cumulative terminal checkpoint-origin failures grouped by stable reason. Cancellations, no-work outcomes, deduplication, and stalls are not failures.",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 157
+          },
+          "id": 123515,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "sum by (node_id, reason) (checkpoint_failures_total{instance=~\"$eloqdata_server\"})",
+              "legendFormat": "node {{node_id}} / {{reason}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Checkpoint Failures",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "description": "Existing alert signal: 1 when any node group on the node reaches the consecutive-failure threshold, otherwise 0. Per-node-group streak state is removed on failover.",
+          "fieldConfig": {
+            "defaults": {
+              "max": 1,
+              "min": 0,
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 157
+          },
+          "id": 123516,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+              },
+              "editorMode": "code",
+              "expr": "max by (node_id) (is_continuous_checkpoint_failures{instance=~\"$eloqdata_server\"})",
+              "legendFormat": "node {{node_id}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Consecutive Checkpoint Failure Alert",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Cache and Checkpoint Observability",
+      "type": "row"
     }
   ],
   "refresh": "5s",
